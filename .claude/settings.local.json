@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir:*)",
+      "Bash(mv:*)",
+      "Bash(brew:*)",
+      "Bash(source ~/.zshrc)",
+      "Bash(brew --version:*)",
+      "Bash(cat:*)",
+      "Skill(chrome-cli)",
+      "Skill(cli-tools)",
+      "Bash(chrome-cli:*)",
+      "Bash(pgrep:*)",
+      "Bash(git:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
