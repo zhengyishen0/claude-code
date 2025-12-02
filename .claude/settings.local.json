@@ -11,7 +11,8 @@
       "Skill(cli-tools)",
       "Bash(chrome-cli:*)",
       "Bash(pgrep:*)",
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "Bash(gh:*)"
     ],
     "deny": [],
     "ask": []
