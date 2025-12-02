@@ -1,0 +1,1 @@
+can you help me search for candidate listing for a stay near griffith observartory that host 5 adults and 1 infant, 3+ bed rooms and 2+ bath rooms, 1 month, 5k-8k. add top five rated listings to a dedicated wishlist. repeat requirement, then tell me your plan, and go

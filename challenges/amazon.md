@@ -1,0 +1,1 @@
+Help me find a laptop for software development. Requirements: 16GB+ RAM, 512GB+ SSD, 14-15 inch screen, under $1500. Filter by 4+ star ratings and Prime delivery. Compare the top 3 options by adding them to cart and summarize their specs, prices, and key reviews. Repeat the requirement, then tell me your plan, and go.

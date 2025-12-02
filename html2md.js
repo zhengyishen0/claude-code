@@ -72,16 +72,10 @@
   // === INTERACTIVE ELEMENTS ===
   md.push('## Interactive Elements');
 
-  // Buttons (with full labels, no truncation at 40 chars)
+  // Buttons
   const buttons = document.querySelectorAll('button, [role="button"], input[type="submit"], input[type="button"]');
-  const btnLabels = [...buttons].map(b => {
-    const label = getLabel(b);
-    // Include aria-pressed state for toggle buttons
-    const pressed = b.getAttribute('aria-pressed');
-    if (pressed !== null) return label + (pressed === 'true' ? ' [ON]' : ' [OFF]');
-    return label;
-  }).filter(l => l && l.length > 1);
-  const uniqueBtns = [...new Set(btnLabels)].slice(0, 20);
+  const btnLabels = [...buttons].map(b => getLabel(b)).filter(l => l && l.length > 1 && l.length < 40);
+  const uniqueBtns = [...new Set(btnLabels)].slice(0, 15);
   md.push('**Buttons (' + buttons.length + '):** ' + (uniqueBtns.length ? uniqueBtns.join(' | ') : 'none labeled'));
 
   // Links
@@ -129,21 +123,6 @@
     });
   }
   md.push('');
-
-  // === TOASTS/NOTIFICATIONS ===
-  const toasts = document.querySelectorAll('[role="alert"], [role="status"], [class*="toast"], [class*="snackbar"], [class*="notification"]');
-  const visibleToasts = [...toasts].filter(t => {
-    const r = t.getBoundingClientRect();
-    const s = getComputedStyle(t);
-    return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden';
-  });
-  if (visibleToasts.length > 0) {
-    md.push('## Notifications');
-    visibleToasts.forEach(t => {
-      md.push('- ' + (t.getAttribute('role') || 'toast') + ': ' + getText(t));
-    });
-    md.push('');
-  }
 
   // === QUICK STATS ===
   md.push('---');
