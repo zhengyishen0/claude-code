@@ -1,70 +1,61 @@
-// click-element.js - Robust clicking for React/SPA apps
-// Usage: chrome-cli execute "const selector='SELECTOR'; $(cat click-element.js)"
-// Returns: "clicked: <element info>" or "failed: <reason>"
+// click-element.js - Simple element finding + click
+// Usage: chrome-cli execute 'var _p={text:"Button"}; <code>'
 
 (function() {
-  const sel = typeof selector !== 'undefined' ? selector : null;
-  if (!sel) return 'failed: no selector provided. Usage: const selector=".btn"; ...';
+  var p = typeof _p !== 'undefined' ? _p : {};
+  var el = null;
+  var method = '';
 
-  const el = document.querySelector(sel);
-  if (!el) return 'failed: element not found: ' + sel;
-
-  const rect = el.getBoundingClientRect();
-  const style = getComputedStyle(el);
-
-  // Check visibility
-  if (rect.width === 0 || rect.height === 0) return 'failed: element has no size';
-  if (style.display === 'none') return 'failed: element is display:none';
-  if (style.visibility === 'hidden') return 'failed: element is hidden';
-  if (style.pointerEvents === 'none') return 'failed: element has pointer-events:none';
-
-  // Scroll into view if needed
-  el.scrollIntoView({ block: 'center', behavior: 'instant' });
-
-  // Get element description
-  const desc = el.tagName.toLowerCase() +
-    (el.id ? '#' + el.id : '') +
-    (el.className ? '.' + el.className.split(' ')[0] : '') +
-    (el.innerText ? ' "' + el.innerText.trim().substring(0, 30) + '"' : '');
-
-  // Strategy 1: Focus + Enter (for buttons)
-  if (el.tagName === 'BUTTON' || el.getAttribute('role') === 'button') {
-    el.focus();
+  // Strategy 1: CSS selector
+  if (p.selector) {
+    el = document.querySelector(p.selector);
+    method = 'selector';
+  }
+  // Strategy 2: Text content (partial, case-insensitive)
+  else if (p.text) {
+    var searchText = p.text.toLowerCase();
+    var clickables = document.querySelectorAll('button, a, [role="button"], [onclick]');
+    for (var i = 0; i < clickables.length; i++) {
+      var t = (clickables[i].innerText || '').toLowerCase();
+      if (t.indexOf(searchText) > -1) {
+        el = clickables[i];
+        break;
+      }
+    }
+    method = 'text';
+  }
+  // Strategy 3: aria-label (partial, case-insensitive)
+  else if (p.aria) {
+    var searchAria = p.aria.toLowerCase();
+    var labeled = document.querySelectorAll('[aria-label]');
+    for (var i = 0; i < labeled.length; i++) {
+      var label = (labeled[i].getAttribute('aria-label') || '').toLowerCase();
+      if (label.indexOf(searchAria) > -1) {
+        el = labeled[i];
+        break;
+      }
+    }
+    method = 'aria';
+  }
+  // Strategy 4: data-testid (exact)
+  else if (p.testid) {
+    el = document.querySelector('[data-testid="' + p.testid + '"]');
+    method = 'testid';
   }
 
-  // Strategy 2: Native click
+  if (!el) {
+    return 'FAIL:not found (' + method + ')';
+  }
+
+  // Scroll into view and click
+  el.scrollIntoView({block: 'center', behavior: 'instant'});
   el.click();
 
-  // Strategy 3: MouseEvent sequence (for React)
-  const centerX = rect.left + rect.width / 2;
-  const centerY = rect.top + rect.height / 2;
+  // Return success with element info
+  var info = el.tagName.toLowerCase();
+  if (el.id) info += '#' + el.id;
+  var txt = (el.innerText || '').trim().substring(0, 25);
+  if (txt) info += ' "' + txt + '"';
 
-  const mouseOpts = {
-    view: window,
-    bubbles: true,
-    cancelable: true,
-    clientX: centerX,
-    clientY: centerY,
-    button: 0
-  };
-
-  el.dispatchEvent(new MouseEvent('mousedown', mouseOpts));
-  el.dispatchEvent(new MouseEvent('mouseup', mouseOpts));
-  el.dispatchEvent(new MouseEvent('click', mouseOpts));
-
-  // Strategy 4: PointerEvent (modern browsers, some React versions need this)
-  try {
-    const pointerOpts = {
-      ...mouseOpts,
-      pointerId: 1,
-      pointerType: 'mouse',
-      isPrimary: true
-    };
-    el.dispatchEvent(new PointerEvent('pointerdown', pointerOpts));
-    el.dispatchEvent(new PointerEvent('pointerup', pointerOpts));
-  } catch (e) {
-    // PointerEvent might not be supported
-  }
-
-  return 'clicked: ' + desc;
+  return 'OK:' + method + ' ' + info;
 })();

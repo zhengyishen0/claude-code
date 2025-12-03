@@ -1,76 +1,45 @@
-// set-input.js - React-compatible form input
-// Usage: chrome-cli execute "const selector='SELECTOR'; const value='VALUE'; $(cat set-input.js)"
-// Returns: "set: <element> = <value>" or "failed: <reason>"
+// set-input.js - Simple input value setting
+// Usage: chrome-cli execute 'var _p={selector:"#email",value:"test@example.com"}; <code>'
 
 (function() {
-  const sel = typeof selector !== 'undefined' ? selector : null;
-  const val = typeof value !== 'undefined' ? value : null;
+  var p = typeof _p !== 'undefined' ? _p : {};
 
-  if (!sel) return 'failed: no selector provided';
-  if (val === null) return 'failed: no value provided';
+  if (!p.selector) return 'FAIL:no selector';
+  if (p.value === undefined) return 'FAIL:no value';
 
-  const el = document.querySelector(sel);
-  if (!el) return 'failed: element not found: ' + sel;
+  var el = document.querySelector(p.selector);
+  if (!el) return 'FAIL:not found ' + p.selector;
 
-  const tagName = el.tagName.toLowerCase();
-  const inputType = el.type || 'text';
-
-  // Check if it's an input-like element
-  if (!['input', 'textarea', 'select'].includes(tagName)) {
-    // Could be a contenteditable
-    if (el.contentEditable === 'true') {
-      el.focus();
-      el.textContent = val;
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      return 'set: contenteditable = "' + val + '"';
-    }
-    return 'failed: element is not an input, textarea, select, or contenteditable';
-  }
-
-  // Focus the element first
+  // Focus and click
   el.focus();
+  el.click();
 
-  // For React: Get the native value setter to bypass React's synthetic system
-  const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-    window.HTMLInputElement.prototype, 'value'
-  )?.set;
-  const nativeTextareaValueSetter = Object.getOwnPropertyDescriptor(
-    window.HTMLTextAreaElement.prototype, 'value'
-  )?.set;
+  // Clear if requested
+  if (p.clear) {
+    el.value = '';
+    el.dispatchEvent(new Event('input', {bubbles: true}));
+  }
 
-  // Set value using native setter (bypasses React's getter/setter)
-  if (tagName === 'input' && nativeInputValueSetter) {
-    nativeInputValueSetter.call(el, val);
-  } else if (tagName === 'textarea' && nativeTextareaValueSetter) {
-    nativeTextareaValueSetter.call(el, val);
-  } else if (tagName === 'select') {
-    el.value = val;
+  // Set value using native setter (for React)
+  var setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+  if (el.tagName === 'TEXTAREA') {
+    setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+  }
+
+  if (setter && setter.set) {
+    setter.set.call(el, p.value);
   } else {
-    el.value = val;
+    el.value = p.value;
   }
 
-  // Dispatch events that React listens to
-  // React 16+ uses these events
-  el.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
-  el.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+  // Dispatch events React listens to
+  el.dispatchEvent(new Event('input', {bubbles: true}));
+  el.dispatchEvent(new Event('change', {bubbles: true}));
 
-  // Also try KeyboardEvent for some stubborn inputs
-  el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
-  el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
-
-  // Blur to trigger validation
-  el.dispatchEvent(new Event('blur', { bubbles: true }));
-
-  // Get element description
-  const desc = tagName +
-    (el.name ? '[name="' + el.name + '"]' : '') +
-    (el.id ? '#' + el.id : '') +
-    (el.placeholder ? '[placeholder="' + el.placeholder.substring(0, 20) + '"]' : '');
-
-  // Verify the value was set
-  if (el.value !== val) {
-    return 'warning: value may not have persisted. Current: "' + el.value + '", expected: "' + val + '"';
+  // Verify
+  if (el.value === p.value) {
+    return 'OK:' + p.selector + ' = "' + p.value.substring(0, 20) + '"';
+  } else {
+    return 'WARN:value is "' + el.value + '" not "' + p.value + '"';
   }
-
-  return 'set: ' + desc + ' = "' + val.substring(0, 50) + '"';
 })();
