@@ -31,9 +31,6 @@
     el.removeAttribute('class');
   });
 
-  // Track seen footers to avoid duplicates
-  let footerSeen = false;
-
   function getAttr(el, attr) {
     return el.getAttribute(attr) || '';
   }
@@ -144,62 +141,14 @@
       return lines;
     }
 
-    // Footer - only first one
-    if (tag === 'footer') {
-      if (footerSeen) return lines;
-      footerSeen = true;
-      lines.push('');
-      lines.push('## Footer');
-      Array.from(node.childNodes).forEach(child => {
-        lines.push(...processNode(child, 0));
-      });
-      return lines;
-    }
-
-    // Major regions - ## level
-    const majorRegions = ['header', 'main', 'nav', 'aside'];
-    if (majorRegions.includes(tag)) {
-      const regionNames = {
-        'header': 'Header',
-        'nav': 'Navigation',
-        'main': 'Main Content',
-        'aside': 'Sidebar'
-      };
+    // Semantic sectioning elements - unified handling
+    const semanticTags = ['header', 'main', 'nav', 'aside', 'footer', 'article', 'section', 'form', 'dialog'];
+    if (semanticTags.includes(tag)) {
+      const capTag = tag.charAt(0).toUpperCase() + tag.slice(1);  // nav → Nav
       const label = getAttr(node, 'aria-label');
-      const heading = label ? `${regionNames[tag]}: ${label}` : regionNames[tag];
+      const heading = label ? `${capTag}: ${label}` : capTag;
       lines.push('');
       lines.push(`## ${heading}`);
-      Array.from(node.childNodes).forEach(child => {
-        lines.push(...processNode(child, 0));
-      });
-      return lines;
-    }
-
-    // Section with aria-label - output as ### heading
-    if (tag === 'section') {
-      const label = getAttr(node, 'aria-label');
-      if (label) {
-        lines.push('');
-        lines.push(`### ${label}`);
-      }
-      // Skip unnamed sections - just process children
-      Array.from(node.childNodes).forEach(child => {
-        lines.push(...processNode(child, depth));
-      });
-      return lines;
-    }
-
-    // Other semantic tags - form, article, dialog
-    const otherSemantic = { 'form': 'Form', 'article': 'Article', 'dialog': 'Dialog' };
-    if (otherSemantic[tag]) {
-      const label = getAttr(node, 'aria-label');
-      if (label) {
-        lines.push('');
-        lines.push(`## ${otherSemantic[tag]}: ${label}`);
-      } else {
-        lines.push('');
-        lines.push(`## ${otherSemantic[tag]}`);
-      }
       Array.from(node.childNodes).forEach(child => {
         lines.push(...processNode(child, 0));
       });

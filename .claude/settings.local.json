@@ -1,11 +1,16 @@
 {
   "permissions": {
     "allow": [
+      "Edit",
+      "Write",
       "Bash(mkdir:*)",
       "Bash(mv:*)",
       "Bash(brew:*)",
       "Bash(source ~/.zshrc)",
       "Bash(brew --version:*)",
+      "Bash(touch:*)",
+      "Bash(echo:*)",
+      "Bash(cat ~/.claude/settings.local.json)",
       "Bash(cat:*)",
       "Skill(chrome-cli)",
       "Skill(cli-tools)",

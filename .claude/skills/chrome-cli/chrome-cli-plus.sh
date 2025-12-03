@@ -7,10 +7,37 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 case "$1" in
   recon|r)
     # Get page structure in markdown
-    # Usage: chrome-cli-plus recon [--status]
+    # Usage: chrome-cli-plus recon [--status] [--section <name>]
     # --status: Also show loading status of key elements
+    # --section: Filter to specific section (header, nav, main, aside, footer, article, section, form)
+    shift # remove 'recon'
+
+    STATUS=""
+    SECTION=""
+
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --status|-s)
+          STATUS="true"
+          shift
+          ;;
+        --section|-S)
+          SECTION="$2"
+          shift 2
+          ;;
+        -*)
+          echo "Unknown option: $1" >&2
+          exit 1
+          ;;
+        *)
+          shift
+          ;;
+      esac
+    done
+
     sleep 1
-    if [ "$2" = "--status" ]; then
+
+    if [ "$STATUS" = "true" ]; then
       chrome-cli execute "
         const status = {
           readyState: document.readyState,
@@ -27,7 +54,26 @@ case "$1" in
         '- Pending resources: ' + status.pendingXHR + '\\n\\n';
       "
     fi
-    chrome-cli execute "$(cat "$SCRIPT_DIR/html2md.js")"
+
+    if [ -n "$SECTION" ]; then
+      # Capitalize first letter: nav → Nav
+      SECTION_CAP="$(echo "$SECTION" | awk '{print toupper(substr($0,1,1)) substr($0,2)}')"
+      # Get full output, extract header (first 4 lines) and filtered section
+      OUTPUT=$(chrome-cli execute "$(cat "$SCRIPT_DIR/html2md.js")")
+      # Print header (title, URL, ---, blank line)
+      echo "$OUTPUT" | head -n 4
+      # Extract section: from "## SectionName" (or "## SectionName: label") until next "## "
+      echo "$OUTPUT" | awk -v sec="$SECTION_CAP" '
+        /^## / {
+          if (p) exit
+          # Match "## Nav" or "## Nav: something"
+          if ($0 ~ "^## " sec "($|:)") p=1
+        }
+        p { print }
+      '
+    else
+      chrome-cli execute "$(cat "$SCRIPT_DIR/html2md.js")"
+    fi
     ;;
 
   open|o)
@@ -218,7 +264,10 @@ case "$1" in
     echo "chrome-cli-plus - Enhanced chrome-cli with React/SPA support"
     echo ""
     echo "Commands:"
-    echo "  recon, r [--status]        Get page structure (waits 1s, --status shows load info)"
+    echo "  recon, r [--status] [-S x] Get page structure (waits 1s)"
+    echo "                             --status/-s: show loading info"
+    echo "                             --section/-S: filter to section (header, nav, main,"
+    echo "                               aside, footer, article, section, form)"
     echo "  open, o URL [--status]     Open URL and recon (--status shows load info)"
     echo "  wait, w [timeout] [sel]    Wait for page load (polling)"
     echo "  click, c SELECTOR          Click by CSS selector"
