@@ -22,9 +22,9 @@ Enhanced wrapper with React/SPA support:
 
 | Command | Usage | Description |
 |---------|-------|-------------|
-| `recon` | `chrome-cli-plus.sh recon` | Get page structure in markdown |
-| `open` | `chrome-cli-plus.sh open "URL" [timeout]` | Open URL, wait, and recon |
-| `wait` | `chrome-cli-plus.sh wait [timeout] [selector]` | Wait for page load |
+| `recon` | `chrome-cli-plus.sh recon [--status]` | Wait 1s, get page structure (--status shows load info) |
+| `open` | `chrome-cli-plus.sh open "URL" [--status]` | Open URL and recon (--status shows load info) |
+| `wait` | `chrome-cli-plus.sh wait [timeout] [selector]` | Wait for page load (polling) |
 | `click` | `chrome-cli-plus.sh click "SELECTOR"` | Click element (React-compatible) |
 | `input` | `chrome-cli-plus.sh input "SELECTOR" "VALUE"` | Set input value (React-compatible) |
 | `tabs` | `chrome-cli-plus.sh tabs` | List all tabs |

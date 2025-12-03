@@ -7,21 +7,43 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 case "$1" in
   recon|r)
     # Get page structure in markdown
+    # Usage: chrome-cli-plus recon [--status]
+    # --status: Also show loading status of key elements
+    sleep 1
+    if [ "$2" = "--status" ]; then
+      chrome-cli execute "
+        const status = {
+          readyState: document.readyState,
+          images: { total: document.images.length, loaded: Array.from(document.images).filter(i => i.complete).length },
+          scripts: { total: document.scripts.length },
+          iframes: document.querySelectorAll('iframe').length,
+          pendingXHR: window.performance.getEntriesByType('resource').filter(r => !r.responseEnd).length
+        };
+        '## Loading Status\\n' +
+        '- Document: ' + status.readyState + '\\n' +
+        '- Images: ' + status.images.loaded + '/' + status.images.total + ' loaded\\n' +
+        '- Scripts: ' + status.scripts.total + '\\n' +
+        '- Iframes: ' + status.iframes + '\\n' +
+        '- Pending resources: ' + status.pendingXHR + '\\n\\n';
+      "
+    fi
     chrome-cli execute "$(cat "$SCRIPT_DIR/html2md.js")"
     ;;
 
   open|o)
-    # Open URL, wait for load, and recon
-    # Usage: chrome-cli-plus open "URL" [timeout]
+    # Open URL and recon (waits 1s by default)
+    # Usage: chrome-cli-plus open "URL" [--status]
     URL=$2
-    TIMEOUT=${3:-10}
     if [ -z "$URL" ]; then
-      echo "Usage: chrome-cli-plus open \"URL\" [timeout]" >&2
+      echo "Usage: chrome-cli-plus open \"URL\" [--status]" >&2
       exit 1
     fi
     chrome-cli open "$URL"
-    "$0" wait "$TIMEOUT"
-    "$0" recon
+    if [ "$3" = "--status" ]; then
+      "$0" recon --status
+    else
+      "$0" recon
+    fi
     ;;
 
   wait|w)
@@ -95,9 +117,9 @@ case "$1" in
     echo "chrome-cli-plus - Enhanced chrome-cli with React/SPA support"
     echo ""
     echo "Commands:"
-    echo "  recon, r              Get page structure in markdown"
-    echo "  open, o URL [timeout] Open URL, wait, and recon"
-    echo "  wait, w [timeout] [selector]  Wait for page load"
+    echo "  recon, r [--status]   Get page structure (waits 1s, --status shows load info)"
+    echo "  open, o URL [--status] Open URL and recon (--status shows load info)"
+    echo "  wait, w [timeout] [selector]  Wait for page load (polling)"
     echo "  click, c SELECTOR     Click element (React-compatible)"
     echo "  input, i SELECTOR VALUE  Set input value (React-compatible)"
     echo "  tabs, t               List all tabs"
@@ -106,6 +128,8 @@ case "$1" in
     echo ""
     echo "Examples:"
     echo "  chrome-cli-plus open \"https://example.com\""
+    echo "  chrome-cli-plus open \"https://example.com\" --status"
+    echo "  chrome-cli-plus recon --status"
     echo "  chrome-cli-plus click \"button.submit\""
     echo "  chrome-cli-plus input \"#email\" \"test@example.com\""
     ;;

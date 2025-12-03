@@ -35,7 +35,20 @@
       "Bash(.claude/skills/chrome-cli/set-input.sh:*)",
       "Bash(.claude/skills/chrome-cli/chrome-cli-plus.sh)",
       "Bash(.claude/skills/chrome-cli/chrome-cli-plus.sh:*)",
-      "Bash(chmod:*)"
+      "Bash(.claude/skills/chrome-cli/chrome-cli-plus.sh recon)",
+      "Bash(.claude/skills/chrome-cli/chrome-cli-plus.sh recon:*)",
+      "Bash(.claude/skills/chrome-cli/chrome-cli-plus.sh open)",
+      "Bash(.claude/skills/chrome-cli/chrome-cli-plus.sh open:*)",
+      "Bash(.claude/skills/chrome-cli/chrome-cli-plus.sh wait)",
+      "Bash(.claude/skills/chrome-cli/chrome-cli-plus.sh wait:*)",
+      "Bash(.claude/skills/chrome-cli/chrome-cli-plus.sh click)",
+      "Bash(.claude/skills/chrome-cli/chrome-cli-plus.sh click:*)",
+      "Bash(.claude/skills/chrome-cli/chrome-cli-plus.sh input)",
+      "Bash(.claude/skills/chrome-cli/chrome-cli-plus.sh input:*)",
+      "Bash(.claude/skills/chrome-cli/chrome-cli-plus.sh tabs)",
+      "Bash(.claude/skills/chrome-cli/chrome-cli-plus.sh tabs:*)",
+      "Bash(chmod:*)",
+      "Bash(npx prettier:*)"
     ],
     "deny": [],
     "ask": []
