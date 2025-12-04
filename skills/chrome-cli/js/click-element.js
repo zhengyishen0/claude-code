@@ -44,10 +44,11 @@
 
   // Priority: testid > aria > text > href > selector
 
-  // Strategy 1: data-testid (most reliable)
+  // Strategy 1: data-testid OR id (try both with single query)
   if (!el && p.testid) {
-    el = document.querySelector('[data-testid="' + p.testid + '"]');
-    if (el) method = 'testid';
+    // Try data-testid first, then id - works for both React and traditional sites
+    el = document.querySelector('[data-testid="' + p.testid + '"], #' + p.testid);
+    if (el) method = el.getAttribute('data-testid') ? 'testid' : 'id';
   }
 
   // Strategy 2: aria-label (partial, case-insensitive)
