@@ -89,16 +89,16 @@
     var el = null;
     var method = '';
 
-    // Strategy 1: data-testid OR id OR class
+    // Strategy 1: data-testid OR id (NOT class - class often matches multiple)
     if (!el && params.testid && params.testid !== 'button') {
-      el = root.querySelector('[data-testid="' + params.testid + '"], #' + params.testid + ', .' + params.testid);
+      // Try testid and id first (unique identifiers)
+      el = root.querySelector('[data-testid="' + params.testid + '"], #' + params.testid);
       if (el) {
-        method = el.getAttribute('data-testid') === params.testid ? 'testid' :
-                 el.id === params.testid ? 'id' : 'class';
+        method = el.getAttribute('data-testid') === params.testid ? 'testid' : 'id';
       }
     }
 
-    // Strategy 2: aria-label (partial, case-insensitive)
+    // Strategy 2: aria-label (partial, case-insensitive) - try before class fallback
     if (!el && params.aria) {
       var searchAria = params.aria.toLowerCase();
       var labeled = root.querySelectorAll('[aria-label]');
@@ -110,6 +110,12 @@
           break;
         }
       }
+    }
+
+    // Strategy 2b: class selector fallback (only if aria didn't match)
+    if (!el && params.testid && params.testid !== 'button') {
+      el = root.querySelector('.' + params.testid);
+      if (el) method = 'class';
     }
 
     // Strategy 3: Text content (partial, case-insensitive)
