@@ -3,11 +3,16 @@
 // Uses nested lists for hierarchy
 
 (function() {
-  // Build map of button innerText from live DOM (clone loses spacing)
+  // Build map of button data from live DOM (clone loses innerText spacing and class)
   // Replace newlines with literal \n so it's visible and usable in click command
-  const buttonTexts = new Map();
+  const buttonData = new Map();
   document.querySelectorAll('button, [role="button"]').forEach((btn) => {
-    buttonTexts.set(btn.textContent, btn.innerText.trim().replace(/\s*\n\s*/g, '\\n').replace(/\s+/g, ' '));
+    // Find a unique-looking class (long name or has numbers/hyphens)
+    const classes = (btn.className || '').split(/\s+/).filter(c => c.length > 10 || /[-_\d]/.test(c));
+    buttonData.set(btn.textContent, {
+      text: btn.innerText.trim().replace(/\s*\n\s*/g, '\\n').replace(/\s+/g, ' '),
+      class: classes[0] || ''
+    });
   });
 
   const clone = document.documentElement.cloneNode(true);
@@ -99,15 +104,17 @@
     }
 
     // Buttons - format: [text@aria](#testid) for clear click strategy selection
-    // text = visible text, aria = aria-label, testid = data-testid (or id/button fallback)
+    // text = visible text, aria = aria-label, selector = data-testid || id || class || 'button'
     if (tag === 'button' || getAttr(node, 'role') === 'button') {
-      // Use pre-built map from live DOM (clone loses innerText spacing)
+      // Use pre-built map from live DOM (clone loses innerText spacing and class)
       const rawText = node.textContent;
-      const text = buttonTexts.get(rawText) || rawText.trim().replace(/\s+/g, ' ');
+      const data = buttonData.get(rawText) || { text: rawText.trim().replace(/\s+/g, ' '), class: '' };
+      const text = data.text;
       const aria = getAttr(node, 'aria-label');
       const testId = getAttr(node, 'data-testid');
       const idAttr = getAttr(node, 'id');
-      const selector = testId || idAttr || 'button';
+      // Priority: testid > id > class > 'button'
+      const selector = testId || idAttr || data.class || 'button';
 
       // Build label: [text@aria] or [text] or [@aria]
       let label = '';

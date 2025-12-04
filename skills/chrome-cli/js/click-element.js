@@ -82,13 +82,16 @@
     }
   }
 
-  // Priority: testid > aria > text > href > selector
+  // Priority: testid/id/class > aria > text > href > selector
 
-  // Strategy 1: data-testid OR id (try both with single query)
-  if (!el && p.testid) {
-    // Try data-testid first, then id - works for both React and traditional sites
-    el = root.querySelector('[data-testid="' + p.testid + '"], #' + p.testid);
-    if (el) method = el.getAttribute('data-testid') ? 'testid' : 'id';
+  // Strategy 1: data-testid OR id OR class (try all with single query)
+  if (!el && p.testid && p.testid !== 'button') {
+    // Try data-testid first, then id, then class - works for React and traditional sites
+    el = root.querySelector('[data-testid="' + p.testid + '"], #' + p.testid + ', .' + p.testid);
+    if (el) {
+      method = el.getAttribute('data-testid') === p.testid ? 'testid' :
+               el.id === p.testid ? 'id' : 'class';
+    }
   }
 
   // Strategy 2: aria-label (partial, case-insensitive)
