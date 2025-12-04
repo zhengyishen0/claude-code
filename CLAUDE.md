@@ -24,10 +24,10 @@ Run `tools/chrome/run.sh` for full help.
 
 **Key Principles:**
 1. Recon first - understand page before interacting
-2. Wait after actions - use wait after clicks/navigation
-3. Re-run recon - verify state changes after actions
-4. URL params > clicking - faster and more reliable
-5. Keep window clean - close unused tabs before opening
-6. JS returns strings - chrome-cli crashes otherwise
+2. Chain with + - action + wait + recon in one call
+3. Wait for specific element - not just any DOM change
+4. Use --gone when expecting element to disappear
+5. Scope recon with -S to see only relevant section
+6. URL params > clicking - faster and more reliable
 
 <!-- TOOLS:END -->
