@@ -3,7 +3,7 @@
 # Usage: tabs.sh
 
 if [[ "$1" == "--help" ]]; then
-  echo "tabs, t                     List all open tabs"
+  echo "tabs                        List all open tabs"
   exit 0
 fi
 

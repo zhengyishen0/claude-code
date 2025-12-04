@@ -3,7 +3,7 @@
 # Usage: help.sh [TOOL_NAME]
 
 if [[ "$1" == "--help" ]]; then
-  echo "help, h                     Show this help message"
+  echo "help                        Show this help message"
   exit 0
 fi
 
@@ -19,18 +19,29 @@ for cmd in recon open wait click input esc tabs info close help; do
   "$CMD_DIR/$cmd.sh" --help | head -1 | sed 's/^/  /'
 done
 echo ""
+echo "Element Formats (universal across recon/click/input):"
+echo "  Actionable: [text@aria](#id|#testid|.selector|/path)"
+echo "    Examples: [@Search](#btn), [Submit](#submit-btn), [Next](/path)"
+echo "    Usage: click \"[@Search](#btn)\""
+echo "  Input fields: Input: aria=\"label\" (type)"
+echo "    Examples: Input: aria=\"Where\" (search), Input: aria=\"Email\" (email)"
+echo "    Usage: input \"@Where=Paris\" or input \"@Email=test@example.com\""
+echo "  Copy formats directly from recon output for best results"
+echo ""
 echo "Chaining with +:"
 echo "  click \"[@Submit](#btn)\" + wait + recon"
 echo "  click \"[@Close](#btn)\" + wait \"[role=dialog]\" --gone + recon"
-echo "  input --aria Search tokyo + wait \"[role=listbox]\" + recon Form"
+echo "  input \"@Search=tokyo\" + wait \"[role=listbox]\" + recon --section Form"
 echo ""
 echo "Key Principles:"
-echo "  1. Recon first - understand page before interacting"
-echo "  2. Chain with + - action + wait + recon in one call"
-echo "  3. Wait for specific element - not just any DOM change"
-echo "  4. Use --gone when expecting element to disappear"
-echo "  5. Scope recon with --section to see only relevant section"
-echo "  6. URL params > clicking - faster and more reliable"
+echo "  1. URL params first - always prefer direct URLs over clicking"
+echo "     Example: open \"https://airbnb.com/s/Paris?checkin=2025-12-20&checkout=2025-12-27\""
+echo "  2. Use chrome tool commands - avoid chrome-cli execute unless truly needed"
+echo "  3. Recon first - understand page before interacting"
+echo "  4. Chain with + - action + wait + recon in one call"
+echo "  5. Wait for specific element - not just any DOM change"
+echo "  6. Use --gone when expecting element to disappear"
+echo "  7. Scope recon with --section to see only relevant section"
 echo ""
 echo "Raw chrome-cli:"
 echo "  list tabs | info | open URL | activate -t ID | execute JS"

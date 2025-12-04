@@ -3,7 +3,7 @@
 # Usage: input.sh "@aria=value" "#id=value" "text=value" [-c]
 
 if [[ "$1" == "--help" ]]; then
-  echo "input, i FIELD(s) [--clear]  Set input value(s)"
+  echo "input FIELD(s) [--clear]  Set input value(s)"
   echo ""
   echo "Format: selector=value"
   echo "  @label=value    by aria-label (e.g. @Where=Paris)"

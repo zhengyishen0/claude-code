@@ -3,7 +3,7 @@
 # Usage: esc.sh
 
 if [[ "$1" == "--help" ]]; then
-  echo "esc, escape  Send ESC key (close dialogs/modals)"
+  echo "esc                         Send ESC key (close dialogs/modals)"
   echo ""
   echo "Chain with +: esc + wait dialog --gone + recon"
   exit 0

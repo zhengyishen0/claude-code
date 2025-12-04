@@ -3,7 +3,7 @@
 # Usage: click.sh "[text@aria](#testid)" [-S SECTION] [--times N]
 
 if [[ "$1" == "--help" ]]; then
-  echo "click, c TARGET(s) [--section SECTION] [--times N] [--delay MS]  Smart click element(s)"
+  echo "click TARGET(s) [--section SECTION] [--times N] [--delay MS]  Smart click element(s)"
   echo "  TARGET: copy from recon output, e.g. \"[@Search](#btn)\""
   echo "  --section: scope click to section (aria-label, heading, or tag)"
   echo "  --times N: click same element N times"

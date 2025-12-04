@@ -3,7 +3,7 @@
 # Usage: recon.sh [--status] [--section <name>]
 
 if [[ "$1" == "--help" ]]; then
-  echo "recon, r [--status] [--section SECTION]  Get page structure as markdown"
+  echo "recon [--status] [--section SECTION]  Get page structure as markdown"
   echo "  --status: show loading info (images, scripts, etc.)"
   echo "  --section: filter to section (header, nav, main, aside, footer)"
   exit 0

@@ -3,7 +3,7 @@
 # Usage: wait.sh [selector] [--timeout N] [--gone] [--section SECTION]
 
 if [[ "$1" == "--help" ]]; then
-  echo "wait, w [sel] [--timeout N] [--gone] [--section SECTION]  Wait for DOM/element"
+  echo "wait [sel] [--timeout N] [--gone] [--section SECTION]  Wait for DOM/element"
   echo "  No selector: wait for any DOM change"
   echo "  With selector: wait for element to appear"
   echo "  --timeout: timeout in seconds (default 5)"

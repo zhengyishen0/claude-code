@@ -23,12 +23,12 @@ Run `tools/chrome/run.sh` for full help.
 **Commands:** recon, open, wait, click, input, esc, tabs, info, close, help
 
 **Key Principles:**
-1. URL params > clicking - faster and more reliable
-2. Recon first - understand page before interacting
-3. Chain with + - action + wait + recon in one call
-4. Wait for specific element - not just any DOM change
-5. Use --gone when expecting element to disappear
-6. Scope recon with --section to see only relevant section
-7. URL params > clicking - faster and more reliable
+1. URL params first - always prefer direct URLs over clicking
+2. Use chrome tool commands - avoid chrome-cli execute unless truly needed
+3. Recon first - understand page before interacting
+4. Chain with + - action + wait + recon in one call
+5. Wait for specific element - not just any DOM change
+6. Use --gone when expecting element to disappear
+7. Scope recon with --section to see only relevant section
 
 <!-- TOOLS:END -->

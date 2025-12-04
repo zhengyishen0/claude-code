@@ -3,7 +3,7 @@
 # Usage: open.sh URL [--status]
 
 if [[ "$1" == "--help" ]]; then
-  echo "open, o URL [--status]      Open URL (waits for load), then recon"
+  echo "open URL [--status]      Open URL (waits for load), then recon"
   echo "  --status: show loading info after page loads"
   exit 0
 fi

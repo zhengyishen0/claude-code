@@ -12,16 +12,16 @@ execute_single() {
   local cmd="$1"
   shift
   case "$cmd" in
-    recon|r)    "$CMD_DIR/recon.sh" "$@" ;;
-    open|o)     "$CMD_DIR/open.sh" "$@" ;;
-    wait|w)     "$CMD_DIR/wait.sh" "$@" ;;
-    click|c)    "$CMD_DIR/click.sh" "$@" ;;
-    input|i)    "$CMD_DIR/input.sh" "$@" ;;
-    tabs|t)     "$CMD_DIR/tabs.sh" "$@" ;;
+    recon)      "$CMD_DIR/recon.sh" "$@" ;;
+    open)       "$CMD_DIR/open.sh" "$@" ;;
+    wait)       "$CMD_DIR/wait.sh" "$@" ;;
+    click)      "$CMD_DIR/click.sh" "$@" ;;
+    input)      "$CMD_DIR/input.sh" "$@" ;;
+    tabs)       "$CMD_DIR/tabs.sh" "$@" ;;
     info)       "$CMD_DIR/info.sh" "$@" ;;
     close)      "$CMD_DIR/close.sh" "$@" ;;
-    esc|escape) "$CMD_DIR/esc.sh" "$@" ;;
-    help|h|--help|-h) "$CMD_DIR/help.sh" "$TOOL_NAME" ;;
+    esc)        "$CMD_DIR/esc.sh" "$@" ;;
+    help|--help|-h) "$CMD_DIR/help.sh" "$TOOL_NAME" ;;
     *)
       echo "Unknown command: $cmd" >&2
       return 1
@@ -72,32 +72,32 @@ fi
 
 # No chain - use original case statement for backward compat
 case "$1" in
-  recon|r)
+  recon)
     shift
     "$CMD_DIR/recon.sh" "$@"
     ;;
 
-  open|o)
+  open)
     shift
     "$CMD_DIR/open.sh" "$@"
     ;;
 
-  wait|w)
+  wait)
     shift
     "$CMD_DIR/wait.sh" "$@"
     ;;
 
-  click|c)
+  click)
     shift
     "$CMD_DIR/click.sh" "$@"
     ;;
 
-  input|i)
+  input)
     shift
     "$CMD_DIR/input.sh" "$@"
     ;;
 
-  tabs|t)
+  tabs)
     "$CMD_DIR/tabs.sh"
     ;;
 
@@ -110,11 +110,11 @@ case "$1" in
     "$CMD_DIR/close.sh" "$@"
     ;;
 
-  esc|escape)
+  esc)
     "$CMD_DIR/esc.sh"
     ;;
 
-  help|h|--help|-h)
+  help|--help|-h)
     "$CMD_DIR/help.sh" "$TOOL_NAME"
     ;;
 
