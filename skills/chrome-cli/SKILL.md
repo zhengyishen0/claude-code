@@ -17,7 +17,7 @@ Control Google Chrome from the command line using `chrome-cli` for browser autom
 Enhanced wrapper with React/SPA support:
 
 ```bash
-.claude/skills/chrome-cli/chrome-cli-plus.sh <command> [args...]
+skills/chrome-cli/chrome-cli-plus.sh <command> [args...]
 ```
 
 | Command | Usage | Description |
@@ -35,16 +35,16 @@ Enhanced wrapper with React/SPA support:
 
 ```bash
 # Open a page and get its structure
-.claude/skills/chrome-cli/chrome-cli-plus.sh open "https://example.com"
+skills/chrome-cli/chrome-cli-plus.sh open "https://example.com"
 
 # Click a button
-.claude/skills/chrome-cli/chrome-cli-plus.sh click "button.submit"
+skills/chrome-cli/chrome-cli-plus.sh click "button.submit"
 
 # Fill a form field
-.claude/skills/chrome-cli/chrome-cli-plus.sh input "#email" "test@example.com"
+skills/chrome-cli/chrome-cli-plus.sh input "#email" "test@example.com"
 
 # Wait for specific element
-.claude/skills/chrome-cli/chrome-cli-plus.sh wait 10 ".results-loaded"
+skills/chrome-cli/chrome-cli-plus.sh wait 10 ".results-loaded"
 ```
 
 ## Key Principles

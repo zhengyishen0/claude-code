@@ -91,14 +91,26 @@
       return lines;
     }
 
-    // Buttons - as fake links with selector for automation
+    // Buttons - format: [text@aria](#testid) for clear click strategy selection
+    // text = visible text, aria = aria-label, testid = data-testid (or id/button fallback)
     if (tag === 'button' || getAttr(node, 'role') === 'button') {
       const text = node.textContent.trim().replace(/\s+/g, ' ');
-      const label = getAttr(node, 'aria-label') || text;
-      if (!label) return lines;
+      const aria = getAttr(node, 'aria-label');
       const testId = getAttr(node, 'data-testid');
       const idAttr = getAttr(node, 'id');
       const selector = testId || idAttr || 'button';
+
+      // Build label: [text@aria] or [text] or [@aria]
+      let label = '';
+      if (text && aria && text !== aria) {
+        label = `${text}@${aria}`;
+      } else if (text) {
+        label = text;
+      } else if (aria) {
+        label = `@${aria}`;
+      }
+      if (!label) return lines;
+
       lines.push(listIndent(depth) + `[${label}](#${selector})`);
       return lines;
     }

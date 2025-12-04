@@ -58,27 +58,27 @@ Go to next page of results.
 
 For each scenario, test these strategies and record success/failure:
 
-### Click Strategies
+### Click Strategies (Verified December 3, 2025)
 
-| Scenario | CSS Selector | --text | --aria | --testid | Notes |
-|----------|--------------|--------|--------|----------|-------|
-| 1. Close popup | ✅ `button[aria-label="Close"]` | ❌ no text | ✅ "Close" | N/A | In modal context, aria works |
-| 2. Open search | ✅ works | ✅ "Anywhere" | ✅ "Search" | ⚠️ varies | aria="Search" on button |
-| 4. Select date | ⚠️ complex | ✅ "Check in" | ❌ no aria | N/A | No aria-label, use --text |
-| 5. Add guests | ⚠️ complex | ✅ "Who" or "guests" | ❌ no aria | N/A | No aria-label, use --text |
-| 6. Apply filters | ❌ class changes | ✅ "Filters" | ❌ no aria | ✅ `category-bar-filter-button` | testid is best |
-| 7. Add to wishlist | ⚠️ nth-child needed | ❌ no text | ✅ "Add to wishlist: [listing]" | ✅ `listing-card-save-button` | aria includes listing name |
-| 8. Select wishlist | ❌ dynamic | ✅ wishlist name | ✅ "Wishlist for [name], N saved" | N/A | aria includes saved count |
-| 9a. Create new wishlist btn | ⚠️ modal | ✅ "Create new wishlist" | ✅ "Create new wishlist" | ✅ `save-to-list-modal-create-new-button` | All strategies work! |
-| 9b. Confirm Create btn | ⚠️ modal | ✅ "Create" | ❌ no aria | ✅ `save-to-list-modal-create-new-modal-create-button` | Use text or testid |
-| 10. Pagination | ⚠️ `<a>` needs href | ❌ matches prices | ✅ "Next"/"Previous" | N/A | `.click()` doesn't navigate `<a>` |
+| Scenario | CSS Selector | --text | --aria | --testid | Recon Output | Notes |
+|----------|--------------|--------|--------|----------|--------------|-------|
+| 1. Close popup | ✅ | ❌ | ✅ "Close" | N/A | `[@Close](#button)` | Modal may not appear |
+| 2. Search button | N/A | N/A | ❌ (after nav) | ✅ | `[@Search](#structured-search-input-search-button)` | testid is reliable |
+| 4. Select date | N/A | ✅ "When" | ❌ | N/A | `[WhenAdd dates](#button)` | text only, no aria |
+| 5. Add guests | N/A | ✅ "Who" | ❌ | N/A | `[WhoAdd guests](#button)` | text only, no aria |
+| 5b. +/- steppers | N/A | N/A | ✅ "increase/decrease" | ✅ | `[@increase value](#stepper-adults-increase-button)` | Both work |
+| 6. Filters | N/A | ✅ "Filters" | ✅ | ✅ | `[Filters](#category-bar-filter-button)` | All work |
+| 7. Add to wishlist | N/A | ❌ | ✅ "Add to wishlist" | ✅ | `[@Add to wishlist: Home](#listing-card-save-button)` | No visible text |
+| 8. Select wishlist | N/A | ❌ | ✅ "Wishlist for" | N/A | `[@Wishlist for Iceland 2025, 5 saved](#button)` | aria only |
+| 9. Create wishlist | N/A | ✅ | ✅ | ✅ | `[Create new wishlist](#save-to-list-modal-create-new-button)` | All work |
+| 10. Pagination | N/A | ❌ | ✅ "Next"/"Previous" | N/A | `[@Previous](#button)`, `[Next](/s/homes)` | Next is `<a>` link |
 
-### Input Strategies
+### Input Strategies (Verified December 3, 2025)
 
-| Scenario | CSS Selector | --text (placeholder) | --aria | --testid | Notes |
-|----------|--------------|----------------------|--------|----------|-------|
-| 3. Enter location | ✅ `#bigsearch-query-location-input` | ✅ "destinations" | ✅ "Where" | N/A | All strategies work |
-| 9. Wishlist name | ⚠️ dynamic | ❌ no placeholder | ❌ no aria | ✅ `save-to-list-modal-name-input` | testid is only option |
+| Scenario | CSS Selector | --text | --aria | --testid | Recon Output | Notes |
+|----------|--------------|--------|--------|----------|--------------|-------|
+| 3. Enter location | ✅ `#bigsearch-query-location-input` | N/A | ✅ "Where" | N/A | `Input: aria="Where" (search)` | aria works great |
+| 9. Wishlist name | N/A | ❌ | ❌ | ✅ | `Input: testid="save-to-list-modal-name-input"` | testid only |
 
 ## Instructions
 
@@ -126,7 +126,7 @@ For each scenario, test these strategies and record success/failure:
 
 4. **`--text` has ambiguity risks** - "2" matched a price instead of page number
 
-5. **Critical bug: `.click()` doesn't navigate `<a>` tags** in SPAs - need `window.location.href = el.href`
+5. **Fixed: `.click()` now navigates `<a>` tags** - click-element.js updated to use `window.location.href = el.href` for `<a>` tags
 
 6. **Always use `--clear` for inputs** - React inputs need clearing before setting new values
 
@@ -149,9 +149,46 @@ For each scenario, test these strategies and record success/failure:
 1. Priority: `--testid` > `--aria` > `--text` > CSS selector
 2. Use `--aria` for: wishlist buttons, modals, pagination
 3. Use `--text` for: date/guest buttons when no aria-label exists
-4. For `<a>` navigation: Need to enhance click-element.js to use `location.href`
+4. For `<a>` navigation: Fixed in click-element.js to use `location.href`
 
 **For inputs:**
 1. Check what's available: `recon` shows `Input: aria="Where"` or `Input: \`name\``
 2. Priority: `--testid` > `--aria` > `--text` > CSS selector
 3. Always use `--clear` flag for React inputs
+
+## Button Format in Recon Output
+
+The `recon` command now shows buttons with clear separation of text vs aria-label:
+
+```
+[text@aria](#testid)
+```
+
+**Format examples:**
+- `[@Clear Input](#button)` → aria-label only, no visible text → use `--aria "Clear Input"`
+- `[WhenAdd dates](#button)` → text only, no aria → use `--text "When"`
+- `[Search](#structured-search-input-search-button)` → text (=aria), has testid → use `--testid`
+- `[@Add to wishlist: Apartment](#listing-card-save-button)` → aria + testid → use either
+
+**How to read:**
+- `@` at start = aria-label only (no visible text)
+- `text@aria` = both exist and differ
+- `text` alone = no aria-label, only visible text
+- `#selector` = data-testid (or id fallback)
+
+## Smart Click Command
+
+The `click` command now accepts the recon format directly and auto-detects the best strategy:
+
+```bash
+# Copy from recon output and use directly
+chrome-cli-plus click "[@Search](#structured-search-input-search-button)"  # → uses testid
+chrome-cli-plus click "[Filters](#category-bar-filter-button)"             # → uses testid
+chrome-cli-plus click "[@Add to wishlist](#listing-card-save-button)"      # → uses testid
+chrome-cli-plus click "[@Close](#button)"                                  # → uses aria (#button = no testid)
+chrome-cli-plus click "[When](#button)"                                    # → uses text
+
+# Priority: testid > aria > text > href
+```
+
+**Note:** Recon collapses whitespace (e.g., "WhenAdd dates"), but you can use partial text like `[When](#button)` for cleaner commands.
