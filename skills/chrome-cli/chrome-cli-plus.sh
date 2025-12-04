@@ -44,6 +44,10 @@ case "$1" in
     "$CMD_DIR/close.sh" "$@"
     ;;
 
+  esc|escape)
+    "$CMD_DIR/esc.sh"
+    ;;
+
   help|h|--help|-h)
     "$CMD_DIR/help.sh"
     ;;
