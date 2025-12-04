@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Edit",
+      "Write",
+      "WebSearch",
+      "WebFetch",
+      "Bash(mkdir:*)",
+      "Bash(mv:*)",
+      "Bash(touch:*)",
+      "Bash(chmod:*)",
+      "Bash(cat:*)",
+      "Bash(echo:*)",
+      "Bash(sleep:*)",
+      "Bash(pgrep:*)",
+      "Bash(source:*)",
+      "Bash(brew:*)",
+      "Bash(git:*)",
+      "Bash(gh:*)",
+      "Bash(npx:*)",
+      "Bash(chrome-cli:*)",
+      "Bash(skills/chrome-cli/chrome-cli-plus.sh:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
