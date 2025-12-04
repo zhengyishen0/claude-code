@@ -1,25 +1,26 @@
 #!/bin/bash
 # wait.sh - Wait for DOM changes or specific elements
-# Usage: wait.sh [timeout] [selector] [--gone] [--section|-S SECTION]
+# Usage: wait.sh [selector] [--timeout|-T N] [--gone] [--section|-S SECTION]
 #
 # Examples:
 #   wait.sh              # Wait for any DOM change (5s default)
-#   wait.sh 5            # Wait up to 5s for any DOM change
-#   wait.sh 5 ".modal"   # Wait up to 5s for .modal to appear
-#   wait.sh 5 ".loading" --gone  # Wait for .loading to disappear
-#   wait.sh 5 ".btn" -S "Provide feedback"  # Wait in specific section
+#   wait.sh ".modal"     # Wait for .modal to appear (5s default)
+#   wait.sh ".modal" -T 10  # Wait up to 10s for .modal
+#   wait.sh ".loading" --gone  # Wait for .loading to disappear
+#   wait.sh ".btn" -S "Provide feedback"  # Wait in specific section
 
-TIMEOUT=${1:-5}
+TIMEOUT=5
 SELECTOR=""
 GONE=false
 SECTION=""
 
 # Parse arguments
-shift  # Remove timeout
 while [ $# -gt 0 ]; do
   case "$1" in
+    --timeout|-T) TIMEOUT="$2"; shift 2 ;;
     --gone) GONE=true; shift ;;
     --section|-S) SECTION="$2"; shift 2 ;;
+    -*) echo "Unknown option: $1" >&2; exit 1 ;;
     *) SELECTOR="$1"; shift ;;
   esac
 done

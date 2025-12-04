@@ -51,10 +51,18 @@ JS_CODE=$(cat "$SCRIPT_DIR/js/click-element.js")
 result=$(chrome-cli execute 'var _p={auto:"'"$TARGET_ESC"'", section:"'"$SECTION_ESC"'"}; '"$JS_CODE")
 echo "$result"
 
-# If --wait, poll for DOM stability
+# If --wait, poll for DOM change
 if [ "$WAIT" = "true" ]; then
-  sleep 0.5
-  for i in 1 2 3 4; do
-    sleep 0.5
+  SNAPSHOT=$(chrome-cli execute "document.body.innerHTML.length + '|' + document.querySelectorAll('*').length")
+  TIMEOUT=5
+  elapsed=0
+  interval=0.3
+  while (( $(echo "$elapsed < $TIMEOUT" | bc -l) )); do
+    sleep $interval
+    elapsed=$(echo "$elapsed + $interval" | bc)
+    CURRENT=$(chrome-cli execute "document.body.innerHTML.length + '|' + document.querySelectorAll('*').length")
+    if [ "$CURRENT" != "$SNAPSHOT" ]; then
+      break
+    fi
   done
 fi

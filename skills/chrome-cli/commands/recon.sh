@@ -27,8 +27,6 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-sleep 1
-
 if [ "$STATUS" = "true" ]; then
   chrome-cli execute "
     const status = {
