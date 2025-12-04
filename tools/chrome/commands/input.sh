@@ -1,43 +1,35 @@
 #!/bin/bash
-# input.sh - Set input value with multiple selector strategies
-# Usage: input.sh "CSS_SELECTOR" "VALUE" [--clear]
+# input.sh - Set input values with unified selector=value format
+# Usage: input.sh "@aria=value" "#id=value" "text=value" [-c]
 
 if [[ "$1" == "--help" ]]; then
-  echo "input, i SEL VAL [--clear]  Set input value"
-  echo "  input \"#email\" \"test@example.com\""
-  echo "  input --aria LABEL VAL    by aria-label"
-  echo "  input --text PLACEHOLDER VAL  by placeholder"
-  echo "  input --testid ID VAL     by data-testid"
-  echo "  --clear/-c: clear field first"
+  echo "input, i FIELD(s) [-c]  Set input value(s)"
   echo ""
-  echo "Chain with +: input --aria Search tokyo + wait + recon Form"
+  echo "Format: selector=value"
+  echo "  @label=value    by aria-label (e.g. @Where=Paris)"
+  echo "  #id=value       by id/testid/CSS (e.g. #email=test@example.com)"
+  echo "  text=value      by placeholder/aria (e.g. Where=Paris)"
+  echo ""
+  echo "Options:"
+  echo "  -c/--clear: clear field(s) first"
+  echo ""
+  echo "Examples:"
+  echo "  input \"@Where=Paris\""
+  echo "  input \"#email=test@example.com\" \"#password=secret\""
+  echo "  input \"Where=Paris\" \"When=March\" -c"
+  echo ""
+  echo "Chain with +: input \"@Where=Paris\" + wait + recon"
   exit 0
 fi
 
 SCRIPT_DIR="$(dirname "$0")/.."
 
-SELECTOR=""
-TEXT=""
-ARIA=""
-TESTID=""
-VALUE=""
+FIELDS=()
 CLEAR="false"
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --text|-t)
-      TEXT="$2"
-      shift 2
-      ;;
-    --aria|-a)
-      ARIA="$2"
-      shift 2
-      ;;
-    --testid|-d)
-      TESTID="$2"
-      shift 2
-      ;;
-    --clear|-c)
+    --clear|--c|-c)
       CLEAR="true"
       shift
       ;;
@@ -46,33 +38,53 @@ while [ $# -gt 0 ]; do
       exit 1
       ;;
     *)
-      # First positional is selector (if no --flag), second is value
-      if [ -z "$SELECTOR" ] && [ -z "$TEXT" ] && [ -z "$ARIA" ] && [ -z "$TESTID" ]; then
-        SELECTOR="$1"
-      else
-        VALUE="$1"
-      fi
+      FIELDS+=("$1")
       shift
       ;;
   esac
 done
 
-if [ -z "$VALUE" ]; then
-  echo "Usage: input.sh \"SELECTOR\" \"VALUE\" [--clear]" >&2
-  echo "       input.sh --aria \"label\" \"VALUE\" [--clear]" >&2
+if [ ${#FIELDS[@]} -eq 0 ]; then
+  echo "Usage: input.sh \"@aria=value\" \"#id=value\" \"text=value\"" >&2
+  echo "       input.sh \"@Where=Paris\" \"#date=2024-01-01\"" >&2
   exit 1
 fi
 
-# Escape double quotes in values for JS string literals
-SELECTOR_ESC=$(printf '%s' "$SELECTOR" | sed 's/"/\\"/g')
-TEXT_ESC=$(printf '%s' "$TEXT" | sed 's/"/\\"/g')
-ARIA_ESC=$(printf '%s' "$ARIA" | sed 's/"/\\"/g')
-TESTID_ESC=$(printf '%s' "$TESTID" | sed 's/"/\\"/g')
-VALUE_ESC=$(printf '%s' "$VALUE" | sed 's/"/\\"/g')
+# Build JSON array of fields
+# Parse each field: @aria=value, #id=value, or text=value
+FIELDS_JSON="["
+for i in "${!FIELDS[@]}"; do
+  FIELD="${FIELDS[$i]}"
+
+  # Split on first = only
+  SELECTOR="${FIELD%%=*}"
+  VALUE="${FIELD#*=}"
+
+  # Determine type from prefix
+  if [[ "$SELECTOR" == @* ]]; then
+    TYPE="aria"
+    SELECTOR="${SELECTOR:1}"  # Remove @ prefix
+  elif [[ "$SELECTOR" == \#* ]]; then
+    TYPE="id"
+    SELECTOR="${SELECTOR:1}"  # Remove # prefix
+  else
+    TYPE="text"
+  fi
+
+  # Escape for JSON
+  SELECTOR_ESC=$(printf '%s' "$SELECTOR" | sed 's/\\/\\\\/g; s/"/\\"/g')
+  VALUE_ESC=$(printf '%s' "$VALUE" | sed 's/\\/\\\\/g; s/"/\\"/g')
+
+  FIELDS_JSON+='{"type":"'"$TYPE"'","selector":"'"$SELECTOR_ESC"'","value":"'"$VALUE_ESC"'"}'
+  if [ $i -lt $((${#FIELDS[@]} - 1)) ]; then
+    FIELDS_JSON+=","
+  fi
+done
+FIELDS_JSON+="]"
 
 # Read JS file
 JS_CODE=$(cat "$SCRIPT_DIR/js/set-input.js")
 
-# Execute with _p variable
-result=$(chrome-cli execute 'var _p={selector:"'"$SELECTOR_ESC"'",text:"'"$TEXT_ESC"'",aria:"'"$ARIA_ESC"'",testid:"'"$TESTID_ESC"'",value:"'"$VALUE_ESC"'",clear:'"$CLEAR"'}; '"$JS_CODE")
+# Execute with fields array
+result=$(chrome-cli execute 'var _p={fields:'"$FIELDS_JSON"',clear:'"$CLEAR"'}; '"$JS_CODE")
 echo "$result"

@@ -1,14 +1,17 @@
-// click-element.js - Smart element finding + click
-// Accepts recon format: [text@aria](#testid) or individual params
-// Usage: chrome-cli execute 'var _p={auto:"[@Search](#search-btn)"}; <code>'
-//        chrome-cli execute 'var _p={testid:"search-btn"}; <code>'
-//        chrome-cli execute 'var _p={auto:"[@Close](#button)", section:"Provide feedback"}; <code>'
+// click-element.js - Smart element finding + click with batch support
+// Usage: chrome-cli execute 'var _p={targets:["[@Search](#btn)"], times:1}; <code>'
+//        chrome-cli execute 'var _p={targets:["[a]","[b]"], times:1}; <code>'
+//        chrome-cli execute 'var _p={targets:["[+]"], times:5}; <code>'
 
 (function() {
   var p = typeof _p !== 'undefined' ? _p : {};
-  var el = null;
-  var method = '';
-  var root = document;  // default: search entire document
+  var root = document;
+
+  // Blocking sleep for delays between actions
+  function sleep(ms) {
+    var start = Date.now();
+    while (Date.now() - start < ms) {}
+  }
 
   // If section specified, find the container first
   if (p.section) {
@@ -48,118 +51,166 @@
     }
   }
 
-  // Parse auto format: [text@aria](#testid) or [@aria](#testid) or [text](#testid)
-  // If not recon format, treat as CSS selector
-  if (p.auto) {
-    var match = p.auto.match(/^\[([^\]]*)\]\(([^)]+)\)$/);
+  // Parse recon format and find element
+  function findElement(auto) {
+    var params = {};
+
+    // Parse auto format: [text@aria](#testid) or [@aria](#testid) or [text](#testid)
+    var match = auto.match(/^\[([^\]]*)\]\(([^)]+)\)$/);
     if (match) {
       var label = match[1];  // text@aria or @aria or text
       var target = match[2]; // #testid or /href
 
       // Parse label for text and aria
-      if (label.startsWith('@')) {
+      if (label.indexOf('@') === 0) {
         // [@aria] - aria only
-        p.aria = label.substring(1);
+        params.aria = label.substring(1);
       } else if (label.indexOf('@') > 0) {
         // [text@aria] - both
         var parts = label.split('@');
-        p.text = parts[0];
-        p.aria = parts[1];
+        params.text = parts[0];
+        params.aria = parts[1];
       } else {
         // [text] - text only
-        p.text = label;
+        params.text = label;
       }
 
       // Parse target for testid or href
-      if (target.startsWith('#') && target !== '#button') {
-        p.testid = target.substring(1);
-      } else if (target.startsWith('/')) {
-        p.href = target;
+      if (target.indexOf('#') === 0 && target !== '#button') {
+        params.testid = target.substring(1);
+      } else if (target.indexOf('/') === 0) {
+        params.href = target;
       }
     } else {
       // Not recon format - treat as CSS selector
-      p.selector = p.auto;
+      params.selector = auto;
     }
-  }
 
-  // Priority: testid/id/class > aria > text > href > selector
+    var el = null;
+    var method = '';
 
-  // Strategy 1: data-testid OR id OR class (try all with single query)
-  if (!el && p.testid && p.testid !== 'button') {
-    // Try data-testid first, then id, then class - works for React and traditional sites
-    el = root.querySelector('[data-testid="' + p.testid + '"], #' + p.testid + ', .' + p.testid);
-    if (el) {
-      method = el.getAttribute('data-testid') === p.testid ? 'testid' :
-               el.id === p.testid ? 'id' : 'class';
-    }
-  }
-
-  // Strategy 2: aria-label (partial, case-insensitive)
-  if (!el && p.aria) {
-    var searchAria = p.aria.toLowerCase();
-    var labeled = root.querySelectorAll('[aria-label]');
-    for (var i = 0; i < labeled.length; i++) {
-      var label = (labeled[i].getAttribute('aria-label') || '').toLowerCase();
-      if (label.indexOf(searchAria) > -1) {
-        el = labeled[i];
-        method = 'aria';
-        break;
+    // Strategy 1: data-testid OR id OR class
+    if (!el && params.testid && params.testid !== 'button') {
+      el = root.querySelector('[data-testid="' + params.testid + '"], #' + params.testid + ', .' + params.testid);
+      if (el) {
+        method = el.getAttribute('data-testid') === params.testid ? 'testid' :
+                 el.id === params.testid ? 'id' : 'class';
       }
     }
+
+    // Strategy 2: aria-label (partial, case-insensitive)
+    if (!el && params.aria) {
+      var searchAria = params.aria.toLowerCase();
+      var labeled = root.querySelectorAll('[aria-label]');
+      for (var i = 0; i < labeled.length; i++) {
+        var ariaLabel = (labeled[i].getAttribute('aria-label') || '').toLowerCase();
+        if (ariaLabel.indexOf(searchAria) > -1) {
+          el = labeled[i];
+          method = 'aria';
+          break;
+        }
+      }
+    }
+
+    // Strategy 3: Text content (partial, case-insensitive)
+    if (!el && params.text) {
+      var searchText = params.text.replace(/\\n/g, '\n').toLowerCase();
+      var clickables = root.querySelectorAll('button, a, [role="button"], [onclick]');
+      for (var i = 0; i < clickables.length; i++) {
+        var t = (clickables[i].innerText || '').toLowerCase();
+        if (t.indexOf(searchText) > -1) {
+          el = clickables[i];
+          method = 'text';
+          break;
+        }
+      }
+    }
+
+    // Strategy 4: href for links
+    if (!el && params.href) {
+      el = root.querySelector('a[href^="' + params.href + '"]');
+      if (el) method = 'href';
+    }
+
+    // Strategy 5: CSS selector (fallback)
+    if (!el && params.selector) {
+      el = root.querySelector(params.selector);
+      if (el) method = 'selector';
+    }
+
+    return { el: el, method: method, params: params };
   }
 
-  // Strategy 3: Text content (partial, case-insensitive)
-  // Supports literal \n in search text (from recon output)
-  if (!el && p.text) {
-    var searchText = p.text.replace(/\\n/g, '\n').toLowerCase();
-    var clickables = root.querySelectorAll('button, a, [role="button"], [onclick]');
-    for (var i = 0; i < clickables.length; i++) {
-      var t = (clickables[i].innerText || '').toLowerCase();
-      if (t.indexOf(searchText) > -1) {
-        el = clickables[i];
-        method = 'text';
-        break;
-      }
+  // Click an element
+  function clickElement(el) {
+    el.scrollIntoView({block: 'center', behavior: 'instant'});
+    // For <a> tags with href, navigate directly (click() doesn't work in SPAs)
+    if (el.tagName === 'A' && el.href) {
+      window.location.href = el.href;
+    } else {
+      el.click();
     }
   }
 
-  // Strategy 4: href for links
-  if (!el && p.href) {
-    el = root.querySelector('a[href^="' + p.href + '"]');
-    if (el) method = 'href';
+  // Get element info for output
+  function getInfo(el) {
+    var info = el.tagName.toLowerCase();
+    if (el.id) info += '#' + el.id;
+    var txt = (el.innerText || '').trim().substring(0, 25);
+    if (txt) info += ' "' + txt + '"';
+    return info;
   }
 
-  // Strategy 5: CSS selector (fallback)
-  if (!el && p.selector) {
-    el = root.querySelector(p.selector);
-    if (el) method = 'selector';
+  // Handle targets array
+  var targets = p.targets || [];
+  var times = p.times || 1;
+  var delay = p.delay || 100;
+
+  if (targets.length === 0) {
+    return 'FAIL:no targets specified';
   }
 
-  if (!el) {
-    var tried = [];
-    if (p.testid) tried.push('testid=' + p.testid);
-    if (p.aria) tried.push('aria=' + p.aria);
-    if (p.text) tried.push('text=' + p.text);
-    if (p.href) tried.push('href=' + p.href);
-    if (p.selector) tried.push('selector=' + p.selector);
-    return 'FAIL:not found (' + tried.join(', ') + ')';
+  // Single target with times > 1: click same element multiple times
+  // Re-find element each time for React components that re-render after state change
+  if (targets.length === 1 && times > 1) {
+    for (var i = 0; i < times; i++) {
+      var result = findElement(targets[0]);
+      if (!result.el) {
+        var tried = [];
+        if (result.params.testid) tried.push('testid=' + result.params.testid);
+        if (result.params.aria) tried.push('aria=' + result.params.aria);
+        if (result.params.text) tried.push('text=' + result.params.text);
+        if (result.params.href) tried.push('href=' + result.params.href);
+        if (result.params.selector) tried.push('selector=' + result.params.selector);
+        return 'FAIL:click ' + (i + 1) + ' not found (' + tried.join(', ') + ')';
+      }
+      clickElement(result.el);
+      if (i < times - 1) sleep(delay);
+    }
+    var lastResult = findElement(targets[0]);
+    return 'OK:clicked ' + times + ' times ' + getInfo(lastResult.el);
   }
 
-  // Scroll into view and click
-  el.scrollIntoView({block: 'center', behavior: 'instant'});
+  // Multiple targets or single target with times=1: click each once
+  for (var i = 0; i < targets.length; i++) {
+    var result = findElement(targets[i]);
+    if (!result.el) {
+      var tried = [];
+      if (result.params.testid) tried.push('testid=' + result.params.testid);
+      if (result.params.aria) tried.push('aria=' + result.params.aria);
+      if (result.params.text) tried.push('text=' + result.params.text);
+      if (result.params.href) tried.push('href=' + result.params.href);
+      if (result.params.selector) tried.push('selector=' + result.params.selector);
+      return 'FAIL:target ' + (i + 1) + ' not found (' + tried.join(', ') + ')';
+    }
 
-  // For <a> tags with href, navigate directly (click() doesn't work in SPAs)
-  if (el.tagName === 'A' && el.href) {
-    window.location.href = el.href;
-  } else {
-    el.click();
+    clickElement(result.el);
+    if (i < targets.length - 1) sleep(delay);
   }
 
-  // Return success with element info
-  var info = el.tagName.toLowerCase();
-  if (el.id) info += '#' + el.id;
-  var txt = (el.innerText || '').trim().substring(0, 25);
-  if (txt) info += ' "' + txt + '"';
-
-  return 'OK:' + method + ' ' + info;
+  if (targets.length === 1) {
+    var result = findElement(targets[0]);
+    return 'OK:' + result.method + ' ' + getInfo(result.el);
+  }
+  return 'OK:clicked ' + targets.length + ' elements';
 })();

@@ -1,89 +1,130 @@
-// set-input.js - Simple input value setting with multiple selector strategies
-// Usage: chrome-cli execute 'var _p={selector:"#email",value:"test@example.com"}; <code>'
-//        chrome-cli execute 'var _p={aria:"Where",value:"New York"}; <code>'
+// set-input.js - Set input values with batch support
+// Usage: chrome-cli execute 'var _p={fields:[{type:"aria",selector:"Where",value:"Paris"}]}; <code>'
+//        chrome-cli execute 'var _p={fields:[{type:"id",selector:"email",value:"test@example.com"}]}; <code>'
 
 (function() {
   var p = typeof _p !== 'undefined' ? _p : {};
 
-  if (p.value === undefined) return 'FAIL:no value';
-
-  var el = null;
-  var method = '';
-
-  // Strategy 1: CSS selector
-  if (p.selector) {
-    el = document.querySelector(p.selector);
-    method = 'selector';
+  // Blocking sleep for delays between actions
+  function sleep(ms) {
+    var start = Date.now();
+    while (Date.now() - start < ms) {}
   }
-  // Strategy 2: aria-label (partial, case-insensitive)
-  else if (p.aria) {
-    var searchAria = p.aria.toLowerCase();
-    var inputs = document.querySelectorAll('input, textarea, select, [contenteditable="true"]');
-    for (var i = 0; i < inputs.length; i++) {
-      var label = (inputs[i].getAttribute('aria-label') || '').toLowerCase();
-      if (label.indexOf(searchAria) > -1) {
-        el = inputs[i];
-        break;
+
+  // Find input element by type and selector
+  function findInput(type, selector) {
+    var el = null;
+    var method = type;
+
+    if (type === 'id') {
+      // Try id, data-testid, then CSS selector
+      el = document.querySelector('#' + selector + ', [data-testid="' + selector + '"]');
+      if (!el) {
+        // Try as raw CSS selector
+        el = document.querySelector(selector);
+      }
+      if (el) {
+        method = el.id === selector ? 'id' :
+                 el.getAttribute('data-testid') === selector ? 'testid' : 'selector';
+      }
+    } else if (type === 'aria') {
+      // aria-label (partial, case-insensitive)
+      var searchAria = selector.toLowerCase();
+      var inputs = document.querySelectorAll('input, textarea, select, [contenteditable="true"]');
+      for (var i = 0; i < inputs.length; i++) {
+        var label = (inputs[i].getAttribute('aria-label') || '').toLowerCase();
+        if (label.indexOf(searchAria) > -1) {
+          el = inputs[i];
+          break;
+        }
+      }
+    } else if (type === 'text') {
+      // placeholder or aria-label (partial, case-insensitive)
+      var searchText = selector.toLowerCase();
+      var inputs = document.querySelectorAll('input, textarea, select, [contenteditable="true"]');
+      for (var i = 0; i < inputs.length; i++) {
+        var placeholder = (inputs[i].placeholder || '').toLowerCase();
+        var aria = (inputs[i].getAttribute('aria-label') || '').toLowerCase();
+        if (placeholder.indexOf(searchText) > -1 || aria.indexOf(searchText) > -1) {
+          el = inputs[i];
+          break;
+        }
       }
     }
-    method = 'aria';
+
+    return { el: el, method: method };
   }
-  // Strategy 3: placeholder text (partial, case-insensitive)
-  else if (p.text) {
-    var searchText = p.text.toLowerCase();
-    var inputs = document.querySelectorAll('input, textarea');
-    for (var i = 0; i < inputs.length; i++) {
-      var placeholder = (inputs[i].placeholder || '').toLowerCase();
-      if (placeholder.indexOf(searchText) > -1) {
-        el = inputs[i];
-        break;
-      }
+
+  // Set value on an input element (React-safe)
+  function setValue(el, value, clear) {
+    el.focus();
+    el.click();
+
+    // Clear if requested
+    if (clear) {
+      el.value = '';
+      el.dispatchEvent(new Event('input', {bubbles: true}));
     }
-    method = 'text';
-  }
-  // Strategy 4: data-testid (exact)
-  else if (p.testid) {
-    el = document.querySelector('input[data-testid="' + p.testid + '"], textarea[data-testid="' + p.testid + '"]');
-    method = 'testid';
-  }
 
-  if (!el) return 'FAIL:not found (' + method + ')';
+    // Set value using native setter (for React)
+    var setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+    if (el.tagName === 'TEXTAREA') {
+      setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+    }
 
-  // Focus and click
-  el.focus();
-  el.click();
+    if (setter && setter.set) {
+      setter.set.call(el, value);
+    } else {
+      el.value = value;
+    }
 
-  // Clear if requested
-  if (p.clear) {
-    el.value = '';
+    // Dispatch events React listens to
     el.dispatchEvent(new Event('input', {bubbles: true}));
+    el.dispatchEvent(new Event('change', {bubbles: true}));
+
+    return el.value === value;
   }
 
-  // Set value using native setter (for React)
-  var setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
-  if (el.tagName === 'TEXTAREA') {
-    setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+  // Get element info for output
+  function getInfo(el) {
+    var info = el.tagName.toLowerCase();
+    if (el.id) info += '#' + el.id;
+    var aria = el.getAttribute('aria-label');
+    if (aria) info += ' aria="' + aria + '"';
+    return info;
   }
 
-  if (setter && setter.set) {
-    setter.set.call(el, p.value);
-  } else {
-    el.value = p.value;
+  // Handle fields array
+  var fields = p.fields || [];
+  var clear = p.clear || false;
+
+  if (fields.length === 0) {
+    return 'FAIL:no fields specified';
   }
 
-  // Dispatch events React listens to
-  el.dispatchEvent(new Event('input', {bubbles: true}));
-  el.dispatchEvent(new Event('change', {bubbles: true}));
+  var results = [];
 
-  // Verify
-  var info = el.tagName.toLowerCase();
-  if (el.id) info += '#' + el.id;
-  var aria = el.getAttribute('aria-label');
-  if (aria) info += ' aria="' + aria + '"';
+  for (var i = 0; i < fields.length; i++) {
+    var field = fields[i];
+    var result = findInput(field.type, field.selector);
 
-  if (el.value === p.value) {
-    return 'OK:' + method + ' ' + info + ' = "' + p.value.substring(0, 20) + '"';
-  } else {
-    return 'WARN:' + method + ' value is "' + el.value + '" not "' + p.value + '"';
+    if (!result.el) {
+      return 'FAIL:field ' + (i + 1) + ' not found (' + field.type + '=' + field.selector + ')';
+    }
+
+    var success = setValue(result.el, field.value, clear);
+    if (!success) {
+      return 'WARN:field ' + (i + 1) + ' value mismatch (' + field.selector + ')';
+    }
+
+    results.push(result.method + ':' + field.selector);
+
+    if (i < fields.length - 1) sleep(100);
   }
+
+  if (fields.length === 1) {
+    var result = findInput(fields[0].type, fields[0].selector);
+    return 'OK:' + result.method + ' ' + getInfo(result.el) + ' = "' + fields[0].value.substring(0, 20) + '"';
+  }
+  return 'OK:filled ' + fields.length + ' fields';
 })();
