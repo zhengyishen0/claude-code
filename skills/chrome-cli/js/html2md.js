@@ -143,13 +143,22 @@
       return lines;
     }
 
-    // List items - keep as proper list items
+    // List items - check if simple or complex
     if (tag === 'li') {
-      const link = node.querySelector('a');
+      const links = node.querySelectorAll('a');
+      const buttons = node.querySelectorAll('button, [role="button"]');
+      // If multiple interactive elements, recurse into children
+      if (links.length > 1 || buttons.length > 0) {
+        Array.from(node.childNodes).forEach(child => {
+          lines.push(...processNode(child, depth));
+        });
+        return lines;
+      }
+      // Simple list item with 0-1 links
       const text = node.textContent.trim().replace(/\s+/g, ' ');
       if (!text) return lines;
-      if (link) {
-        const href = getAttr(link, 'href');
+      if (links.length === 1) {
+        const href = getAttr(links[0], 'href');
         const shortHref = href.length > 40 ? href.substring(0, 40) + '...' : href;
         lines.push(listIndent(depth) + `[${text}](${shortHref})`);
       } else {
