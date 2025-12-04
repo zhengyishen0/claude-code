@@ -1,28 +1,24 @@
 #!/bin/bash
 # click.sh - Smart click using recon format
-# Usage: click.sh "[text@aria](#testid)" [--wait] [--section|-S SECTION]
+# Usage: click.sh "[text@aria](#testid)" [-S SECTION]
 
 if [[ "$1" == "--help" ]]; then
-  echo "click, c TARGET [--wait] [-S x]  Smart click element"
+  echo "click, c TARGET [-S SECTION]  Smart click element"
   echo "  TARGET: copy from recon output, e.g. \"[@Search](#btn)\""
-  echo "  --wait/-w: wait for DOM change after click"
-  echo "  -S: scope to section (aria-label, heading, or tag)"
+  echo "  -S/--section: scope click to section (aria-label, heading, or tag)"
   echo "  Also accepts CSS selectors as fallback"
+  echo ""
+  echo "Chain with +: click TARGET + wait + recon"
   exit 0
 fi
 
 SCRIPT_DIR="$(dirname "$0")/.."
 
 TARGET=""
-WAIT=""
 SECTION=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --wait|-w)
-      WAIT="true"
-      shift
-      ;;
     --section|-S)
       SECTION="$2"
       shift 2
@@ -55,19 +51,3 @@ JS_CODE=$(cat "$SCRIPT_DIR/js/click-element.js")
 # Execute - JS will auto-detect if it's recon format or CSS selector
 result=$(chrome-cli execute 'var _p={auto:"'"$TARGET_ESC"'", section:"'"$SECTION_ESC"'"}; '"$JS_CODE")
 echo "$result"
-
-# If --wait, poll for DOM change
-if [ "$WAIT" = "true" ]; then
-  SNAPSHOT=$(chrome-cli execute "document.body.innerHTML.length + '|' + document.querySelectorAll('*').length")
-  TIMEOUT=5
-  elapsed=0
-  interval=0.3
-  while (( $(echo "$elapsed < $TIMEOUT" | bc -l) )); do
-    sleep $interval
-    elapsed=$(echo "$elapsed + $interval" | bc)
-    CURRENT=$(chrome-cli execute "document.body.innerHTML.length + '|' + document.querySelectorAll('*').length")
-    if [ "$CURRENT" != "$SNAPSHOT" ]; then
-      break
-    fi
-  done
-fi

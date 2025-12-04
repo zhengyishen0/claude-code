@@ -8,7 +8,9 @@ if [[ "$1" == "--help" ]]; then
   echo "  input --aria LABEL VAL    by aria-label"
   echo "  input --text PLACEHOLDER VAL  by placeholder"
   echo "  input --testid ID VAL     by data-testid"
-  echo "  --clear: clear field first"
+  echo "  --clear/-c: clear field first"
+  echo ""
+  echo "Chain with +: input --aria Search tokyo + wait + recon Form"
   exit 0
 fi
 
