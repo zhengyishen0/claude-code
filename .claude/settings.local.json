@@ -53,7 +53,12 @@
       "Bash(.claude/skills/chrome-cli/chrome-cli-plus.sh tabs)",
       "Bash(.claude/skills/chrome-cli/chrome-cli-plus.sh tabs:*)",
       "Bash(chmod:*)",
-      "Bash(npx prettier:*)"
+      "Bash(npx prettier:*)",
+      "Bash(__NEW_LINE__ echo \"1. Text - ''Become a host'':\")",
+      "Bash(__NEW_LINE__ echo \"2. Text - ''English'':\")",
+      "Bash(__NEW_LINE__ echo \"3. Testid - ''structured-search-input-search-button'':\")",
+      "Bash(__NEW_LINE__ echo \"4. Aria - ''Add to wishlist'':\")",
+      "Bash(__NEW_LINE__ echo \"5. CSS selector - first link:\")"
     ],
     "deny": [],
     "ask": []

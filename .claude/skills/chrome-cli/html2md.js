@@ -103,12 +103,15 @@
       return lines;
     }
 
-    // Inputs - as list items
+    // Inputs - as list items with aria-label prominently shown
     if (tag === 'input' || tag === 'textarea' || tag === 'select') {
       const type = getAttr(node, 'type') || 'text';
+      const aria = getAttr(node, 'aria-label');
       const name = getAttr(node, 'name') || getAttr(node, 'id') || getAttr(node, 'placeholder') || 'input';
       const value = node.value ? `="${node.value.substring(0, 30)}"` : '';
-      lines.push(listIndent(depth) + `Input: \`${name}${value}\` (${type})`);
+      // Show aria-label first if available (most useful for automation)
+      const label = aria ? `aria="${aria}"` : `\`${name}\``;
+      lines.push(listIndent(depth) + `Input: ${label}${value} (${type})`);
       return lines;
     }
 
@@ -143,8 +146,10 @@
 
     // Semantic sectioning elements - unified handling
     const semanticTags = ['header', 'main', 'nav', 'aside', 'footer', 'article', 'section', 'form', 'dialog'];
-    if (semanticTags.includes(tag)) {
-      const capTag = tag.charAt(0).toUpperCase() + tag.slice(1);  // nav → Nav
+    const role = getAttr(node, 'role');
+    // Also treat role="dialog" as a dialog section (common in React/SPAs)
+    if (semanticTags.includes(tag) || role === 'dialog') {
+      const capTag = role === 'dialog' ? 'Dialog' : tag.charAt(0).toUpperCase() + tag.slice(1);
       const label = getAttr(node, 'aria-label');
       const heading = label ? `${capTag}: ${label}` : capTag;
       lines.push('');
@@ -157,7 +162,6 @@
 
     // Meaningful divs/spans - card containers, etc.
     const testId = getAttr(node, 'data-testid');
-    const role = getAttr(node, 'role');
     const id = getAttr(node, 'id');
 
     // Skip empty elements with subtitle/label patterns

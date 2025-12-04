@@ -62,12 +62,16 @@ case "$1" in
       OUTPUT=$(chrome-cli execute "$(cat "$SCRIPT_DIR/html2md.js")")
       # Print header (title, URL, ---, blank line)
       echo "$OUTPUT" | head -n 4
-      # Extract section: from "## SectionName" (or "## SectionName: label") until next "## "
+      # Extract section: from "## SectionName" until the next section at same level
+      # For Dialog, include nested ## sections until we hit a non-dialog section
       echo "$OUTPUT" | awk -v sec="$SECTION_CAP" '
         /^## / {
-          if (p) exit
-          # Match "## Nav" or "## Nav: something"
-          if ($0 ~ "^## " sec "($|:)") p=1
+          if ($0 ~ "^## " sec "($|:)") { p=1; inDialog=(sec=="Dialog") }
+          else if (p) {
+            # If in dialog, skip nested sections (Header, Footer, Section inside dialog)
+            if (inDialog && ($0 ~ "^## (Header|Footer|Section|Form)($|:)")) { next }
+            exit
+          }
         }
         p { print }
       '
@@ -183,27 +187,36 @@ case "$1" in
     ;;
 
   input|i)
-    # Set input value with React-compatible events
-    # Usage: chrome-cli-plus input "CSS_SELECTOR" "VALUE" [--clear] [--type]
-    #        --clear: Clear existing value before setting
-    #        --type: Type character-by-character (slower but more compatible)
+    # Set input value with multiple selector strategies
+    # Usage: chrome-cli-plus input "CSS_SELECTOR" "VALUE" [--clear]
+    #        chrome-cli-plus input --aria "Where" "VALUE" [--clear]
+    #        chrome-cli-plus input --text "placeholder" "VALUE" [--clear]
+    #        chrome-cli-plus input --testid "input-id" "VALUE" [--clear]
     shift # remove 'input'
 
     SELECTOR=""
+    TEXT=""
+    ARIA=""
+    TESTID=""
     VALUE=""
     CLEAR="false"
-    TYPE="false"
 
-    # First positional arg is selector, second is value
-    POSITIONAL_COUNT=0
     while [ $# -gt 0 ]; do
       case "$1" in
+        --text|-t)
+          TEXT="$2"
+          shift 2
+          ;;
+        --aria|-a)
+          ARIA="$2"
+          shift 2
+          ;;
+        --testid|-d)
+          TESTID="$2"
+          shift 2
+          ;;
         --clear|-c)
           CLEAR="true"
-          shift
-          ;;
-        --type|-t)
-          TYPE="true"
           shift
           ;;
         -*)
@@ -211,32 +224,35 @@ case "$1" in
           exit 1
           ;;
         *)
-          if [ $POSITIONAL_COUNT -eq 0 ]; then
+          # First positional is selector (if no --flag), second is value
+          if [ -z "$SELECTOR" ] && [ -z "$TEXT" ] && [ -z "$ARIA" ] && [ -z "$TESTID" ]; then
             SELECTOR="$1"
-            POSITIONAL_COUNT=1
-          elif [ $POSITIONAL_COUNT -eq 1 ]; then
+          else
             VALUE="$1"
-            POSITIONAL_COUNT=2
           fi
           shift
           ;;
       esac
     done
 
-    if [ -z "$SELECTOR" ] || [ -z "$VALUE" ]; then
-      echo "Usage: chrome-cli-plus input \"SELECTOR\" \"VALUE\" [--clear] [--type]" >&2
+    if [ -z "$VALUE" ]; then
+      echo "Usage: chrome-cli-plus input \"SELECTOR\" \"VALUE\" [--clear]" >&2
+      echo "       chrome-cli-plus input --aria \"label\" \"VALUE\" [--clear]" >&2
       exit 1
     fi
 
     # Escape double quotes in values for JS string literals
     SELECTOR_ESC=$(printf '%s' "$SELECTOR" | sed 's/"/\\"/g')
+    TEXT_ESC=$(printf '%s' "$TEXT" | sed 's/"/\\"/g')
+    ARIA_ESC=$(printf '%s' "$ARIA" | sed 's/"/\\"/g')
+    TESTID_ESC=$(printf '%s' "$TESTID" | sed 's/"/\\"/g')
     VALUE_ESC=$(printf '%s' "$VALUE" | sed 's/"/\\"/g')
 
     # Read JS file
     JS_CODE=$(cat "$SCRIPT_DIR/set-input.js")
 
     # Execute with _p variable (avoid 'options' which causes issues)
-    result=$(chrome-cli execute 'var _p={selector:"'"$SELECTOR_ESC"'",value:"'"$VALUE_ESC"'",clear:'"$CLEAR"'}; '"$JS_CODE")
+    result=$(chrome-cli execute 'var _p={selector:"'"$SELECTOR_ESC"'",text:"'"$TEXT_ESC"'",aria:"'"$ARIA_ESC"'",testid:"'"$TESTID_ESC"'",value:"'"$VALUE_ESC"'",clear:'"$CLEAR"'}; '"$JS_CODE")
     echo "$result"
     ;;
 
@@ -275,9 +291,11 @@ case "$1" in
     echo "  click --aria LABEL         Click by aria-label (partial, case-insensitive)"
     echo "  click --testid ID          Click by data-testid (exact match)"
     echo "  click ... --wait           Wait for DOM changes after click"
-    echo "  input, i SEL VAL           Set input value"
-    echo "  input SEL VAL --clear      Clear first, then set value"
-    echo "  input SEL VAL --type       Type char-by-char (more compatible)"
+    echo "  input, i SEL VAL           Set input value by CSS selector"
+    echo "  input --aria LABEL VAL     Set input by aria-label"
+    echo "  input --text PLACEHOLDER VAL  Set input by placeholder text"
+    echo "  input --testid ID VAL      Set input by data-testid"
+    echo "  input ... --clear          Clear first, then set value"
     echo "  tabs, t                    List all tabs"
     echo "  info                       Current tab info"
     echo "  close [TAB_ID]             Close tab"
@@ -290,8 +308,8 @@ case "$1" in
     echo ""
     echo "Input Examples:"
     echo "  chrome-cli-plus input \"#email\" \"test@example.com\""
-    echo "  chrome-cli-plus input \"#search\" \"query\" --clear"
-    echo "  chrome-cli-plus input \"#field\" \"value\" --clear --type"
+    echo "  chrome-cli-plus input --aria \"Where\" \"New York\" --clear"
+    echo "  chrome-cli-plus input --text \"Search\" \"query\" --clear"
     ;;
 
   *)
