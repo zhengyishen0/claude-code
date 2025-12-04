@@ -143,6 +143,31 @@
       return lines;
     }
 
+    // Options - format: [text@aria](#testid) for autocomplete/select options
+    // Follow same pattern as buttons for consistency
+    if (getAttr(node, 'role') === 'option') {
+      const text = node.textContent.trim().replace(/\s+/g, ' ');
+      const aria = getAttr(node, 'aria-label');
+      const testId = getAttr(node, 'data-testid');
+      const idAttr = getAttr(node, 'id');
+      // Priority: testid > id > 'option'
+      const selector = testId || idAttr || 'option';
+
+      // Build label: [text@aria] or [text] or [@aria]
+      let label = '';
+      if (text && aria && text !== aria) {
+        label = `${text}@${aria}`;
+      } else if (text) {
+        label = text;
+      } else if (aria) {
+        label = `@${aria}`;
+      }
+      if (!label) return lines;
+
+      lines.push(listIndent(depth) + `[${label}](#${selector})`);
+      return lines;
+    }
+
     // List items - check if simple or complex
     if (tag === 'li') {
       const links = node.querySelectorAll('a');
