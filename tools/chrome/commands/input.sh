@@ -3,7 +3,7 @@
 # Usage: input.sh "@aria=value" "#id=value" "text=value" [-c]
 
 if [[ "$1" == "--help" ]]; then
-  echo "input, i FIELD(s) [-c]  Set input value(s)"
+  echo "input, i FIELD(s) [--clear]  Set input value(s)"
   echo ""
   echo "Format: selector=value"
   echo "  @label=value    by aria-label (e.g. @Where=Paris)"
@@ -11,7 +11,7 @@ if [[ "$1" == "--help" ]]; then
   echo "  text=value      by placeholder/aria (e.g. Where=Paris)"
   echo ""
   echo "Options:"
-  echo "  -c/--clear: clear field(s) first"
+  echo "  --clear: clear field(s) first"
   echo ""
   echo "Examples:"
   echo "  input \"@Where=Paris\""
@@ -29,7 +29,7 @@ CLEAR="false"
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --clear|--c|-c)
+    --clear)
       CLEAR="true"
       shift
       ;;

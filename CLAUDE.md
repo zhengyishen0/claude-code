@@ -27,7 +27,7 @@ Run `tools/chrome/run.sh` for full help.
 2. Chain with + - action + wait + recon in one call
 3. Wait for specific element - not just any DOM change
 4. Use --gone when expecting element to disappear
-5. Scope recon with -S to see only relevant section
+5. Scope recon with --section to see only relevant section
 6. URL params > clicking - faster and more reliable
 
 <!-- TOOLS:END -->

@@ -1,14 +1,14 @@
 #!/bin/bash
 # wait.sh - Wait for DOM changes or specific elements
-# Usage: wait.sh [selector] [--timeout|-T N] [--gone] [--section|-S SECTION]
+# Usage: wait.sh [selector] [--timeout N] [--gone] [--section SECTION]
 
 if [[ "$1" == "--help" ]]; then
-  echo "wait, w [sel] [-T N] [--gone] [-S x]  Wait for DOM/element"
+  echo "wait, w [sel] [--timeout N] [--gone] [--section SECTION]  Wait for DOM/element"
   echo "  No selector: wait for any DOM change"
   echo "  With selector: wait for element to appear"
-  echo "  --timeout/-T: timeout in seconds (default 5)"
+  echo "  --timeout: timeout in seconds (default 5)"
   echo "  --gone: wait for element to disappear"
-  echo "  -S: scope to section (aria-label, heading, or tag)"
+  echo "  --section: scope to section (aria-label, heading, or tag)"
   exit 0
 fi
 
@@ -20,9 +20,9 @@ SECTION=""
 # Parse arguments
 while [ $# -gt 0 ]; do
   case "$1" in
-    --timeout|-T) TIMEOUT="$2"; shift 2 ;;
+    --timeout) TIMEOUT="$2"; shift 2 ;;
     --gone) GONE=true; shift ;;
-    --section|-S) SECTION="$2"; shift 2 ;;
+    --section) SECTION="$2"; shift 2 ;;
     -*) echo "Unknown option: $1" >&2; exit 1 ;;
     *) SELECTOR="$1"; shift ;;
   esac

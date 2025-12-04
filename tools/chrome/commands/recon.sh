@@ -3,9 +3,9 @@
 # Usage: recon.sh [--status] [--section <name>]
 
 if [[ "$1" == "--help" ]]; then
-  echo "recon, r [--status] [-S x]  Get page structure as markdown"
-  echo "  --status/-s: show loading info (images, scripts, etc.)"
-  echo "  --section/-S: filter to section (header, nav, main, aside, footer)"
+  echo "recon, r [--status] [--section SECTION]  Get page structure as markdown"
+  echo "  --status: show loading info (images, scripts, etc.)"
+  echo "  --section: filter to section (header, nav, main, aside, footer)"
   exit 0
 fi
 
@@ -16,11 +16,11 @@ SECTION=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --status|-s)
+    --status)
       STATUS="true"
       shift
       ;;
-    --section|-S)
+    --section)
       SECTION="$2"
       shift 2
       ;;

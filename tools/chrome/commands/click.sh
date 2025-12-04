@@ -3,11 +3,11 @@
 # Usage: click.sh "[text@aria](#testid)" [-S SECTION] [--times N]
 
 if [[ "$1" == "--help" ]]; then
-  echo "click, c TARGET(s) [-S SECTION] [-t N] [-d MS]  Smart click element(s)"
+  echo "click, c TARGET(s) [--section SECTION] [--times N] [--delay MS]  Smart click element(s)"
   echo "  TARGET: copy from recon output, e.g. \"[@Search](#btn)\""
-  echo "  -S/--section: scope click to section (aria-label, heading, or tag)"
-  echo "  -t/--times N: click same element N times"
-  echo "  -d/--delay MS: delay between clicks in ms (default: 100)"
+  echo "  --section: scope click to section (aria-label, heading, or tag)"
+  echo "  --times N: click same element N times"
+  echo "  --delay MS: delay between clicks in ms (default: 100)"
   echo "  Multiple targets: click \"[a]\" \"[b]\" \"[c]\" (clicks each once)"
   echo "  Also accepts CSS selectors as fallback"
   echo ""
@@ -24,15 +24,15 @@ DELAY=100
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --section|--S|-S)
+    --section)
       SECTION="$2"
       shift 2
       ;;
-    --times|--t|-t)
+    --times)
       TIMES="$2"
       shift 2
       ;;
-    --delay|--d|-d)
+    --delay)
       DELAY="$2"
       shift 2
       ;;
