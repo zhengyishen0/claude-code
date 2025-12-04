@@ -1,13 +1,19 @@
 #!/bin/bash
 # help.sh - Show help (dynamically assembled from commands)
-# Usage: help.sh
+# Usage: help.sh [TOOL_NAME]
+
+if [[ "$1" == "--help" ]]; then
+  echo "help, h                     Show this help message"
+  exit 0
+fi
 
 CMD_DIR="$(dirname "$0")"
+TOOL_NAME="${1:-$(basename "$(dirname "$CMD_DIR")")}"
 
-echo "chrome-cli-plus - Enhanced chrome-cli with React/SPA support"
+echo "$TOOL_NAME - Browser automation with React/SPA support"
 echo ""
 echo "Commands:"
-for cmd in recon open wait click input esc tabs info close; do
+for cmd in recon open wait click input esc tabs info close help; do
   "$CMD_DIR/$cmd.sh" --help | sed 's/^/  /'
 done
 echo ""

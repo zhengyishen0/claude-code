@@ -1,8 +1,9 @@
 #!/bin/bash
-# chrome-cli-plus - Enhanced chrome-cli with React/SPA support
-# Usage: chrome-cli-plus <command> [args...]
+# Tool entry point - name derived from folder
+# Usage: run.sh <command> [args...]
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+TOOL_NAME="$(basename "$SCRIPT_DIR")"
 CMD_DIR="$SCRIPT_DIR/commands"
 
 case "$1" in
@@ -49,18 +50,18 @@ case "$1" in
     ;;
 
   help|h|--help|-h)
-    "$CMD_DIR/help.sh"
+    "$CMD_DIR/help.sh" "$TOOL_NAME"
     ;;
 
   "")
-    "$CMD_DIR/help.sh"
+    "$CMD_DIR/help.sh" "$TOOL_NAME"
     echo ""
     "$CMD_DIR/prereq.sh"
     ;;
 
   *)
     echo "Unknown command: $1" >&2
-    echo "Run 'chrome-cli-plus help' for usage" >&2
+    echo "Run '$TOOL_NAME help' for usage" >&2
     exit 1
     ;;
 esac
