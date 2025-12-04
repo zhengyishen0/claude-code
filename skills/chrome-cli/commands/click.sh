@@ -1,20 +1,26 @@
 #!/bin/bash
 # click.sh - Smart click using recon format
-# Usage: click.sh "[text@aria](#testid)" [--wait]
+# Usage: click.sh "[text@aria](#testid)" [--wait] [--section|-S SECTION]
 #        click.sh "[@Search](#search-btn)"
 #        click.sh "[Filters](#filter-btn)"
+#        click.sh "[@Close](#button)" -S "Provide feedback"
 #        click.sh "button.submit"  (CSS selector fallback)
 
 SCRIPT_DIR="$(dirname "$0")/.."
 
 TARGET=""
 WAIT=""
+SECTION=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --wait|-w)
       WAIT="true"
       shift
+      ;;
+    --section|-S)
+      SECTION="$2"
+      shift 2
       ;;
     -*)
       echo "Unknown option: $1" >&2
@@ -36,12 +42,13 @@ fi
 
 # Escape double quotes for JS
 TARGET_ESC=$(printf '%s' "$TARGET" | sed 's/"/\\"/g')
+SECTION_ESC=$(printf '%s' "$SECTION" | sed 's/"/\\"/g')
 
 # Read JS file
 JS_CODE=$(cat "$SCRIPT_DIR/js/click-element.js")
 
 # Execute - JS will auto-detect if it's recon format or CSS selector
-result=$(chrome-cli execute 'var _p={auto:"'"$TARGET_ESC"'"}; '"$JS_CODE")
+result=$(chrome-cli execute 'var _p={auto:"'"$TARGET_ESC"'", section:"'"$SECTION_ESC"'"}; '"$JS_CODE")
 echo "$result"
 
 # If --wait, poll for DOM stability

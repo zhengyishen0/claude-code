@@ -24,7 +24,7 @@ skills/chrome-cli/chrome-cli-plus.sh <command> [args...]
 |---------|-------|-------------|
 | `recon` | `chrome-cli-plus.sh recon [--status]` | Wait 1s, get page structure (--status shows load info) |
 | `open` | `chrome-cli-plus.sh open "URL" [--status]` | Open URL and recon (--status shows load info) |
-| `wait` | `chrome-cli-plus.sh wait [timeout] [selector]` | Wait for page load (polling) |
+| `wait` | `chrome-cli-plus.sh wait [timeout] [selector] [--gone]` | Wait for DOM change or element |
 | `click` | `chrome-cli-plus.sh click "SELECTOR"` | Click element (React-compatible) |
 | `input` | `chrome-cli-plus.sh input "SELECTOR" "VALUE"` | Set input value (React-compatible) |
 | `tabs` | `chrome-cli-plus.sh tabs` | List all tabs |
@@ -43,8 +43,17 @@ skills/chrome-cli/chrome-cli-plus.sh click "button.submit"
 # Fill a form field
 skills/chrome-cli/chrome-cli-plus.sh input "#email" "test@example.com"
 
-# Wait for specific element
+# Wait for any DOM change (after action)
+skills/chrome-cli/chrome-cli-plus.sh wait 5
+
+# Wait for specific element to appear
 skills/chrome-cli/chrome-cli-plus.sh wait 10 ".results-loaded"
+
+# Wait for loading spinner to disappear
+skills/chrome-cli/chrome-cli-plus.sh wait 10 ".spinner" --gone
+
+# Chain commands with wait
+skills/chrome-cli/chrome-cli-plus.sh click "#submit" && skills/chrome-cli/chrome-cli-plus.sh wait 5 ".success"
 ```
 
 ## Key Principles
