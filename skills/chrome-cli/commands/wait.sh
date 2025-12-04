@@ -35,8 +35,8 @@ FIND_ROOT_JS='
   if (!section) return document;
   var sectionLower = section.toLowerCase();
 
-  // Strategy 1: Match aria-label
-  var containers = document.querySelectorAll("dialog,[role=dialog],section,article,form,header,main,nav,aside,footer,[aria-label]");
+  // Strategy 1: Match aria-label on semantic containers only
+  var containers = document.querySelectorAll("dialog,[role=dialog],section,article,form,header,main,nav,aside,footer");
   for (var i = 0; i < containers.length; i++) {
     var label = (containers[i].getAttribute("aria-label") || "").toLowerCase();
     if (label && label.indexOf(sectionLower) > -1) return containers[i];

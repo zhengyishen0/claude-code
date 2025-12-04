@@ -14,8 +14,8 @@
   if (p.section) {
     var sectionLower = p.section.toLowerCase();
 
-    // Strategy 1: Match aria-label of semantic containers
-    var containers = document.querySelectorAll('dialog,[role=dialog],section,article,form,header,main,nav,aside,footer,[aria-label]');
+    // Strategy 1: Match aria-label of semantic containers only
+    var containers = document.querySelectorAll('dialog,[role=dialog],section,article,form,header,main,nav,aside,footer');
     for (var i = 0; i < containers.length; i++) {
       var label = (containers[i].getAttribute('aria-label') || '').toLowerCase();
       if (label && label.indexOf(sectionLower) > -1) {
