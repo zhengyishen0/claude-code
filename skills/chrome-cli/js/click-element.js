@@ -65,8 +65,9 @@
   }
 
   // Strategy 3: Text content (partial, case-insensitive)
+  // Supports literal \n in search text (from recon output)
   if (!el && p.text) {
-    var searchText = p.text.toLowerCase();
+    var searchText = p.text.replace(/\\n/g, '\n').toLowerCase();
     var clickables = document.querySelectorAll('button, a, [role="button"], [onclick]');
     for (var i = 0; i < clickables.length; i++) {
       var t = (clickables[i].innerText || '').toLowerCase();

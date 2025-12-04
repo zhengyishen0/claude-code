@@ -3,6 +3,13 @@
 // Uses nested lists for hierarchy
 
 (function() {
+  // Build map of button innerText from live DOM (clone loses spacing)
+  // Replace newlines with literal \n so it's visible and usable in click command
+  const buttonTexts = new Map();
+  document.querySelectorAll('button, [role="button"]').forEach((btn) => {
+    buttonTexts.set(btn.textContent, btn.innerText.trim().replace(/\s*\n\s*/g, '\\n').replace(/\s+/g, ' '));
+  });
+
   const clone = document.documentElement.cloneNode(true);
 
   // Remove non-content elements
@@ -94,7 +101,9 @@
     // Buttons - format: [text@aria](#testid) for clear click strategy selection
     // text = visible text, aria = aria-label, testid = data-testid (or id/button fallback)
     if (tag === 'button' || getAttr(node, 'role') === 'button') {
-      const text = node.textContent.trim().replace(/\s+/g, ' ');
+      // Use pre-built map from live DOM (clone loses innerText spacing)
+      const rawText = node.textContent;
+      const text = buttonTexts.get(rawText) || rawText.trim().replace(/\s+/g, ' ');
       const aria = getAttr(node, 'aria-label');
       const testId = getAttr(node, 'data-testid');
       const idAttr = getAttr(node, 'id');
