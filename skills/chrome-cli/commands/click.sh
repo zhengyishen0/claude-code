@@ -1,10 +1,15 @@
 #!/bin/bash
 # click.sh - Smart click using recon format
 # Usage: click.sh "[text@aria](#testid)" [--wait] [--section|-S SECTION]
-#        click.sh "[@Search](#search-btn)"
-#        click.sh "[Filters](#filter-btn)"
-#        click.sh "[@Close](#button)" -S "Provide feedback"
-#        click.sh "button.submit"  (CSS selector fallback)
+
+if [[ "$1" == "--help" ]]; then
+  echo "click, c TARGET [--wait] [-S x]  Smart click element"
+  echo "  TARGET: copy from recon output, e.g. \"[@Search](#btn)\""
+  echo "  --wait/-w: wait for DOM change after click"
+  echo "  -S: scope to section (aria-label, heading, or tag)"
+  echo "  Also accepts CSS selectors as fallback"
+  exit 0
+fi
 
 SCRIPT_DIR="$(dirname "$0")/.."
 

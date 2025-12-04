@@ -1,9 +1,16 @@
 #!/bin/bash
 # input.sh - Set input value with multiple selector strategies
 # Usage: input.sh "CSS_SELECTOR" "VALUE" [--clear]
-#        input.sh --aria "Where" "VALUE" [--clear]
-#        input.sh --text "placeholder" "VALUE" [--clear]
-#        input.sh --testid "input-id" "VALUE" [--clear]
+
+if [[ "$1" == "--help" ]]; then
+  echo "input, i SEL VAL [--clear]  Set input value"
+  echo "  input \"#email\" \"test@example.com\""
+  echo "  input --aria LABEL VAL    by aria-label"
+  echo "  input --text PLACEHOLDER VAL  by placeholder"
+  echo "  input --testid ID VAL     by data-testid"
+  echo "  --clear: clear field first"
+  exit 0
+fi
 
 SCRIPT_DIR="$(dirname "$0")/.."
 

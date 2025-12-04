@@ -1,13 +1,16 @@
 #!/bin/bash
 # wait.sh - Wait for DOM changes or specific elements
 # Usage: wait.sh [selector] [--timeout|-T N] [--gone] [--section|-S SECTION]
-#
-# Examples:
-#   wait.sh              # Wait for any DOM change (5s default)
-#   wait.sh ".modal"     # Wait for .modal to appear (5s default)
-#   wait.sh ".modal" -T 10  # Wait up to 10s for .modal
-#   wait.sh ".loading" --gone  # Wait for .loading to disappear
-#   wait.sh ".btn" -S "Provide feedback"  # Wait in specific section
+
+if [[ "$1" == "--help" ]]; then
+  echo "wait, w [sel] [-T N] [--gone] [-S x]  Wait for DOM/element"
+  echo "  No selector: wait for any DOM change"
+  echo "  With selector: wait for element to appear"
+  echo "  --timeout/-T: timeout in seconds (default 5)"
+  echo "  --gone: wait for element to disappear"
+  echo "  -S: scope to section (aria-label, heading, or tag)"
+  exit 0
+fi
 
 TIMEOUT=5
 SELECTOR=""

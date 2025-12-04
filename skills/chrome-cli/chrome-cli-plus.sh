@@ -52,6 +52,12 @@ case "$1" in
     "$CMD_DIR/help.sh"
     ;;
 
+  "")
+    "$CMD_DIR/help.sh"
+    echo ""
+    "$CMD_DIR/prereq.sh"
+    ;;
+
   *)
     echo "Unknown command: $1" >&2
     echo "Run 'chrome-cli-plus help' for usage" >&2
