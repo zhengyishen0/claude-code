@@ -1,28 +1,28 @@
 #!/bin/bash
 # wait.sh - Wait for DOM changes or specific elements
-# Usage: wait.sh [selector] [--timeout N] [--gone] [--section SECTION]
+# Usage: wait.sh [selector] [--gone]
 
 if [[ "$1" == "--help" ]]; then
-  echo "wait [sel] [--timeout N] [--gone] [--section SECTION]  Wait for DOM/element"
+  echo "wait [sel] [--gone]  Wait for DOM/element (5s timeout)"
   echo "  No selector: wait for any DOM change"
   echo "  With selector: wait for element to appear"
-  echo "  --timeout: timeout in seconds (default 5)"
   echo "  --gone: wait for element to disappear"
-  echo "  --section: scope to section (aria-label, heading, or tag)"
+  echo ""
+  echo "Use CSS descendant selectors for scoping:"
+  echo "  wait \"dialog button\"                    # any dialog's button"
+  echo "  wait \"[role=dialog] button\"             # ARIA dialog's button"
+  echo "  wait \"[aria-label~='Reserve'] button\"   # labeled section's button"
   exit 0
 fi
 
-TIMEOUT=5
+timeout=5  # Fixed timeout, not configurable
 SELECTOR=""
 GONE=false
-SECTION=""
 
 # Parse arguments
 while [ $# -gt 0 ]; do
   case "$1" in
-    --timeout) TIMEOUT="$2"; shift 2 ;;
     --gone) GONE=true; shift ;;
-    --section) SECTION="$2"; shift 2 ;;
     -*) echo "Unknown option: $1" >&2; exit 1 ;;
     *) SELECTOR="$1"; shift ;;
   esac
@@ -31,46 +31,17 @@ done
 interval=0.5
 elapsed=0
 
-# Build JS for finding root element (section scoping)
-SECTION_ESC=$(printf '%s' "$SECTION" | sed 's/"/\\"/g')
-FIND_ROOT_JS='
-(function() {
-  var section = "'"$SECTION_ESC"'";
-  if (!section) return document;
-  var sectionLower = section.toLowerCase();
-
-  // Strategy 1: Match aria-label on semantic containers only
-  var containers = document.querySelectorAll("dialog,[role=dialog],section,article,form,header,main,nav,aside,footer");
-  for (var i = 0; i < containers.length; i++) {
-    var label = (containers[i].getAttribute("aria-label") || "").toLowerCase();
-    if (label && label.indexOf(sectionLower) > -1) return containers[i];
-  }
-
-  // Strategy 2: Match heading text
-  var headings = document.querySelectorAll("h1,h2,h3,h4,h5,h6");
-  for (var i = 0; i < headings.length; i++) {
-    var hText = (headings[i].textContent || "").toLowerCase();
-    if (hText.indexOf(sectionLower) > -1) {
-      return headings[i].closest("dialog,[role=dialog],section,article,form,header,main,nav,aside,footer") || headings[i].parentElement;
-    }
-  }
-
-  // Strategy 3: Direct selector
-  return document.querySelector(section) || document;
-})()
-'
-
 if [ -n "$SELECTOR" ]; then
-  # Wait for specific selector to appear/disappear (within section if specified)
-  while (( $(echo "$elapsed < $TIMEOUT" | bc -l) )); do
+  # Wait for specific selector to appear/disappear
+  while (( $(echo "$elapsed < $timeout" | bc -l) )); do
     if [ "$GONE" = true ]; then
-      result=$(chrome-cli execute "var root = $FIND_ROOT_JS; root.querySelector('$SELECTOR') ? 'exists' : 'gone'")
+      result=$(chrome-cli execute "document.querySelector('$SELECTOR') ? 'exists' : 'gone'")
       if [ "$result" = "gone" ]; then
         echo "OK: $SELECTOR disappeared"
         exit 0
       fi
     else
-      result=$(chrome-cli execute "var root = $FIND_ROOT_JS; root.querySelector('$SELECTOR') ? 'found' : 'waiting'")
+      result=$(chrome-cli execute "document.querySelector('$SELECTOR') ? 'found' : 'waiting'")
       if [ "$result" = "found" ]; then
         echo "OK: $SELECTOR found"
         exit 0
@@ -79,7 +50,7 @@ if [ -n "$SELECTOR" ]; then
     sleep $interval
     elapsed=$(echo "$elapsed + $interval" | bc)
   done
-  echo "TIMEOUT: $SELECTOR not $( [ "$GONE" = true ] && echo 'gone' || echo 'found' ) after ${TIMEOUT}s" >&2
+  echo "TIMEOUT: $SELECTOR not $( [ "$GONE" = true ] && echo 'gone' || echo 'found' ) after ${timeout}s" >&2
   exit 1
 else
   # Wait for any DOM change using MutationObserver
@@ -107,7 +78,7 @@ else
         observer.disconnect();
         resolve("timeout");
       }
-    }, '"$((TIMEOUT * 1000))"');
+    }, '"$((timeout * 1000))"');
   });
 })()
 '
@@ -115,7 +86,7 @@ else
   # Take snapshot, then compare
   SNAPSHOT=$(chrome-cli execute "document.body.innerHTML.length + '|' + document.querySelectorAll('*').length")
 
-  while (( $(echo "$elapsed < $TIMEOUT" | bc -l) )); do
+  while (( $(echo "$elapsed < $timeout" | bc -l) )); do
     sleep $interval
     elapsed=$(echo "$elapsed + $interval" | bc)
     CURRENT=$(chrome-cli execute "document.body.innerHTML.length + '|' + document.querySelectorAll('*').length")
