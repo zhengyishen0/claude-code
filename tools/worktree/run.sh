@@ -32,11 +32,8 @@ worktree_create() {
     # Resolve absolute path
     local abs_path="$(cd "$worktree_path" && pwd)"
 
-    # Add to additionalDirectories
-    claude --add-dir "$abs_path"
-
     echo "Worktree ready: $abs_path"
-    echo "Use absolute paths when working in this worktree"
+    echo "Grant permission when prompted to access this directory"
 }
 
 # Subcommand: list
