@@ -15,7 +15,7 @@ echo ""
 echo "Usage: $TOOL_NAME <command> [args...] [+ command [args...]]..."
 echo ""
 echo "Commands:"
-for cmd in recon open wait click input esc tabs info close help; do
+for cmd in recon open wait click input esc help; do
   "$CMD_DIR/$cmd.sh" --help | head -1 | sed 's/^/  /'
 done
 echo ""
@@ -44,4 +44,4 @@ echo "  6. Use --gone when expecting element to disappear"
 echo "  7. Filter recon with grep/awk - recon | awk '/^## Main(\$|:)/,/^## [^M]/'"
 echo ""
 echo "Raw chrome-cli:"
-echo "  list tabs | info | open URL | activate -t ID | execute JS"
+echo "  list tabs | info | close [-t ID] | open URL | activate -t ID | execute JS"

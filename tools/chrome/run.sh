@@ -17,9 +17,6 @@ execute_single() {
     wait)       "$CMD_DIR/wait.sh" "$@" ;;
     click)      "$CMD_DIR/click.sh" "$@" ;;
     input)      "$CMD_DIR/input.sh" "$@" ;;
-    tabs)       "$CMD_DIR/tabs.sh" "$@" ;;
-    info)       "$CMD_DIR/info.sh" "$@" ;;
-    close)      "$CMD_DIR/close.sh" "$@" ;;
     esc)        "$CMD_DIR/esc.sh" "$@" ;;
     help|--help|-h) "$CMD_DIR/help.sh" "$TOOL_NAME" ;;
     *)
@@ -95,19 +92,6 @@ case "$1" in
   input)
     shift
     "$CMD_DIR/input.sh" "$@"
-    ;;
-
-  tabs)
-    "$CMD_DIR/tabs.sh"
-    ;;
-
-  info)
-    "$CMD_DIR/info.sh"
-    ;;
-
-  close)
-    shift
-    "$CMD_DIR/close.sh" "$@"
     ;;
 
   esc)
