@@ -9,14 +9,14 @@ if [[ "$1" == "--help" ]]; then
   echo "  --delay MS: delay between clicks in ms (default: 100)"
   echo "  Also accepts CSS selectors as fallback"
   echo ""
-  echo "Auto-mode (CHROME_AUTO_MODE=true, default):"
+  echo "Auto-mode (CHROME_AUTO_MODE=true in config, default):"
   echo "  Automatically detects context and runs wait+recon:"
   echo "  - Navigation: waits for page load, recons full page"
   echo "  - Modal open: waits for dialog, recons dialog section only"
   echo "  - Modal close: waits for dialog gone, recons main content"
   echo "  - Inline update: waits for DOM change, recons full page"
   echo ""
-  echo "Manual mode (export CHROME_AUTO_MODE=false):"
+  echo "Manual mode (set CHROME_AUTO_MODE=false in tools/chrome/config):"
   echo "  Chain with +: click TARGET + wait + recon"
   echo "  Multiple clicks: click \"[a]\" + click \"[b]\" + click \"[c]\""
   exit 0
@@ -79,8 +79,8 @@ if [[ "$result" == FAIL* ]]; then
   exit 1
 fi
 
-# Parse result: OK:...|contextType|waitSelector|waitGone|reconFilter
-IFS='|' read -r status contextType waitSelector waitGone reconFilter <<< "$result"
+# Parse result: OK:...|contextType|waitSelector|waitGone|reconScope
+IFS='|' read -r status contextType waitSelector waitGone reconScope <<< "$result"
 
 # Always echo the click result (without context info)
 echo "$status"
@@ -96,12 +96,20 @@ if [ "$AUTO_MODE" = "true" ]; then
     modal-open)
       # Modal opened: wait for dialog, then recon dialog section
       "$SCRIPT_DIR/commands/wait.sh" "$waitSelector" 2>/dev/null || true
-      "$SCRIPT_DIR/commands/recon.sh" | eval "$reconFilter" 2>/dev/null || "$SCRIPT_DIR/commands/recon.sh"
+      if [ "$reconScope" = "dialog" ]; then
+        "$SCRIPT_DIR/commands/recon.sh" | awk '/^## Dialog/,/^## [^D]/'
+      else
+        "$SCRIPT_DIR/commands/recon.sh"
+      fi
       ;;
     modal-close)
       # Modal closed: wait for dialog to disappear, then recon main
       "$SCRIPT_DIR/commands/wait.sh" "$waitSelector" --gone 2>/dev/null || true
-      "$SCRIPT_DIR/commands/recon.sh" | eval "$reconFilter" 2>/dev/null || "$SCRIPT_DIR/commands/recon.sh"
+      if [ "$reconScope" = "main" ]; then
+        "$SCRIPT_DIR/commands/recon.sh" | awk '/^## Main/,/^## [^M]/'
+      else
+        "$SCRIPT_DIR/commands/recon.sh"
+      fi
       ;;
     inline)
       # Inline update: generic wait, full recon

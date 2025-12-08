@@ -237,9 +237,20 @@
 
   // Capture page state for context detection
   function captureState() {
+    var dialog = document.querySelector('[role=dialog], dialog');
+    var hasDialog = false;
+
+    // Check if dialog exists AND is visible
+    if (dialog) {
+      var style = getComputedStyle(dialog);
+      hasDialog = dialog.offsetParent !== null &&
+                  style.display !== 'none' &&
+                  style.visibility !== 'hidden';
+    }
+
     return {
       url: location.href,
-      hasDialog: !!document.querySelector('[role=dialog], dialog')
+      hasDialog: hasDialog
     };
   }
 
@@ -250,7 +261,7 @@
       return {
         type: 'navigation',
         waitSelector: '',
-        reconFilter: ''
+        reconScope: 'full'
       };
     }
 
@@ -259,7 +270,7 @@
       return {
         type: 'modal-open',
         waitSelector: '[role=dialog], dialog',
-        reconFilter: "awk '/^## Dialog/,/^## [^D]/'"
+        reconScope: 'dialog'
       };
     }
 
@@ -269,7 +280,7 @@
         type: 'modal-close',
         waitSelector: '[role=dialog]',
         waitGone: true,
-        reconFilter: "awk '/^## Main/,/^## [^M]/'"
+        reconScope: 'main'
       };
     }
 
@@ -277,7 +288,7 @@
     return {
       type: 'inline',
       waitSelector: '',
-      reconFilter: ''
+      reconScope: 'full'
     };
   }
 
@@ -403,8 +414,8 @@
       msg = 'OK(' + lastResult.count + ' matches):clicked ' + times + ' times ' + getInfo(lastResult.el);
     }
 
-    // Append context info
-    msg += '|' + context.type + '|' + context.waitSelector + '|' + (context.waitGone ? 'true' : 'false') + '|' + context.reconFilter;
+    // Append context info: |contextType|waitSelector|waitGone|reconScope
+    msg += '|' + context.type + '|' + context.waitSelector + '|' + (context.waitGone ? 'true' : 'false') + '|' + context.reconScope;
 
     return msg;
   }
@@ -435,8 +446,8 @@
     msg = 'OK(' + result.count + ' matches):' + result.method + ' ' + getInfo(result.el);
   }
 
-  // Append context info: |contextType|waitSelector|waitGone|reconFilter
-  msg += '|' + context.type + '|' + context.waitSelector + '|' + (context.waitGone ? 'true' : 'false') + '|' + context.reconFilter;
+  // Append context info: |contextType|waitSelector|waitGone|reconScope
+  msg += '|' + context.type + '|' + context.waitSelector + '|' + (context.waitGone ? 'true' : 'false') + '|' + context.reconScope;
 
   return msg;
 })();

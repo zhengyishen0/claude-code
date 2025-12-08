@@ -13,10 +13,10 @@ if [[ "$1" == "--help" ]]; then
   echo "Options:"
   echo "  --clear: clear field(s) first"
   echo ""
-  echo "Auto-mode (CHROME_AUTO_MODE=true, default):"
+  echo "Auto-mode (CHROME_AUTO_MODE=true in config, default):"
   echo "  Automatically waits for form validation/updates and recons form section"
   echo ""
-  echo "Manual mode (export CHROME_AUTO_MODE=false):"
+  echo "Manual mode (set CHROME_AUTO_MODE=false in tools/chrome/config):"
   echo "  Chain with +: input \"@Where=Paris\" + wait + recon"
   echo ""
   echo "Examples:"
@@ -108,7 +108,11 @@ if [ "$AUTO_MODE" = "true" ]; then
   "$SCRIPT_DIR/commands/wait.sh" "[role=alert], [aria-invalid=true], .error, .success" 2>/dev/null || \
     "$SCRIPT_DIR/commands/wait.sh" 2>/dev/null || true
 
-  # Recon form section, fallback to full page
-  "$SCRIPT_DIR/commands/recon.sh" | awk '/^## Form/,/^## [^F]/' 2>/dev/null || \
+  # Recon form section, fallback to full page if no form found
+  form_recon=$("$SCRIPT_DIR/commands/recon.sh" | awk '/^## Form/,/^## [^F]/')
+  if [ -n "$form_recon" ]; then
+    echo "$form_recon"
+  else
     "$SCRIPT_DIR/commands/recon.sh"
+  fi
 fi
