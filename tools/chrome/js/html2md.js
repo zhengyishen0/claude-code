@@ -111,10 +111,24 @@
       const data = buttonData.get(rawText) || { text: rawText.trim().replace(/\s+/g, ' '), class: '' };
       const text = data.text;
       const aria = getAttr(node, 'aria-label');
-      const testId = getAttr(node, 'data-testid');
-      const idAttr = getAttr(node, 'id');
-      // Priority: testid > id > class > 'button'
-      const selector = testId || idAttr || data.class || 'button';
+      // Priority 1: id attribute
+      let selector = getAttr(node, 'id');
+
+      // Priority 2: ANY attribute ending in 'id' (data-testid, data-id, custom-id, etc.)
+      if (!selector) {
+        for (let i = 0; i < node.attributes.length; i++) {
+          const attr = node.attributes[i];
+          if (attr.name.endsWith('id')) {
+            selector = attr.value;
+            break;
+          }
+        }
+      }
+
+      // Fallback: class or 'button'
+      if (!selector) {
+        selector = data.class || 'button';
+      }
 
       // Build label: [text@aria] or [text] or [@aria]
       let label = '';

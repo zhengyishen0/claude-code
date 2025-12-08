@@ -47,62 +47,178 @@
       params.selector = auto;
     }
 
-    var el = null;
-    var method = '';
+    // PROGRESSIVE AND LOGIC: Collect candidates (union), then filter to intersection
+    var candidates = new Set();
 
-    // Strategy 1: data-testid OR id (NOT class - class often matches multiple)
-    if (!el && params.testid && params.testid !== 'button') {
-      // Try testid and id first (unique identifiers)
-      el = root.querySelector('[data-testid="' + params.testid + '"], #' + params.testid);
-      if (el) {
-        method = el.getAttribute('data-testid') === params.testid ? 'testid' : 'id';
+    // Strategy 1: Collect by id-like attributes (universal matching)
+    if (params.testid && params.testid !== 'button') {
+      var allElements = root.querySelectorAll('*');
+      for (var i = 0; i < allElements.length; i++) {
+        var element = allElements[i];
+
+        // Priority 1: Check id attribute first
+        if (element.getAttribute('id') === params.testid) {
+          candidates.add(element);
+          continue;
+        }
+
+        // Priority 2: Check ANY attribute ending in 'id'
+        var attrs = element.attributes;
+        for (var j = 0; j < attrs.length; j++) {
+          var attrName = attrs[j].name;
+          if (attrName.endsWith('id') && attrs[j].value === params.testid) {
+            candidates.add(element);
+            break;
+          }
+        }
+
+        // Fallback: Check class
+        if (element.className && element.className.includes(params.testid)) {
+          candidates.add(element);
+        }
       }
     }
 
-    // Strategy 2: aria-label (partial, case-insensitive) - try before class fallback
-    if (!el && params.aria) {
+    // Strategy 2: Collect by aria-label
+    if (params.aria) {
       var searchAria = params.aria.toLowerCase();
       var labeled = root.querySelectorAll('[aria-label]');
       for (var i = 0; i < labeled.length; i++) {
         var ariaLabel = (labeled[i].getAttribute('aria-label') || '').toLowerCase();
         if (ariaLabel.indexOf(searchAria) > -1) {
-          el = labeled[i];
-          method = 'aria';
-          break;
+          candidates.add(labeled[i]);
         }
       }
     }
 
-    // Strategy 2b: class selector fallback (only if aria didn't match)
-    if (!el && params.testid && params.testid !== 'button') {
-      el = root.querySelector('.' + params.testid);
-      if (el) method = 'class';
-    }
-
-    // Strategy 3: Text content (partial, case-insensitive)
-    if (!el && params.text) {
+    // Strategy 3: Collect by text content
+    if (params.text) {
       var searchText = params.text.replace(/\\n/g, '\n').toLowerCase();
       var clickables = root.querySelectorAll('button, a, [role="button"], [onclick]');
       for (var i = 0; i < clickables.length; i++) {
         var t = (clickables[i].innerText || '').toLowerCase();
         if (t.indexOf(searchText) > -1) {
-          el = clickables[i];
-          method = 'text';
-          break;
+          candidates.add(clickables[i]);
         }
       }
     }
 
-    // Strategy 4: href for links
-    if (!el && params.href) {
-      el = root.querySelector('a[href^="' + params.href + '"]');
-      if (el) method = 'href';
+    // Strategy 4: Collect by href
+    if (params.href) {
+      var links = root.querySelectorAll('a[href^="' + params.href + '"]');
+      for (var i = 0; i < links.length; i++) {
+        candidates.add(links[i]);
+      }
     }
 
-    // Strategy 5: CSS selector (fallback)
-    if (!el && params.selector) {
-      el = root.querySelector(params.selector);
-      if (el) method = 'selector';
+    // Strategy 5: Collect by CSS selector
+    if (params.selector) {
+      try {
+        var selectorEls = root.querySelectorAll(params.selector);
+        for (var i = 0; i < selectorEls.length; i++) {
+          candidates.add(selectorEls[i]);
+        }
+      } catch (e) {
+        // Invalid selector - skip
+      }
+    }
+
+    // Filter to intersection: elements matching ALL provided criteria
+    var validElements = Array.from(candidates).filter(function(el) {
+      // Validate id-like attributes if provided
+      if (params.testid && params.testid !== 'button') {
+        var matched = false;
+
+        // Priority 1: Check id attribute first
+        if (el.getAttribute('id') === params.testid) {
+          matched = true;
+        }
+
+        // Priority 2: Check ANY attribute ending in 'id'
+        if (!matched) {
+          var attrs = el.attributes;
+          for (var j = 0; j < attrs.length; j++) {
+            var attrName = attrs[j].name;
+            if (attrName.endsWith('id') && attrs[j].value === params.testid) {
+              matched = true;
+              break;
+            }
+          }
+        }
+
+        // Fallback: Check class
+        if (!matched && el.className && el.className.includes(params.testid)) {
+          matched = true;
+        }
+
+        if (!matched) {
+          return false;
+        }
+      }
+
+      // Validate aria if provided
+      if (params.aria) {
+        var ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
+        if (ariaLabel.indexOf(params.aria.toLowerCase()) === -1) {
+          return false;
+        }
+      }
+
+      // Validate text if provided
+      if (params.text) {
+        var searchText = params.text.replace(/\\n/g, '\n').toLowerCase();
+        var elText = (el.innerText || '').toLowerCase();
+        if (elText.indexOf(searchText) === -1) {
+          return false;
+        }
+      }
+
+      // Validate href if provided
+      if (params.href) {
+        var href = el.getAttribute('href') || '';
+        if (href.indexOf(params.href) !== 0) {
+          return false;
+        }
+      }
+
+      return true;  // Matches ALL provided criteria
+    });
+
+    if (validElements.length === 0) {
+      return { el: null, method: '', params: params };
+    }
+
+    var el = validElements[0];
+
+    // Determine method used
+    var method = '';
+    if (params.testid) {
+      // Priority 1: id attribute
+      if (el.getAttribute('id') === params.testid) {
+        method = 'id';
+      } else {
+        // Priority 2: ANY attribute ending in 'id'
+        var attrs = el.attributes;
+        for (var j = 0; j < attrs.length; j++) {
+          var attrName = attrs[j].name;
+          if (attrName.endsWith('id') && attrs[j].value === params.testid) {
+            method = attrName;
+            break;
+          }
+        }
+        // Fallback: class
+        if (!method && el.className && el.className.includes(params.testid)) {
+          method = 'class';
+        }
+      }
+    } else if (params.aria) {
+      method = 'aria';
+    } else if (params.text) {
+      method = 'text';
+    } else if (params.href) {
+      method = 'href';
+    } else {
+      method = 'selector';
     }
 
     return { el: el, method: method, params: params };

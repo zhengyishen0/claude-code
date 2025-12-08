@@ -17,15 +17,35 @@
     var method = type;
 
     if (type === 'id') {
-      // Try id, data-testid, then CSS selector
-      el = document.querySelector('#' + selector + ', [data-testid="' + selector + '"]');
-      if (!el) {
-        // Try as raw CSS selector
-        el = document.querySelector(selector);
+      // Universal id-like attribute matching
+      var inputs = document.querySelectorAll('input, textarea, select, [contenteditable="true"]');
+      for (var i = 0; i < inputs.length; i++) {
+        var input = inputs[i];
+
+        // Priority 1: Check id attribute first
+        if (input.getAttribute('id') === selector) {
+          el = input;
+          method = 'id';
+          break;
+        }
+
+        // Priority 2: Check ANY attribute ending in 'id'
+        var attrs = input.attributes;
+        for (var j = 0; j < attrs.length; j++) {
+          var attrName = attrs[j].name;
+          if (attrName.endsWith('id') && attrs[j].value === selector) {
+            el = input;
+            method = attrName;
+            break;
+          }
+        }
+        if (el) break;
       }
-      if (el) {
-        method = el.id === selector ? 'id' :
-                 el.getAttribute('data-testid') === selector ? 'testid' : 'selector';
+
+      // Fallback: Try as raw CSS selector
+      if (!el) {
+        el = document.querySelector(selector);
+        if (el) method = 'selector';
       }
     } else if (type === 'aria') {
       // aria-label (partial, case-insensitive)
