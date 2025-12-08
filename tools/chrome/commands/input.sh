@@ -1,118 +1,64 @@
 #!/bin/bash
-# input.sh - Set input values with unified selector=value format
-# Usage: input.sh "@aria=value" "#id=value" "text=value" [-c]
+# input.sh - Set input value by CSS selector
+# Usage: input.sh "selector" "value"
 
 if [[ "$1" == "--help" ]]; then
-  echo "input FIELD(s) [--clear]  Set input value(s)"
-  echo ""
-  echo "Format: selector=value"
-  echo "  @label=value    by aria-label (e.g. @Where=Paris)"
-  echo "  #id=value       by id/testid/CSS (e.g. #email=test@example.com)"
-  echo "  text=value      by placeholder/aria (e.g. Where=Paris)"
-  echo ""
-  echo "Options:"
-  echo "  --clear: clear field(s) first"
-  echo ""
-  echo "Auto-mode (CHROME_AUTO_MODE=true in config, default):"
-  echo "  Automatically waits for form validation/updates and recons form section"
-  echo ""
-  echo "Manual mode (set CHROME_AUTO_MODE=false in tools/chrome/config):"
-  echo "  Chain with +: input \"@Where=Paris\" + wait + recon"
+  echo "input SELECTOR VALUE    Set input value by CSS selector"
   echo ""
   echo "Examples:"
-  echo "  input \"@Where=Paris\""
-  echo "  input \"#email=test@example.com\" \"#password=secret\""
-  echo "  input \"Where=Paris\" \"When=March\" -c"
+  echo "  input '[aria-label=\"Where\"]' 'Paris'"
+  echo "  input '#email' 'test@example.com'"
+  echo "  input '[name=\"search\"]' 'query'"
+  echo ""
+  echo "Chain with wait/recon as needed:"
+  echo "  input '...' 'value' + wait + recon"
   exit 0
 fi
 
 SCRIPT_DIR="$(dirname "$0")/.."
 [ -f "$SCRIPT_DIR/config" ] && source "$SCRIPT_DIR/config"
 
-FIELDS=()
-CLEAR="false"
-AUTO_MODE=${CHROME_AUTO_MODE:-true}
+SELECTOR="$1"
+VALUE="$2"
 
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --clear)
-      CLEAR="true"
-      shift
-      ;;
-    -*)
-      echo "Unknown option: $1" >&2
-      exit 1
-      ;;
-    *)
-      FIELDS+=("$1")
-      shift
-      ;;
-  esac
-done
-
-if [ ${#FIELDS[@]} -eq 0 ]; then
-  echo "Usage: input.sh \"@aria=value\" \"#id=value\" \"text=value\"" >&2
-  echo "       input.sh \"@Where=Paris\" \"#date=2024-01-01\"" >&2
+if [ -z "$SELECTOR" ] || [ -z "$VALUE" ]; then
+  echo "Usage: input 'CSS selector' 'value'" >&2
   exit 1
 fi
 
-# Build JSON array of fields
-# Parse each field: @aria=value, #id=value, or text=value
-FIELDS_JSON="["
-for i in "${!FIELDS[@]}"; do
-  FIELD="${FIELDS[$i]}"
+# Escape for JS
+SELECTOR_ESC=$(printf '%s' "$SELECTOR" | sed "s/'/\\\\'/g")
+VALUE_ESC=$(printf '%s' "$VALUE" | sed "s/'/\\\\'/g")
 
-  # Split on first = only
-  SELECTOR="${FIELD%%=*}"
-  VALUE="${FIELD#*=}"
+# Set input value (React-safe)
+result=$(chrome-cli execute "
+(function() {
+  var el = document.querySelector('$SELECTOR_ESC');
+  if (!el) return 'FAIL: element not found';
 
-  # Determine type from prefix
-  if [[ "$SELECTOR" == @* ]]; then
-    TYPE="aria"
-    SELECTOR="${SELECTOR:1}"  # Remove @ prefix
-  elif [[ "$SELECTOR" == \#* ]]; then
-    TYPE="id"
-    SELECTOR="${SELECTOR:1}"  # Remove # prefix
-  else
-    TYPE="text"
-  fi
+  el.focus();
+  el.click();
 
-  # Escape for JSON
-  SELECTOR_ESC=$(printf '%s' "$SELECTOR" | sed 's/\\/\\\\/g; s/"/\\"/g')
-  VALUE_ESC=$(printf '%s' "$VALUE" | sed 's/\\/\\\\/g; s/"/\\"/g')
+  // Use native setter for React compatibility
+  var proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement : HTMLInputElement;
+  var setter = Object.getOwnPropertyDescriptor(proto.prototype, 'value');
+  if (setter && setter.set) {
+    setter.set.call(el, '$VALUE_ESC');
+  } else {
+    el.value = '$VALUE_ESC';
+  }
 
-  FIELDS_JSON+='{"type":"'"$TYPE"'","selector":"'"$SELECTOR_ESC"'","value":"'"$VALUE_ESC"'"}'
-  if [ $i -lt $((${#FIELDS[@]} - 1)) ]; then
-    FIELDS_JSON+=","
-  fi
-done
-FIELDS_JSON+="]"
+  // Dispatch events React listens to
+  el.dispatchEvent(new Event('input', {bubbles: true}));
+  el.dispatchEvent(new Event('change', {bubbles: true}));
 
-# Read JS file
-JS_CODE=$(cat "$SCRIPT_DIR/js/set-input.js")
+  var tag = el.tagName.toLowerCase();
+  return 'OK: set ' + tag + ' = \"' + '$VALUE_ESC'.substring(0, 20) + '\"';
+})()
+")
 
-# Execute with fields array
-INPUT_DELAY=${CHROME_INPUT_DELAY:-100}
-result=$(chrome-cli execute 'var _p={fields:'"$FIELDS_JSON"',clear:'"$CLEAR"',delay:'"$INPUT_DELAY"'}; '"$JS_CODE")
 echo "$result"
 
-# Check for failure
 if [[ "$result" == FAIL* ]]; then
   exit 1
-fi
-
-# Auto-wait and auto-recon if enabled
-if [ "$AUTO_MODE" = "true" ]; then
-  # Wait for validation messages or DOM updates
-  # Try common validation selectors, fallback to generic DOM wait
-  "$SCRIPT_DIR/commands/wait.sh" "[role=alert], [aria-invalid=true], .error, .success" 2>/dev/null || \
-    "$SCRIPT_DIR/commands/wait.sh" 2>/dev/null || true
-
-  # Recon form section, fallback to full page if no form found
-  form_recon=$("$SCRIPT_DIR/commands/recon.sh" | awk '/^## Form/,/^## [^F]/')
-  if [ -n "$form_recon" ]; then
-    echo "$form_recon"
-  else
-    "$SCRIPT_DIR/commands/recon.sh"
-  fi
 fi

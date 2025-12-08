@@ -17,20 +17,10 @@ if [ -z "$URL" ]; then
   exit 1
 fi
 
-chrome-cli open "$URL"
+chrome-cli open "$URL" > /dev/null
 
-# Wait for page to fully load (poll readyState)
-TIMEOUT=${CHROME_OPEN_TIMEOUT:-10}
-elapsed=0
-interval=${CHROME_OPEN_INTERVAL:-0.2}
-while (( $(echo "$elapsed < $TIMEOUT" | bc -l) )); do
-  state=$(chrome-cli execute "document.readyState")
-  if [ "$state" = "complete" ]; then
-    break
-  fi
-  sleep $interval
-  elapsed=$(echo "$elapsed + $interval" | bc)
-done
+# Wait for page to fully load
+"$SCRIPT_DIR/commands/wait.sh" > /dev/null 2>&1
 
 if [ "$2" = "--status" ]; then
   "$SCRIPT_DIR/commands/recon.sh" --status
