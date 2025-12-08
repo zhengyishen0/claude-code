@@ -6,24 +6,27 @@
 
 Before making edits:
 1. **Check current branch**: `git branch --show-current`
-2. **If on `main`**: Create a new worktree for the feature
-3. **Work in worktree**: Make all changes there
+2. **If on `main`**: Run `tools/worktree/run.sh create feature-name`
+3. **Work in worktree**: Make all changes in the new Claude session
 4. **Merge when done**: Merge back to main and remove worktree
 
-**Creating a worktree**:
+**Creating a worktree with Claude**:
 ```bash
-git worktree add -b feature-name ../claude-code-feature
-cd ../claude-code-feature
+tools/worktree/run.sh create feature-name
+# Auto-launches new Claude session in ../claude-code-feature-name
+# Current session exits automatically
 ```
 
 **Cleanup after merge**:
 ```bash
 cd ../claude-code
 git merge feature-name
-git worktree remove ../claude-code-feature
+tools/worktree/run.sh remove feature-name
 ```
 
 **Exception**: Skip worktrees for trivial changes (typos, docs, single-line fixes).
+
+**Automatic Triggering**: When a user requests feature work and you're on main branch, proactively suggest and run `tools/worktree/run.sh create <feature-name>`.
 
 ## Tool Design Principles
 
@@ -70,5 +73,17 @@ Run `tools/chrome/run.sh` for full help.
 5. Wait for specific element - not just any DOM change
 6. Use --gone when expecting element to disappear
 7. Filter recon with grep/awk - `recon | awk '/^## Main($|:)/,/^## [^M]/'`
+
+### worktree
+Git worktree management with automatic Claude session launching
+
+Run `tools/worktree/run.sh` for full help.
+
+**Commands:** create, list, remove, help
+
+**Key Usage:**
+- Create worktree for feature work: `tools/worktree/run.sh create feature-name`
+- Auto-launches new Claude session with `--fork-session` to continue context
+- Closes current session after launching new one
 
 <!-- TOOLS:END -->
