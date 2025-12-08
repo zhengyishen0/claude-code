@@ -14,8 +14,8 @@ Before making edits:
 ```bash
 tools/worktree/run.sh create feature-name
 # Creates worktree at ../claude-code-feature-name
-# Grants permissions automatically via --add-dir
 # Prints absolute path for use in current session
+# Grant permission when prompted to access the worktree
 ```
 
 **Using the worktree**:
@@ -86,7 +86,7 @@ Run `tools/chrome/run.sh` for full help.
 7. Filter recon with grep/awk - `recon | awk '/^## Main($|:)/,/^## [^M]/'`
 
 ### worktree
-Git worktree management with automatic permissions
+Git worktree management for isolated feature development
 
 Run `tools/worktree/run.sh` for full help.
 
@@ -94,8 +94,8 @@ Run `tools/worktree/run.sh` for full help.
 
 **Key Usage:**
 - Create worktree: `tools/worktree/run.sh create feature-name`
-- Grants permissions automatically via `--add-dir`
 - Use absolute paths when working in worktrees
+- Grant permission when prompted (one-time per session)
 - Rename temp worktrees: `tools/worktree/run.sh rename new-name`
 
 <!-- TOOLS:END -->
