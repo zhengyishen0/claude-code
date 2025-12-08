@@ -7,14 +7,25 @@
 Before making edits:
 1. **Check current branch**: `git branch --show-current`
 2. **If on `main`**: Run `tools/worktree/run.sh create feature-name`
-3. **Work in worktree**: Make all changes in the new Claude session
+3. **Work in worktree**: Use absolute paths to make changes
 4. **Merge when done**: Merge back to main and remove worktree
 
 **Creating a worktree with Claude**:
 ```bash
 tools/worktree/run.sh create feature-name
-# Auto-launches new Claude session in ../claude-code-feature-name
-# Current session exits automatically
+# Creates worktree at ../claude-code-feature-name
+# Grants permissions automatically via --add-dir
+# Prints absolute path for use in current session
+```
+
+**Using the worktree**:
+Use absolute paths when working in worktrees:
+```bash
+# Good: absolute paths
+/Users/you/Codes/claude-code-feature-name/src/file.js
+
+# Avoid: cd and relative paths
+cd ../claude-code-feature-name && edit src/file.js
 ```
 
 **Cleanup after merge**:
@@ -75,15 +86,16 @@ Run `tools/chrome/run.sh` for full help.
 7. Filter recon with grep/awk - `recon | awk '/^## Main($|:)/,/^## [^M]/'`
 
 ### worktree
-Git worktree management with automatic Claude session launching
+Git worktree management with automatic permissions
 
 Run `tools/worktree/run.sh` for full help.
 
-**Commands:** create, list, remove, help
+**Commands:** create, rename, list, remove, help
 
 **Key Usage:**
-- Create worktree for feature work: `tools/worktree/run.sh create feature-name`
-- Auto-launches new Claude session with `--fork-session` to continue context
-- Closes current session after launching new one
+- Create worktree: `tools/worktree/run.sh create feature-name`
+- Grants permissions automatically via `--add-dir`
+- Use absolute paths when working in worktrees
+- Rename temp worktrees: `tools/worktree/run.sh rename new-name`
 
 <!-- TOOLS:END -->
