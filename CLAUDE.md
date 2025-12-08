@@ -1,5 +1,30 @@
 # Claude Code Project
 
+## Development Workflow
+
+**Default**: Use git worktrees for all code changes to maintain branch isolation.
+
+Before making edits:
+1. **Check current branch**: `git branch --show-current`
+2. **If on `main`**: Create a new worktree for the feature
+3. **Work in worktree**: Make all changes there
+4. **Merge when done**: Merge back to main and remove worktree
+
+**Creating a worktree**:
+```bash
+git worktree add -b feature-name ../claude-code-feature
+cd ../claude-code-feature
+```
+
+**Cleanup after merge**:
+```bash
+cd ../claude-code
+git merge feature-name
+git worktree remove ../claude-code-feature
+```
+
+**Exception**: Skip worktrees for trivial changes (typos, docs, single-line fixes).
+
 ## Tool Design Principles
 
 When creating tools:
@@ -8,6 +33,21 @@ When creating tools:
 3. **No separate doc files** - Brief description in CLAUDE.md, full docs in tool's help
 4. **Prereq check on first use** - Tools check/install dependencies when run without args
 5. **Standard entry point** - Each tool uses `run.sh`, name derived from folder
+
+## Command Execution Guidelines
+
+Avoid wrapping tool commands in bash variables - use direct tool entry points instead.
+
+**Bad** (triggers permission prompts):
+```bash
+JS_CODE=$(cat tools/chrome/js/click-element.js) && chrome-cli execute '...'
+```
+
+**Good** (pre-approved):
+```bash
+tools/chrome/run.sh click "[Homes]"
+chrome-cli execute 'document.querySelector("button").click()'
+```
 
 ## Available Tools
 
