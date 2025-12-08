@@ -59,10 +59,10 @@ launch_terminal() {
 
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS: Try iTerm2 first, fall back to Terminal.app
-        if osascript -e 'application "iTerm" is running' 2>/dev/null; then
-            osascript -e "tell application \"iTerm2\" to create window with default profile command \"cd '$target_path' && claude --fork-session\""
+        if pgrep -q "iTerm2" 2>/dev/null; then
+            osascript -e 'tell application "iTerm2" to create window with default profile command "cd '"$target_path"' && claude --fork-session"'
         else
-            osascript -e "tell application \"Terminal\" to do script \"cd '$target_path' && claude --fork-session\""
+            osascript -e 'tell application "Terminal" to do script "cd '"$target_path"' && claude --fork-session"'
         fi
     elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
         # Linux: Try common terminals
