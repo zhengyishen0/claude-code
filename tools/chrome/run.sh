@@ -31,11 +31,13 @@ CHROME_INPUT_DELAY=150
 cmd_recon() {
   local STATUS=""
   local FULL_MODE=""
+  local DIFF_MODE=""
 
   while [ $# -gt 0 ]; do
     case "$1" in
       --status) STATUS="true"; shift ;;
       --full) FULL_MODE="true"; shift ;;
+      --diff) DIFF_MODE="true"; shift ;;
       -*) echo "Unknown option: $1" >&2; exit 1 ;;
       *) shift ;;
     esac
@@ -45,12 +47,21 @@ cmd_recon() {
     chrome-cli execute "$(cat "$SCRIPT_DIR/js/page-status.js")"
   fi
 
-  # Set mode for html2md.js
+  # Diff mode: show only changes since last recon
+  if [ "$DIFF_MODE" = "true" ]; then
+    chrome-cli execute "window.__RECON_DIFF_MODE__ = 'diff'; $(cat "$SCRIPT_DIR/js/dom-snapshot.js")"
+    return
+  fi
+
+  # Normal recon
   if [ "$FULL_MODE" = "true" ]; then
     chrome-cli execute "window.__RECON_FULL__ = true; $(cat "$SCRIPT_DIR/js/html2md.js")"
   else
     chrome-cli execute "window.__RECON_FULL__ = false; $(cat "$SCRIPT_DIR/js/html2md.js")"
   fi
+
+  # Save snapshot for future --diff calls
+  chrome-cli execute "window.__RECON_DIFF_MODE__ = 'snapshot'; $(cat "$SCRIPT_DIR/js/dom-snapshot.js")" > /dev/null
 }
 
 # ============================================================================
@@ -241,7 +252,7 @@ cmd_help() {
   echo "Usage: $TOOL_NAME <command> [args...] [+ command [args...]]..."
   echo ""
   echo "Commands:"
-  echo "  recon [--full] [--status]  Get page structure as markdown"
+  echo "  recon [--full] [--status] [--diff]  Get page structure as markdown"
   echo "  open URL [--status]      Open URL (waits for load), then recon"
   echo "  wait [sel] [--gone]  Wait for DOM/element (10s timeout)"
   echo "  click SELECTOR          Click element by CSS selector"
