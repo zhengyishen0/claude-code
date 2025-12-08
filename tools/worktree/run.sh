@@ -26,13 +26,12 @@ worktree_create() {
     local abs_path="$(cd "$worktree_path" && pwd)"
 
     echo "Created worktree: $abs_path"
+    echo "Switching to new Claude session..."
 
-    # Launch new terminal with Claude
-    launch_terminal "$abs_path"
-
-    # Exit current session
-    echo "Exiting current session..."
-    exit 0
+    # Change to worktree and exec new Claude session
+    # exec replaces current process, automatically closing this session
+    cd "$abs_path"
+    exec claude --fork-session
 }
 
 # Subcommand: list
@@ -51,33 +50,6 @@ worktree_remove() {
 
     local worktree_path="../claude-code-$branch_name"
     git worktree remove "$worktree_path"
-}
-
-# Launch new terminal based on OS
-launch_terminal() {
-    local target_path="$1"
-
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS: Try iTerm2 first, fall back to Terminal.app
-        if pgrep -q "iTerm2" 2>/dev/null; then
-            osascript -e 'tell application "iTerm2" to create window with default profile command "cd '"$target_path"' && claude --fork-session"'
-        else
-            osascript -e 'tell application "Terminal" to do script "cd '"$target_path"' && claude --fork-session"'
-        fi
-    elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-        # Linux: Try common terminals
-        if command -v gnome-terminal &> /dev/null; then
-            gnome-terminal -- bash -c "cd '$target_path' && claude --fork-session"
-        elif command -v xfce4-terminal &> /dev/null; then
-            xfce4-terminal --command="bash -c 'cd $target_path && claude --fork-session'"
-        else
-            echo "Warning: Could not auto-launch terminal"
-            echo "Run manually: cd $target_path && claude --fork-session"
-        fi
-    else
-        echo "Warning: Unsupported OS for auto-launch"
-        echo "Run manually: cd $target_path && claude --fork-session"
-    fi
 }
 
 # Show help
@@ -122,7 +94,7 @@ EXAMPLES:
 
 WORKFLOW:
   1. Create worktree: tools/worktree/run.sh create my-feature
-  2. Work in new Claude session (auto-launched)
+  2. Claude switches to new session in same terminal
   3. Complete feature, commit changes
   4. Merge to main: git merge my-feature
   5. Remove worktree: tools/worktree/run.sh remove my-feature
