@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Alerts & Autocomplete</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 20px;
+    }
+
+    .test-section {
+      margin: 30px 0;
+      padding: 20px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+      margin: 5px;
+    }
+
+    /* Toast styles */
+    .toast {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: #28a745;
+      color: white;
+      padding: 15px 20px;
+      border-radius: 5px;
+      display: none;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+    }
+
+    .toast.show {
+      display: block;
+    }
+
+    /* Autocomplete dropdown */
+    .autocomplete-container {
+      position: relative;
+      display: inline-block;
+      width: 300px;
+    }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 10px;
+      font-size: 16px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+
+    .autocomplete-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: white;
+      border: 1px solid #ddd;
+      border-top: none;
+      display: none;
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 1000;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+
+    .autocomplete-dropdown.show {
+      display: block;
+    }
+
+    .autocomplete-option {
+      padding: 10px;
+      cursor: pointer;
+    }
+
+    .autocomplete-option:hover {
+      background: #f0f0f0;
+    }
+
+    .alert-box {
+      padding: 15px;
+      margin: 10px 0;
+      border-radius: 4px;
+      display: none;
+    }
+
+    .alert-box.show {
+      display: block;
+    }
+
+    .alert-success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+
+    .alert-info {
+      background: #d1ecf1;
+      color: #0c5460;
+      border: 1px solid #bee5eb;
+    }
+  </style>
+</head>
+<body>
+  <h1>Alert & Autocomplete Detection Test</h1>
+
+  <div class="test-section">
+    <h2>Test 1: Toast Notifications</h2>
+    <p>Click button to show a toast notification at top-right</p>
+    <button id="show-toast-btn" onclick="showToast()">Show Toast</button>
+    <div id="toast-container"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>Test 2: Alert Box</h2>
+    <p>Click button to show an alert box with role="alert"</p>
+    <button id="show-alert-btn" onclick="showAlert()">Show Alert</button>
+    <div id="alert-container"></div>
+  </div>
+
+  <div class="test-section">
+    <h2>Test 3: Autocomplete Dropdown</h2>
+    <p>Type in the input to show autocomplete suggestions</p>
+    <form>
+      <div class="autocomplete-container" id="autocomplete-container">
+        <input type="text" id="search-input" placeholder="Type a fruit name..." autocomplete="off" oninput="showAutocomplete(this.value)">
+      </div>
+    </form>
+  </div>
+
+  <script>
+    function showToast() {
+      // Dynamically create toast element
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = 'toast show';
+      toast.setAttribute('role', 'status');
+      toast.setAttribute('aria-live', 'polite');
+      toast.textContent = '✓ Success! Toast notification appeared';
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        container.removeChild(toast);
+      }, 10000);
+    }
+
+    function showAlert() {
+      // Dynamically create alert element
+      const container = document.getElementById('alert-container');
+      const alertBox = document.createElement('div');
+      alertBox.className = 'alert-box alert-success show';
+      alertBox.setAttribute('role', 'alert');
+      alertBox.innerHTML = '<strong>Success!</strong> This is an alert message.';
+      container.appendChild(alertBox);
+
+      setTimeout(() => {
+        container.removeChild(alertBox);
+      }, 10000);
+    }
+
+    let autocompleteDropdown = null;
+
+    function showAutocomplete(value) {
+      const container = document.getElementById('autocomplete-container');
+
+      if (value.length > 0) {
+        // Create dropdown if it doesn't exist
+        if (!autocompleteDropdown) {
+          autocompleteDropdown = document.createElement('div');
+          autocompleteDropdown.className = 'autocomplete-dropdown show';
+          autocompleteDropdown.setAttribute('role', 'listbox');
+          autocompleteDropdown.id = 'autocomplete';
+
+          const options = ['Apple', 'Banana', 'Cherry', 'Date', 'Elderberry'];
+          options.forEach(opt => {
+            const option = document.createElement('div');
+            option.className = 'autocomplete-option';
+            option.setAttribute('role', 'option');
+            option.textContent = opt;
+            option.onclick = () => selectOption(opt);
+            autocompleteDropdown.appendChild(option);
+          });
+
+          container.appendChild(autocompleteDropdown);
+        }
+      } else {
+        // Remove dropdown if input is empty
+        if (autocompleteDropdown) {
+          container.removeChild(autocompleteDropdown);
+          autocompleteDropdown = null;
+        }
+      }
+    }
+
+    function selectOption(value) {
+      document.getElementById('search-input').value = value;
+      const container = document.getElementById('autocomplete-container');
+      if (autocompleteDropdown) {
+        container.removeChild(autocompleteDropdown);
+        autocompleteDropdown = null;
+      }
+    }
+
+    // Close autocomplete when clicking outside
+    document.addEventListener('click', function(e) {
+      if (!e.target.closest('.autocomplete-container') && autocompleteDropdown) {
+        const container = document.getElementById('autocomplete-container');
+        container.removeChild(autocompleteDropdown);
+        autocompleteDropdown = null;
+      }
+    });
+  </script>
+</body>
+</html>
