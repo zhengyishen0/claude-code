@@ -235,29 +235,84 @@
     return { el: el, method: method, params: params, count: validElements.length };
   }
 
-  // Capture page state for context detection
-  function captureState() {
-    var dialog = document.querySelector('[role=dialog], dialog');
-    var hasDialog = false;
+  // Find semantic parent element
+  function findSemanticParent(element) {
+    var semanticTags = ['dialog', 'form', 'section', 'article', 'aside', 'nav', 'main', 'header', 'footer'];
+    var current = element;
 
-    // Check if dialog exists AND is visible
-    if (dialog) {
-      var style = getComputedStyle(dialog);
-      hasDialog = dialog.offsetParent !== null &&
-                  style.display !== 'none' &&
-                  style.visibility !== 'hidden';
+    while (current && current !== document.body) {
+      var tag = current.tagName.toLowerCase();
+
+      // Check HTML5 semantic tags
+      if (semanticTags.indexOf(tag) !== -1) {
+        return current;
+      }
+
+      // Check ARIA roles
+      var role = current.getAttribute('role');
+      if (role === 'dialog' || role === 'form' || role === 'region') {
+        return current;
+      }
+
+      current = current.parentElement;
     }
 
-    return {
-      url: location.href,
-      hasDialog: hasDialog
-    };
+    return document.body; // fallback
   }
 
-  // Detect what changed after click
-  function detectContext(beforeState, afterState) {
-    // Navigation detected
-    if (afterState.url !== beforeState.url) {
+  // Get scope token from semantic element
+  function getScopeToken(element) {
+    if (!element) return 'full';
+
+    var tag = element.tagName.toLowerCase();
+    var role = element.getAttribute('role');
+
+    if (tag === 'dialog' || role === 'dialog') return 'dialog';
+    if (tag === 'form') return 'form';
+    if (tag === 'main') return 'main';
+    if (tag === 'nav') return 'nav';
+    if (tag === 'section' || role === 'region') return 'section';
+    if (tag === 'article') return 'article';
+    if (tag === 'header') return 'header';
+    if (tag === 'aside') return 'aside';
+
+    return 'full'; // fallback
+  }
+
+  // Check if dialog is visible
+  function isDialogVisible(dialog) {
+    if (!dialog) return false;
+    var style = getComputedStyle(dialog);
+    return dialog.open ||
+           (style.display !== 'none' &&
+            style.visibility !== 'hidden' &&
+            dialog.offsetParent !== null);
+  }
+
+  // Get all visible dialogs
+  function getVisibleDialogs() {
+    var allDialogs = document.querySelectorAll('dialog, [role=dialog]');
+    var visible = [];
+    for (var i = 0; i < allDialogs.length; i++) {
+      if (isDialogVisible(allDialogs[i])) {
+        visible.push(allDialogs[i]);
+      }
+    }
+    return visible;
+  }
+
+  // Check if element is top-level (direct child of body)
+  function isTopLevel(element) {
+    return element && element.parentElement === document.body;
+  }
+
+  // Detect context using semantic parent approach
+  function detectContextSemantic(clickedElement, beforeURL, beforeDialogs, semanticParent) {
+    var afterURL = location.href;
+    var afterDialogs = getVisibleDialogs();
+
+    // Priority 1: Navigation (URL changed)
+    if (afterURL !== beforeURL) {
       return {
         type: 'navigation',
         waitSelector: '',
@@ -265,30 +320,48 @@
       };
     }
 
-    // Modal opened
-    if (!beforeState.hasDialog && afterState.hasDialog) {
-      return {
-        type: 'modal-open',
-        waitSelector: '[role=dialog], dialog',
-        reconScope: 'dialog'
-      };
+    // Priority 2: New dialog appeared
+    var newDialogs = [];
+    for (var i = 0; i < afterDialogs.length; i++) {
+      var found = false;
+      for (var j = 0; j < beforeDialogs.length; j++) {
+        if (afterDialogs[i] === beforeDialogs[j]) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        newDialogs.push(afterDialogs[i]);
+      }
     }
 
-    // Modal closed
-    if (beforeState.hasDialog && !afterState.hasDialog) {
+    if (newDialogs.length > 0) {
+      var newDialog = newDialogs[newDialogs.length - 1]; // latest
+      // Only prioritize if dialog is top-level or outside semantic parent
+      if (isTopLevel(newDialog) || !semanticParent.contains(newDialog)) {
+        return {
+          type: 'modal-open',
+          waitSelector: '[role=dialog], dialog',
+          reconScope: 'dialog'
+        };
+      }
+    }
+
+    // Priority 3: Semantic parent disappeared (e.g., modal closed)
+    if (!document.contains(semanticParent)) {
       return {
-        type: 'modal-close',
-        waitSelector: '[role=dialog]',
-        waitGone: true,
+        type: 'semantic-parent-gone',
+        waitSelector: '',
         reconScope: 'main'
       };
     }
 
-    // Inline update (default)
+    // Priority 4: Use semantic parent
+    var scope = getScopeToken(semanticParent);
     return {
-      type: 'inline',
+      type: 'semantic-' + scope,
       waitSelector: '',
-      reconScope: 'full'
+      reconScope: scope
     };
   }
 
@@ -385,16 +458,23 @@
   // times > 1: click same element multiple times
   // Re-find element each time for React components that re-render after state change
   if (times > 1) {
-    var beforeState;
+    var semanticParent;
+    var beforeURL;
+    var beforeDialogs;
+
     for (var i = 0; i < times; i++) {
       var result = findElement(target);
       if (!result.el) {
         return 'FAIL:click ' + (i + 1) + ' not found (' + generateErrorReport(result.params, root) + ')';
       }
-      // Capture state before last click
+
+      // Capture context before last click
       if (i === times - 1) {
-        beforeState = captureState();
+        semanticParent = findSemanticParent(result.el);
+        beforeURL = location.href;
+        beforeDialogs = getVisibleDialogs();
       }
+
       clickElement(result.el);
       if (i < times - 1) sleep(delay);
     }
@@ -402,11 +482,8 @@
     // Wait for DOM/React to update after last click
     sleep(50);
 
-    // Capture state after last click
-    var afterState = captureState();
-
-    // Detect context from last click
-    var context = detectContext(beforeState, afterState);
+    // Detect context using semantic approach
+    var context = detectContextSemantic(result.el, beforeURL, beforeDialogs, semanticParent);
 
     var lastResult = findElement(target);
     var msg = 'OK:clicked ' + times + ' times ' + getInfo(lastResult.el);
@@ -426,19 +503,18 @@
     return 'FAIL:target not found (' + generateErrorReport(result.params, root) + ')';
   }
 
-  // Capture state before click
-  var beforeState = captureState();
+  // Capture context before click using semantic approach
+  var semanticParent = findSemanticParent(result.el);
+  var beforeURL = location.href;
+  var beforeDialogs = getVisibleDialogs();
 
   clickElement(result.el);
 
   // Wait a bit for DOM/React to update (synchronous delay)
   sleep(50);
 
-  // Capture state after click
-  var afterState = captureState();
-
-  // Detect context
-  var context = detectContext(beforeState, afterState);
+  // Detect context using semantic approach
+  var context = detectContextSemantic(result.el, beforeURL, beforeDialogs, semanticParent);
 
   // Build message with context info
   var msg = 'OK:' + result.method + ' ' + getInfo(result.el);
