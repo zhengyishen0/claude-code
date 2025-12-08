@@ -40,15 +40,22 @@ Click "Show Toast" button to trigger toast notification
 - Wait for `[role=alert], [role=status]` selector
 - Recon: Full page
 
-### Actual Output
+### Actual Output (After Fix)
 ```
 OK:id button#show-toast-btn "Show Toast"
-OK: DOM changed
+OK: [role=alert], [role=status] found
+## Recon shows:
+- **status**
+    ✓ Success! Toast notification appeared
 ```
 
 ### Result
-✅ **PASS** - System detected DOM change and waited appropriately
-Note: Toast element is position:fixed and disappears quickly, so it may not appear in final recon
+✅ **PASS** - System correctly detected toast with role="status" and included it in recon
+
+### Bug Found & Fixed
+Initial test revealed a critical bug: `isElementVisible()` was checking `offsetParent !== null`, but `position:fixed` elements always have `offsetParent = null`. This caused fixed-position toasts to be considered invisible.
+
+**Fix:** Check `position:fixed` and `position:absolute` separately, using `getBoundingClientRect()` to verify dimensions instead of relying on `offsetParent`.
 
 ---
 
@@ -111,11 +118,11 @@ OK: [role=alert], [aria-invalid=true], .error, .success found
 
 | Test | Detection | Wait | Recon | Status |
 |------|-----------|------|-------|--------|
-| Toast Notification | ✅ DOM change | ✅ Waited | N/A* | ✅ PASS |
-| Alert Box | ✅ Detected `[role=alert]` | ✅ Waited | N/A* | ✅ PASS |
+| Toast Notification | ✅ Detected `[role=status]` | ✅ Waited | ✅ Visible | ✅ PASS |
+| Alert Box | ✅ Detected `[role=alert]` | ✅ Waited | ✅ Visible | ✅ PASS |
 | Autocomplete | ✅ Detected listbox | ✅ Waited | ✅ Visible | ✅ PASS |
 
-*Note: Alert and toast elements may disappear before final recon runs due to their ephemeral nature (auto-hide after timeout). This is expected behavior - the important part is that they were detected and waited for.
+Note: Toast is visible in recon with full content after fixing the `position:fixed` visibility detection bug.
 
 ### Key Findings
 
@@ -144,13 +151,27 @@ These were identified as the two most common and critical failures in modern UIs
 ## Code Changes
 
 ### Files Modified
-1. `tools/chrome/js/click-element.js` - Added `getVisibleAlerts()`, `getVisibleListboxes()`, updated `detectContextSemantic()`
+1. `tools/chrome/js/click-element.js` - Added `getVisibleAlerts()`, `getVisibleListboxes()`, updated `detectContextSemantic()`, fixed `isElementVisible()`
 2. `tools/chrome/commands/click.sh` - Added handling for `alert-appeared` and `listbox-appeared` contexts
 
-### Commit
+### Commits
 ```
 4db3e8f Add alert/toast and autocomplete/listbox detection
+4ff2161 Fix visibility detection for position:fixed and position:absolute elements
 ```
+
+### Critical Bug Discovered & Fixed
+
+**Problem:** `isElementVisible()` was returning false for `position:fixed` elements (like toasts) because it checked `offsetParent !== null`, but fixed-position elements always have `offsetParent = null`.
+
+**Impact:** Toast notifications with `position:fixed` were not being detected, even though the detection code was correct.
+
+**Solution:**
+- Check `position:fixed` and `position:absolute` separately
+- Use `getBoundingClientRect()` to verify dimensions for positioned elements
+- Only check `offsetParent` for normally positioned elements
+
+**Result:** Toast notifications now properly detected and visible in recon output
 
 ---
 
