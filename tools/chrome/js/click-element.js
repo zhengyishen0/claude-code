@@ -12,6 +12,11 @@
     while (Date.now() - start < ms) {}
   }
 
+  // Normalize text for fuzzy matching (whitespace only)
+  function normalizeText(text) {
+    return text.replace(/\s+/g, ' ').trim();
+  }
+
   // Parse recon format and find element
   function findElement(auto) {
     var params = {};
@@ -73,7 +78,7 @@
         }
 
         // Fallback: Check class
-        if (element.className && element.className.includes(params.testid)) {
+        if (element.className && element.className.indexOf(params.testid) > -1) {
           candidates.add(element);
         }
       }
@@ -93,10 +98,10 @@
 
     // Strategy 3: Collect by text content
     if (params.text) {
-      var searchText = params.text.replace(/\\n/g, '\n').toLowerCase();
+      var searchText = normalizeText(params.text.replace(/\\n/g, '\n').toLowerCase());
       var clickables = root.querySelectorAll('button, a, [role="button"], [onclick]');
       for (var i = 0; i < clickables.length; i++) {
-        var t = (clickables[i].innerText || '').toLowerCase();
+        var t = normalizeText((clickables[i].innerText || '').toLowerCase());
         if (t.indexOf(searchText) > -1) {
           candidates.add(clickables[i]);
         }
@@ -147,7 +152,7 @@
         }
 
         // Fallback: Check class
-        if (!matched && el.className && el.className.includes(params.testid)) {
+        if (!matched && el.className && el.className.indexOf(params.testid) > -1) {
           matched = true;
         }
 
@@ -166,8 +171,8 @@
 
       // Validate text if provided
       if (params.text) {
-        var searchText = params.text.replace(/\\n/g, '\n').toLowerCase();
-        var elText = (el.innerText || '').toLowerCase();
+        var searchText = normalizeText(params.text.replace(/\\n/g, '\n').toLowerCase());
+        var elText = normalizeText((el.innerText || '').toLowerCase());
         if (elText.indexOf(searchText) === -1) {
           return false;
         }
@@ -190,6 +195,12 @@
 
     var el = validElements[0];
 
+    // Warn if multiple matches
+    if (validElements.length > 1) {
+      var warning = 'WARN:found ' + validElements.length + ' matches, using first';
+      console.log(warning);
+    }
+
     // Determine method used
     var method = '';
     if (params.testid) {
@@ -207,7 +218,7 @@
           }
         }
         // Fallback: class
-        if (!method && el.className && el.className.includes(params.testid)) {
+        if (!method && el.className && el.className.indexOf(params.testid) > -1) {
           method = 'class';
         }
       }
@@ -221,7 +232,7 @@
       method = 'selector';
     }
 
-    return { el: el, method: method, params: params };
+    return { el: el, method: method, params: params, count: validElements.length };
   }
 
   // Click an element
@@ -233,6 +244,61 @@
     } else {
       el.click();
     }
+  }
+
+  // Generate diagnostic error message
+  function generateErrorReport(params, root) {
+    var report = [];
+
+    // Check each criterion and report findings
+    if (params.testid) {
+      var idMatches = root.querySelectorAll('[id="' + params.testid + '"]').length;
+      var attrMatches = 0;
+      var allEls = root.querySelectorAll('*');
+      for (var i = 0; i < allEls.length; i++) {
+        var attrs = allEls[i].attributes;
+        for (var j = 0; j < attrs.length; j++) {
+          if (attrs[j].name.endsWith('id') && attrs[j].value === params.testid) {
+            attrMatches++;
+            break;
+          }
+        }
+      }
+      var classMatches = root.querySelectorAll('[class*="' + params.testid + '"]').length;
+      report.push('testid=' + params.testid + ' (id:' + idMatches + ', *id:' + attrMatches + ', class:' + classMatches + ')');
+    }
+
+    if (params.aria) {
+      var ariaMatches = root.querySelectorAll('[aria-label*="' + params.aria + '"]').length;
+      report.push('aria=' + params.aria + ' (' + ariaMatches + ' found)');
+    }
+
+    if (params.text) {
+      var searchText = normalizeText(params.text.replace(/\\n/g, '\n').toLowerCase());
+      var clickables = root.querySelectorAll('button, a, [role="button"], [onclick]');
+      var textMatches = 0;
+      for (var i = 0; i < clickables.length; i++) {
+        var t = normalizeText((clickables[i].innerText || '').toLowerCase());
+        if (t.indexOf(searchText) > -1) textMatches++;
+      }
+      report.push('text=' + params.text + ' (' + textMatches + ' found)');
+    }
+
+    if (params.href) {
+      var hrefMatches = root.querySelectorAll('a[href^="' + params.href + '"]').length;
+      report.push('href=' + params.href + ' (' + hrefMatches + ' found)');
+    }
+
+    if (params.selector) {
+      try {
+        var selectorMatches = root.querySelectorAll(params.selector).length;
+        report.push('selector=' + params.selector + ' (' + selectorMatches + ' found)');
+      } catch (e) {
+        report.push('selector=' + params.selector + ' (invalid)');
+      }
+    }
+
+    return report.join(', ');
   }
 
   // Get element info for output
@@ -265,33 +331,29 @@
     for (var i = 0; i < times; i++) {
       var result = findElement(target);
       if (!result.el) {
-        var tried = [];
-        if (result.params.testid) tried.push('testid=' + result.params.testid);
-        if (result.params.aria) tried.push('aria=' + result.params.aria);
-        if (result.params.text) tried.push('text=' + result.params.text);
-        if (result.params.href) tried.push('href=' + result.params.href);
-        if (result.params.selector) tried.push('selector=' + result.params.selector);
-        return 'FAIL:click ' + (i + 1) + ' not found (' + tried.join(', ') + ')';
+        return 'FAIL:click ' + (i + 1) + ' not found (' + generateErrorReport(result.params, root) + ')';
       }
       clickElement(result.el);
       if (i < times - 1) sleep(delay);
     }
     var lastResult = findElement(target);
-    return 'OK:clicked ' + times + ' times ' + getInfo(lastResult.el);
+    var msg = 'OK:clicked ' + times + ' times ' + getInfo(lastResult.el);
+    if (lastResult.count > 1) {
+      msg = 'OK(' + lastResult.count + ' matches):clicked ' + times + ' times ' + getInfo(lastResult.el);
+    }
+    return msg;
   }
 
   // times=1: single click
   var result = findElement(target);
   if (!result.el) {
-    var tried = [];
-    if (result.params.testid) tried.push('testid=' + result.params.testid);
-    if (result.params.aria) tried.push('aria=' + result.params.aria);
-    if (result.params.text) tried.push('text=' + result.params.text);
-    if (result.params.href) tried.push('href=' + result.params.href);
-    if (result.params.selector) tried.push('selector=' + result.params.selector);
-    return 'FAIL:target not found (' + tried.join(', ') + ')';
+    return 'FAIL:target not found (' + generateErrorReport(result.params, root) + ')';
   }
 
   clickElement(result.el);
-  return 'OK:' + result.method + ' ' + getInfo(result.el);
+  var msg = 'OK:' + result.method + ' ' + getInfo(result.el);
+  if (result.count > 1) {
+    msg = 'OK(' + result.count + ' matches):' + result.method + ' ' + getInfo(result.el);
+  }
+  return msg;
 })();
