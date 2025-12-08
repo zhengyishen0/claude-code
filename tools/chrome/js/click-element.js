@@ -1,6 +1,5 @@
-// click-element.js - Smart element finding + click with batch support
+// click-element.js - Smart element finding + click
 // Usage: chrome-cli execute 'var _p={targets:["[@Search](#btn)"], times:1}; <code>'
-//        chrome-cli execute 'var _p={targets:["[a]","[b]"], times:1}; <code>'
 //        chrome-cli execute 'var _p={targets:["[+]"], times:5}; <code>'
 
 (function() {
@@ -167,7 +166,7 @@
     return info;
   }
 
-  // Handle targets array
+  // Handle single target
   var targets = p.targets || [];
   var times = p.times || 1;
   var delay = p.delay || 100;
@@ -176,11 +175,17 @@
     return 'FAIL:no targets specified';
   }
 
-  // Single target with times > 1: click same element multiple times
+  if (targets.length > 1) {
+    return 'FAIL:multiple targets not supported, use chaining instead';
+  }
+
+  var target = targets[0];
+
+  // times > 1: click same element multiple times
   // Re-find element each time for React components that re-render after state change
-  if (targets.length === 1 && times > 1) {
+  if (times > 1) {
     for (var i = 0; i < times; i++) {
-      var result = findElement(targets[0]);
+      var result = findElement(target);
       if (!result.el) {
         var tried = [];
         if (result.params.testid) tried.push('testid=' + result.params.testid);
@@ -193,30 +198,22 @@
       clickElement(result.el);
       if (i < times - 1) sleep(delay);
     }
-    var lastResult = findElement(targets[0]);
+    var lastResult = findElement(target);
     return 'OK:clicked ' + times + ' times ' + getInfo(lastResult.el);
   }
 
-  // Multiple targets or single target with times=1: click each once
-  for (var i = 0; i < targets.length; i++) {
-    var result = findElement(targets[i]);
-    if (!result.el) {
-      var tried = [];
-      if (result.params.testid) tried.push('testid=' + result.params.testid);
-      if (result.params.aria) tried.push('aria=' + result.params.aria);
-      if (result.params.text) tried.push('text=' + result.params.text);
-      if (result.params.href) tried.push('href=' + result.params.href);
-      if (result.params.selector) tried.push('selector=' + result.params.selector);
-      return 'FAIL:target ' + (i + 1) + ' not found (' + tried.join(', ') + ')';
-    }
-
-    clickElement(result.el);
-    if (i < targets.length - 1) sleep(delay);
+  // times=1: single click
+  var result = findElement(target);
+  if (!result.el) {
+    var tried = [];
+    if (result.params.testid) tried.push('testid=' + result.params.testid);
+    if (result.params.aria) tried.push('aria=' + result.params.aria);
+    if (result.params.text) tried.push('text=' + result.params.text);
+    if (result.params.href) tried.push('href=' + result.params.href);
+    if (result.params.selector) tried.push('selector=' + result.params.selector);
+    return 'FAIL:target not found (' + tried.join(', ') + ')';
   }
 
-  if (targets.length === 1) {
-    var result = findElement(targets[0]);
-    return 'OK:' + result.method + ' ' + getInfo(result.el);
-  }
-  return 'OK:clicked ' + targets.length + ' elements';
+  clickElement(result.el);
+  return 'OK:' + result.method + ' ' + getInfo(result.el);
 })();

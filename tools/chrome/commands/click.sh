@@ -3,21 +3,21 @@
 # Usage: click.sh "[text@aria](#testid)" [-S SECTION] [--times N]
 
 if [[ "$1" == "--help" ]]; then
-  echo "click TARGET(s) [--section SECTION] [--times N] [--delay MS]  Smart click element(s)"
+  echo "click TARGET [--section SECTION] [--times N] [--delay MS]  Smart click element"
   echo "  TARGET: copy from recon output, e.g. \"[@Search](#btn)\""
   echo "  --section: scope click to section (aria-label, heading, or tag)"
   echo "  --times N: click same element N times"
   echo "  --delay MS: delay between clicks in ms (default: 100)"
-  echo "  Multiple targets: click \"[a]\" \"[b]\" \"[c]\" (clicks each once)"
   echo "  Also accepts CSS selectors as fallback"
   echo ""
   echo "Chain with +: click TARGET + wait + recon"
+  echo "  Multiple clicks: click \"[a]\" + click \"[b]\" + click \"[c]\""
   exit 0
 fi
 
 SCRIPT_DIR="$(dirname "$0")/.."
 
-TARGETS=()
+TARGET=""
 SECTION=""
 TIMES=1
 DELAY=100
@@ -41,35 +41,27 @@ while [ $# -gt 0 ]; do
       exit 1
       ;;
     *)
-      TARGETS+=("$1")
+      if [ -n "$TARGET" ]; then
+        echo "Error: Multiple targets not supported. Use chaining instead:" >&2
+        echo "  click \"[a]\" + click \"[b]\" + click \"[c]\"" >&2
+        exit 1
+      fi
+      TARGET="$1"
       shift
       ;;
   esac
 done
 
-if [ ${#TARGETS[@]} -eq 0 ]; then
+if [ -z "$TARGET" ]; then
   echo "Usage: click.sh \"[text@aria](#testid)\"" >&2
-  echo "       click.sh \"[a]\" \"[b]\" \"[c]\"  # multiple targets" >&2
-  echo "       click.sh \"[+]\" --times 5     # repeat 5 times" >&2
+  echo "       click.sh \"[+]\" --times 5" >&2
+  echo "  For multiple clicks, use chaining: click \"[a]\" + click \"[b]\"" >&2
   exit 1
 fi
 
-# Validate: --times only with single target
-if [ "$TIMES" -gt 1 ] && [ ${#TARGETS[@]} -gt 1 ]; then
-  echo "Error: --times cannot be used with multiple targets" >&2
-  exit 1
-fi
-
-# Build JSON array for targets
-TARGETS_JSON="["
-for i in "${!TARGETS[@]}"; do
-  TARGET_ESC=$(printf '%s' "${TARGETS[$i]}" | sed 's/\\/\\\\/g; s/"/\\"/g')
-  TARGETS_JSON+='"'"$TARGET_ESC"'"'
-  if [ $i -lt $((${#TARGETS[@]} - 1)) ]; then
-    TARGETS_JSON+=","
-  fi
-done
-TARGETS_JSON+="]"
+# Build single-element JSON array
+TARGET_ESC=$(printf '%s' "$TARGET" | sed 's/\\/\\\\/g; s/"/\\"/g')
+TARGETS_JSON='["'"$TARGET_ESC"'"]'
 
 SECTION_ESC=$(printf '%s' "$SECTION" | sed 's/"/\\"/g')
 
@@ -96,7 +88,7 @@ if [ "$TIMES" -gt 1 ]; then
   done
   echo "OK:clicked $TIMES times"
 else
-  # Single click or multiple targets - execute once
+  # Single click
   result=$(chrome-cli execute 'var _p={targets:'"$TARGETS_JSON"', times:1, section:"'"$SECTION_ESC"'"}; '"$JS_CODE")
   echo "$result"
 fi
