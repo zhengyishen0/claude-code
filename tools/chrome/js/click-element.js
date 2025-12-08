@@ -279,14 +279,19 @@
     return 'full'; // fallback
   }
 
+  // Check if element is visible
+  function isElementVisible(element) {
+    if (!element) return false;
+    var style = getComputedStyle(element);
+    return style.display !== 'none' &&
+           style.visibility !== 'hidden' &&
+           element.offsetParent !== null;
+  }
+
   // Check if dialog is visible
   function isDialogVisible(dialog) {
     if (!dialog) return false;
-    var style = getComputedStyle(dialog);
-    return dialog.open ||
-           (style.display !== 'none' &&
-            style.visibility !== 'hidden' &&
-            dialog.offsetParent !== null);
+    return dialog.open || isElementVisible(dialog);
   }
 
   // Get all visible dialogs
@@ -301,15 +306,41 @@
     return visible;
   }
 
+  // Get all visible alerts/toasts
+  function getVisibleAlerts() {
+    var allAlerts = document.querySelectorAll('[role=alert], [role=status], .toast, .notification, [aria-live=assertive], [aria-live=polite]');
+    var visible = [];
+    for (var i = 0; i < allAlerts.length; i++) {
+      if (isElementVisible(allAlerts[i])) {
+        visible.push(allAlerts[i]);
+      }
+    }
+    return visible;
+  }
+
+  // Get all visible listboxes/comboboxes (autocomplete dropdowns)
+  function getVisibleListboxes() {
+    var allListboxes = document.querySelectorAll('[role=listbox], [role=combobox], [role=menu], .autocomplete, .dropdown-menu, [class*="suggestions"]');
+    var visible = [];
+    for (var i = 0; i < allListboxes.length; i++) {
+      if (isElementVisible(allListboxes[i])) {
+        visible.push(allListboxes[i]);
+      }
+    }
+    return visible;
+  }
+
   // Check if element is top-level (direct child of body)
   function isTopLevel(element) {
     return element && element.parentElement === document.body;
   }
 
   // Detect context using semantic parent approach
-  function detectContextSemantic(clickedElement, beforeURL, beforeDialogs, semanticParent) {
+  function detectContextSemantic(clickedElement, beforeURL, beforeDialogs, beforeAlerts, beforeListboxes, semanticParent) {
     var afterURL = location.href;
     var afterDialogs = getVisibleDialogs();
+    var afterAlerts = getVisibleAlerts();
+    var afterListboxes = getVisibleListboxes();
 
     // Priority 1: Navigation (URL changed)
     if (afterURL !== beforeURL) {
@@ -345,6 +376,54 @@
           reconScope: 'dialog'
         };
       }
+    }
+
+    // Priority 2.5: New alert/toast appeared
+    var newAlerts = [];
+    for (var i = 0; i < afterAlerts.length; i++) {
+      var found = false;
+      for (var j = 0; j < beforeAlerts.length; j++) {
+        if (afterAlerts[i] === beforeAlerts[j]) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        newAlerts.push(afterAlerts[i]);
+      }
+    }
+
+    if (newAlerts.length > 0) {
+      // New alert/toast detected - show full page to include it
+      return {
+        type: 'alert-appeared',
+        waitSelector: '[role=alert], [role=status]',
+        reconScope: 'full'
+      };
+    }
+
+    // Priority 2.6: New listbox/autocomplete appeared
+    var newListboxes = [];
+    for (var i = 0; i < afterListboxes.length; i++) {
+      var found = false;
+      for (var j = 0; j < beforeListboxes.length; j++) {
+        if (afterListboxes[i] === beforeListboxes[j]) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        newListboxes.push(afterListboxes[i]);
+      }
+    }
+
+    if (newListboxes.length > 0) {
+      // New autocomplete/dropdown detected - show full page to include it
+      return {
+        type: 'listbox-appeared',
+        waitSelector: '[role=listbox], [role=combobox], [role=menu]',
+        reconScope: 'full'
+      };
     }
 
     // Priority 3: Semantic parent disappeared (e.g., modal closed)
@@ -461,6 +540,8 @@
     var semanticParent;
     var beforeURL;
     var beforeDialogs;
+    var beforeAlerts;
+    var beforeListboxes;
 
     for (var i = 0; i < times; i++) {
       var result = findElement(target);
@@ -473,6 +554,8 @@
         semanticParent = findSemanticParent(result.el);
         beforeURL = location.href;
         beforeDialogs = getVisibleDialogs();
+        beforeAlerts = getVisibleAlerts();
+        beforeListboxes = getVisibleListboxes();
       }
 
       clickElement(result.el);
@@ -483,7 +566,7 @@
     sleep(50);
 
     // Detect context using semantic approach
-    var context = detectContextSemantic(result.el, beforeURL, beforeDialogs, semanticParent);
+    var context = detectContextSemantic(result.el, beforeURL, beforeDialogs, beforeAlerts, beforeListboxes, semanticParent);
 
     var lastResult = findElement(target);
     var msg = 'OK:clicked ' + times + ' times ' + getInfo(lastResult.el);
@@ -507,6 +590,8 @@
   var semanticParent = findSemanticParent(result.el);
   var beforeURL = location.href;
   var beforeDialogs = getVisibleDialogs();
+  var beforeAlerts = getVisibleAlerts();
+  var beforeListboxes = getVisibleListboxes();
 
   clickElement(result.el);
 
@@ -514,7 +599,7 @@
   sleep(50);
 
   // Detect context using semantic approach
-  var context = detectContextSemantic(result.el, beforeURL, beforeDialogs, semanticParent);
+  var context = detectContextSemantic(result.el, beforeURL, beforeDialogs, beforeAlerts, beforeListboxes, semanticParent);
 
   // Build message with context info
   var msg = 'OK:' + result.method + ' ' + getInfo(result.el);

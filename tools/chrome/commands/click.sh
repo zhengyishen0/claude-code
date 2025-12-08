@@ -14,7 +14,9 @@ if [[ "$1" == "--help" ]]; then
   echo "  - Navigation: waits for page load, recons full page"
   echo "  - Modal open: waits for dialog, recons dialog section only"
   echo "  - Modal close: waits for dialog gone, recons main content"
-  echo "  - Inline update: waits for DOM change, recons full page"
+  echo "  - Alert/Toast: waits for notification, recons full page"
+  echo "  - Autocomplete: waits for dropdown, recons full page"
+  echo "  - Semantic context: waits for DOM change, recons form/section/article/etc."
   echo ""
   echo "Manual mode (set CHROME_AUTO_MODE=false in tools/chrome/config):"
   echo "  Chain with +: click TARGET + wait + recon"
@@ -93,6 +95,14 @@ if [ "$AUTO_MODE" = "true" ]; then
       sleep 0.3  # Small delay for navigation
       ;;
     modal-open)
+      "$SCRIPT_DIR/commands/wait.sh" "$waitSelector" 2>/dev/null || true
+      ;;
+    alert-appeared)
+      # Wait for alert/toast to appear
+      "$SCRIPT_DIR/commands/wait.sh" "$waitSelector" 2>/dev/null || true
+      ;;
+    listbox-appeared)
+      # Wait for autocomplete/dropdown to appear
       "$SCRIPT_DIR/commands/wait.sh" "$waitSelector" 2>/dev/null || true
       ;;
     semantic-parent-gone)
