@@ -1,0 +1,20 @@
+{
+  "name": "playwright-cli-tool",
+  "version": "1.0.0",
+  "description": "Shell-friendly Playwright CLI wrapper for browser automation",
+  "main": "index.js",
+  "scripts": {
+    "test": "node js/test.js"
+  },
+  "keywords": [
+    "playwright",
+    "cli",
+    "browser",
+    "automation"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}
