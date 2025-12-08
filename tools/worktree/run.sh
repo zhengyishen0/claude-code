@@ -33,7 +33,7 @@ worktree_create() {
     local abs_path="$(cd "$worktree_path" && pwd)"
 
     echo "Worktree ready: $abs_path"
-    echo "Grant permission when prompted to access this directory"
+    echo "Continue your work"
 }
 
 # Subcommand: list
