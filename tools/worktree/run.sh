@@ -20,27 +20,23 @@ worktree_create() {
     if [ $? -ne 0 ]; then
         # Check if worktree already exists
         if [ -d "$worktree_path" ]; then
-            local abs_path="$(cd "$worktree_path" && pwd)"
-            echo "Worktree already exists: $abs_path"
-            echo "Switching to existing worktree..."
-            cd "$abs_path"
-            exec claude --continue --fork-session
+            echo "Worktree already exists"
         else
             echo "Failed to create worktree"
             exit 1
         fi
+    else
+        echo "Created worktree"
     fi
 
     # Resolve absolute path
     local abs_path="$(cd "$worktree_path" && pwd)"
 
-    echo "Created worktree: $abs_path"
-    echo "Switching to new Claude session..."
+    # Add to additionalDirectories
+    claude --add-dir "$abs_path"
 
-    # Change to worktree and exec new Claude session
-    # exec replaces current process, automatically closing this session
-    cd "$abs_path"
-    exec claude --continue --fork-session
+    echo "Worktree ready: $abs_path"
+    echo "Use absolute paths when working in this worktree"
 }
 
 # Subcommand: list
@@ -61,19 +57,65 @@ worktree_remove() {
     git worktree remove "$worktree_path"
 }
 
+# Subcommand: rename
+worktree_rename() {
+    local new_name="$1"
+
+    if [ -z "$new_name" ]; then
+        echo "Error: New name required"
+        exit 1
+    fi
+
+    local current_branch=$(git branch --show-current)
+
+    # Must be in a temp worktree
+    if [[ ! "$current_branch" == temp-* ]]; then
+        echo "Error: Not in a temp worktree (current branch: $current_branch)"
+        exit 1
+    fi
+
+    # Rename branch
+    git branch -m "$new_name"
+
+    # Rename worktree directory
+    local old_path=$(git rev-parse --show-toplevel)
+    local new_path="${old_path%/*}/claude-code-$new_name"
+
+    cd ..
+    mv "$old_path" "$new_path"
+    cd "$new_path"
+
+    echo "Renamed to: $new_name"
+    echo "New path: $new_path"
+}
+
+# Subcommand: init
+worktree_init() {
+    local script_path="$SCRIPT_DIR/claude-worktree.sh"
+
+    echo "Setting up claude-worktree alias..."
+    echo ""
+    echo "Add this to your shell config (~/.bashrc or ~/.zshrc):"
+    echo "  alias claude-worktree='$script_path'"
+    echo ""
+    echo "Then restart your shell or run: source ~/.bashrc (or ~/.zshrc)"
+}
+
 # Show help
 show_help() {
     cat <<EOF
 Git Worktree Tool for Claude Code
 ==================================
 
-Creates isolated git worktrees and launches new Claude sessions.
+Manage git worktrees with automatic permissions and temp worktree support.
 
 USAGE:
   tools/worktree/run.sh <command> [args...]
 
 COMMANDS:
-  create <branch-name>  Create worktree and launch Claude session
+  init                  Setup claude-worktree alias
+  create <branch-name>  Create worktree and grant permissions
+  rename <new-name>     Rename temp worktree to meaningful name
   list                  List all worktrees
   remove <branch-name>  Remove a worktree
   help                  Show this help
@@ -97,13 +139,23 @@ EOF
     cat <<EOF
 
 EXAMPLES:
+  tools/worktree/run.sh init
   tools/worktree/run.sh create feature-auth
+  tools/worktree/run.sh rename my-feature
   tools/worktree/run.sh list
   tools/worktree/run.sh remove feature-auth
 
-WORKFLOW:
+WORKFLOWS:
+
+  Temp worktree (via claude-worktree alias):
+  1. Run: claude-worktree (outside Claude)
+  2. Work in temp worktree
+  3. If keeping changes: tools/worktree/run.sh rename feature-name
+  4. Exit Claude (auto-removes if still temp)
+
+  Named worktree (via create command):
   1. Create worktree: tools/worktree/run.sh create my-feature
-  2. Claude switches to new session in same terminal
+  2. Use absolute paths: /path/to/claude-code-my-feature/file.js
   3. Complete feature, commit changes
   4. Merge to main: git merge my-feature
   5. Remove worktree: tools/worktree/run.sh remove my-feature
@@ -124,6 +176,12 @@ main() {
             ;;
         remove)
             worktree_remove "$@"
+            ;;
+        rename)
+            worktree_rename "$@"
+            ;;
+        init)
+            worktree_init
             ;;
         help|--help|-h|"")
             show_help
