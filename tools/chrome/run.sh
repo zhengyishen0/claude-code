@@ -26,6 +26,19 @@ CHROME_CLICK_DELAY=150
 CHROME_INPUT_DELAY=150
 
 # ============================================================================
+# Snapshot directory for recon --diff
+# ============================================================================
+SNAPSHOT_DIR="/tmp/recon-snapshots"
+mkdir -p "$SNAPSHOT_DIR" 2>/dev/null
+
+# Get sanitized URL for snapshot filename
+get_snapshot_prefix() {
+  local url=$(chrome-cli execute "location.hostname + location.pathname")
+  # Remove quotes, sanitize for filename
+  echo "$url" | tr -d '"' | tr '/:?&=' '-' | tr -s '-' | sed 's/-$//'
+}
+
+# ============================================================================
 # Command: recon
 # ============================================================================
 cmd_recon() {
@@ -47,21 +60,35 @@ cmd_recon() {
     chrome-cli execute "$(cat "$SCRIPT_DIR/js/page-status.js")"
   fi
 
-  # Diff mode: show only changes since last recon
+  # Get URL prefix for snapshot files
+  local prefix=$(get_snapshot_prefix)
+  local timestamp=$(date +%s)
+  local snapshot_file="$SNAPSHOT_DIR/${prefix}-${timestamp}.md"
+
+  # Diff mode: compare against previous snapshot
   if [ "$DIFF_MODE" = "true" ]; then
-    chrome-cli execute "window.__RECON_DIFF_MODE__ = 'diff'; $(cat "$SCRIPT_DIR/js/dom-snapshot.js")"
+    # Find most recent snapshot for this URL
+    local latest=$(ls -t "$SNAPSHOT_DIR/${prefix}"-*.md 2>/dev/null | head -1)
+    if [ -z "$latest" ]; then
+      echo "No previous snapshot for this URL. Run recon first."
+      return 1
+    fi
+
+    # Run recon and diff against previous
+    if [ "$FULL_MODE" = "true" ]; then
+      chrome-cli execute "window.__RECON_FULL__ = true; $(cat "$SCRIPT_DIR/js/html2md.js")" | diff "$latest" - || true
+    else
+      chrome-cli execute "window.__RECON_FULL__ = false; $(cat "$SCRIPT_DIR/js/html2md.js")" | diff "$latest" - || true
+    fi
     return
   fi
 
-  # Normal recon
+  # Normal recon: output and save snapshot
   if [ "$FULL_MODE" = "true" ]; then
-    chrome-cli execute "window.__RECON_FULL__ = true; $(cat "$SCRIPT_DIR/js/html2md.js")"
+    chrome-cli execute "window.__RECON_FULL__ = true; $(cat "$SCRIPT_DIR/js/html2md.js")" | tee "$snapshot_file"
   else
-    chrome-cli execute "window.__RECON_FULL__ = false; $(cat "$SCRIPT_DIR/js/html2md.js")"
+    chrome-cli execute "window.__RECON_FULL__ = false; $(cat "$SCRIPT_DIR/js/html2md.js")" | tee "$snapshot_file"
   fi
-
-  # Save snapshot for future --diff calls
-  chrome-cli execute "window.__RECON_DIFF_MODE__ = 'snapshot'; $(cat "$SCRIPT_DIR/js/dom-snapshot.js")" > /dev/null
 }
 
 # ============================================================================
