@@ -13,13 +13,22 @@ worktree_create() {
         exit 1
     fi
 
-    # Create worktree
+    # Try to create worktree
     local worktree_path="../claude-code-$branch_name"
-    git worktree add -b "$branch_name" "$worktree_path"
+    git worktree add -b "$branch_name" "$worktree_path" 2>/dev/null
 
     if [ $? -ne 0 ]; then
-        echo "Failed to create worktree"
-        exit 1
+        # Check if worktree already exists
+        if [ -d "$worktree_path" ]; then
+            local abs_path="$(cd "$worktree_path" && pwd)"
+            echo "Worktree already exists: $abs_path"
+            echo "Switching to existing worktree..."
+            cd "$abs_path"
+            exec claude --fork-session
+        else
+            echo "Failed to create worktree"
+            exit 1
+        fi
     fi
 
     # Resolve absolute path
