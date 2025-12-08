@@ -18,31 +18,7 @@ SELECTOR_ESC=$(printf '%s' "$SELECTOR" | sed "s/'/\\\\'/g")
 VALUE_ESC=$(printf '%s' "$VALUE" | sed "s/'/\\\\'/g")
 
 # Set input value (React-safe)
-result=$(chrome-cli execute "
-(function() {
-  var el = document.querySelector('$SELECTOR_ESC');
-  if (!el) return 'FAIL: element not found';
-
-  el.focus();
-  el.click();
-
-  // Use native setter for React compatibility
-  var proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement : HTMLInputElement;
-  var setter = Object.getOwnPropertyDescriptor(proto.prototype, 'value');
-  if (setter && setter.set) {
-    setter.set.call(el, '$VALUE_ESC');
-  } else {
-    el.value = '$VALUE_ESC';
-  }
-
-  // Dispatch events React listens to
-  el.dispatchEvent(new Event('input', {bubbles: true}));
-  el.dispatchEvent(new Event('change', {bubbles: true}));
-
-  var tag = el.tagName.toLowerCase();
-  return 'OK: set ' + tag + ' = \"' + '$VALUE_ESC'.substring(0, 20) + '\"';
-})()
-")
+result=$(chrome-cli execute "var SELECTOR='$SELECTOR_ESC'; var VALUE='$VALUE_ESC'; $(cat "$SCRIPT_DIR/js/set-input.js")")
 
 echo "$result"
 

@@ -28,21 +28,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ "$STATUS" = "true" ]; then
-  chrome-cli execute "
-    const status = {
-      readyState: document.readyState,
-      images: { total: document.images.length, loaded: Array.from(document.images).filter(i => i.complete).length },
-      scripts: { total: document.scripts.length },
-      iframes: document.querySelectorAll('iframe').length,
-      pendingXHR: window.performance.getEntriesByType('resource').filter(r => !r.responseEnd).length
-    };
-    '## Loading Status\\n' +
-    '- Document: ' + status.readyState + '\\n' +
-    '- Images: ' + status.images.loaded + '/' + status.images.total + ' loaded\\n' +
-    '- Scripts: ' + status.scripts.total + '\\n' +
-    '- Iframes: ' + status.iframes + '\\n' +
-    '- Pending resources: ' + status.pendingXHR + '\\n\\n';
-  "
+  chrome-cli execute "$(cat "$SCRIPT_DIR/js/page-status.js")"
 fi
 
 # Set mode for html2md.js
