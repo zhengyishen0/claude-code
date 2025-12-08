@@ -1,7 +1,9 @@
 // html2md.js - Pure HTML to Markdown with CSS selectors
 // No site-specific logic, just clean HTML structure
+// Smart defaults: Show structure + expand priority sections
 
 (function() {
+  const fullMode = window.__RECON_FULL__ || false;
   const clone = document.documentElement.cloneNode(true);
 
   // Remove non-content elements
@@ -65,12 +67,25 @@
     return '  '.repeat(depth) + '- ';
   }
 
-  function processNode(node, depth) {
+  // Priority sections that should be fully expanded
+  const prioritySections = ['dialog', 'form', 'nav', 'alert'];
+
+  function isPrioritySection(sectionName) {
+    if (!sectionName) return false;
+    const lower = sectionName.toLowerCase();
+    return prioritySections.some(p => lower.includes(p));
+  }
+
+  function processNode(node, depth, context = {}) {
     const lines = [];
+    const currentSection = context.section || '';
+    const isExpanded = fullMode || isPrioritySection(currentSection);
 
     if (node.nodeType === Node.TEXT_NODE) {
       const text = node.textContent.trim().replace(/\s+/g, ' ');
-      if (text) lines.push('  '.repeat(depth + 1) + text);
+      if (text && isExpanded) {
+        lines.push('  '.repeat(depth + 1) + text);
+      }
       return lines;
     }
 
@@ -79,7 +94,7 @@
     const tag = node.tagName.toLowerCase();
     if (['head', 'title', 'template'].includes(tag)) return lines;
 
-    // Headings
+    // Headings - always show
     if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) {
       const text = node.textContent.trim().replace(/\s+/g, ' ');
       if (text) {
@@ -89,59 +104,89 @@
       return lines;
     }
 
-    // Buttons
+    // Buttons - show only in expanded sections
     if (tag === 'button' || getAttr(node, 'role') === 'button') {
-      const text = node.innerText.trim().replace(/\s+/g, ' ').substring(0, 50);
-      const selector = getSelector(node);
-      if (selector) {
-        lines.push(indent(depth) + `Button ${selector}: ${text || '(no text)'}`);
-      } else if (text) {
-        lines.push(indent(depth) + `Button: ${text}`);
+      if (isExpanded) {
+        const text = node.innerText.trim().replace(/\s+/g, ' ').substring(0, 50);
+        const selector = getSelector(node);
+        if (selector) {
+          lines.push(indent(depth) + `Button ${selector}: ${text || '(no text)'}`);
+        } else if (text) {
+          lines.push(indent(depth) + `Button: ${text}`);
+        }
       }
       return lines;
     }
 
-    // Inputs
+    // Inputs - show only in expanded sections
     if (tag === 'input' || tag === 'textarea' || tag === 'select') {
-      const type = getAttr(node, 'type') || 'text';
-      const selector = getSelector(node);
-      const value = node.value ? ` = "${node.value.substring(0, 30)}"` : '';
-      if (selector) {
-        lines.push(indent(depth) + `Input ${selector}${value} (${type})`);
-      } else {
-        lines.push(indent(depth) + `Input (${type})`);
+      if (isExpanded) {
+        const type = getAttr(node, 'type') || 'text';
+        const selector = getSelector(node);
+        const value = node.value ? ` = "${node.value.substring(0, 30)}"` : '';
+        if (selector) {
+          lines.push(indent(depth) + `Input ${selector}${value} (${type})`);
+        } else {
+          lines.push(indent(depth) + `Input (${type})`);
+        }
       }
       return lines;
     }
 
-    // Links
+    // Links - show only in expanded sections
     if (tag === 'a') {
-      const href = getAttr(node, 'href');
-      if (!href || href === '#') return lines;
-      const text = node.textContent.trim().replace(/\s+/g, ' ').substring(0, 50) || 'link';
-      const shortHref = href.length > 50 ? href.substring(0, 50) + '...' : href;
-      lines.push(indent(depth) + `[${text}](${shortHref})`);
+      if (isExpanded) {
+        const href = getAttr(node, 'href');
+        if (!href || href === '#') return lines;
+        const text = node.textContent.trim().replace(/\s+/g, ' ').substring(0, 50) || 'link';
+        const shortHref = href.length > 50 ? href.substring(0, 50) + '...' : href;
+        lines.push(indent(depth) + `[${text}](${shortHref})`);
+      }
       return lines;
     }
 
-    // Semantic sections
+    // Semantic sections - always show heading, expand content based on priority
     const semanticTags = ['header', 'main', 'nav', 'aside', 'footer', 'article', 'section', 'form', 'dialog'];
     const role = getAttr(node, 'role');
-    if (semanticTags.includes(tag) || role === 'dialog') {
-      const capTag = role === 'dialog' ? 'Dialog' : tag.charAt(0).toUpperCase() + tag.slice(1);
+    if (semanticTags.includes(tag) || role === 'dialog' || role === 'alert') {
+      const capTag = role === 'dialog' ? 'Dialog' :
+                     role === 'alert' ? 'Alert' :
+                     tag.charAt(0).toUpperCase() + tag.slice(1);
       const label = getAttr(node, 'aria-label');
       const heading = label ? `${capTag}: ${label}` : capTag;
+
       lines.push('');
       lines.push(`## ${heading}`);
-      Array.from(node.childNodes).forEach(child => {
-        lines.push(...processNode(child, 0));
-      });
+
+      // Create new context with this section name
+      const newContext = { section: heading };
+      const shouldExpand = fullMode || isPrioritySection(heading);
+
+      if (shouldExpand) {
+        // Fully expand priority sections
+        Array.from(node.childNodes).forEach(child => {
+          lines.push(...processNode(child, 0, newContext));
+        });
+      } else {
+        // For collapsed sections, show structure (h3) only
+        Array.from(node.childNodes).forEach(child => {
+          if (child.nodeType === Node.ELEMENT_NODE) {
+            const childTag = child.tagName.toLowerCase();
+            // Show headings and semantic sections
+            if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(childTag) ||
+                semanticTags.includes(childTag)) {
+              lines.push(...processNode(child, 0, newContext));
+            }
+          }
+        });
+      }
+
       return lines;
     }
 
     // Default: process children
     Array.from(node.childNodes).forEach(child => {
-      lines.push(...processNode(child, depth));
+      lines.push(...processNode(child, depth, context));
     });
 
     return lines;
@@ -156,7 +201,8 @@
     .replace(/^\s*\n/gm, '\n')
     .trim();
 
-  const header = `# ${document.title}\n\n**URL:** ${location.href}\n\n---\n`;
+  const modeIndicator = fullMode ? '' : '\n[Smart mode: showing structure + Dialog/Form/Nav details. Use --full for everything]';
+  const header = `# ${document.title}\n\n**URL:** ${location.href}${modeIndicator}\n\n---\n`;
 
   return header + cleaned;
 })();

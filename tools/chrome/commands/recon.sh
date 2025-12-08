@@ -3,8 +3,14 @@
 # Usage: recon.sh [--status]
 
 if [[ "$1" == "--help" ]]; then
-  echo "recon [--status]  Get page structure as markdown"
-  echo "  --status: show loading info (images, scripts, etc.)"
+  echo "recon [--full] [--status]  Get page structure as markdown"
+  echo ""
+  echo "By default, shows structure + interactive sections (Dialog, Form, Nav)"
+  echo "with collapsed repetitive content."
+  echo ""
+  echo "Options:"
+  echo "  --full:   Show all details (original verbose behavior)"
+  echo "  --status: Show loading info (images, scripts, etc.)"
   echo ""
   echo "Filter output with grep/awk:"
   echo "  Show Nav:    recon | awk '/^## Nav(\$|:)/,/^## [^N]/'"
@@ -16,11 +22,16 @@ fi
 SCRIPT_DIR="$(dirname "$0")/.."
 
 STATUS=""
+FULL_MODE=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --status)
       STATUS="true"
+      shift
+      ;;
+    --full)
+      FULL_MODE="true"
       shift
       ;;
     -*)
@@ -51,4 +62,9 @@ if [ "$STATUS" = "true" ]; then
   "
 fi
 
-chrome-cli execute "$(cat "$SCRIPT_DIR/js/html2md.js")"
+# Set mode for html2md.js
+if [ "$FULL_MODE" = "true" ]; then
+  chrome-cli execute "window.__RECON_FULL__ = true; $(cat "$SCRIPT_DIR/js/html2md.js")"
+else
+  chrome-cli execute "window.__RECON_FULL__ = false; $(cat "$SCRIPT_DIR/js/html2md.js")"
+fi
