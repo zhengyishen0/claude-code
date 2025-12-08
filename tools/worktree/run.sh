@@ -89,18 +89,6 @@ worktree_rename() {
     echo "New path: $new_path"
 }
 
-# Subcommand: init
-worktree_init() {
-    local script_path="$SCRIPT_DIR/claude-worktree.sh"
-
-    echo "Setting up claude-worktree alias..."
-    echo ""
-    echo "Add this to your shell config (~/.bashrc or ~/.zshrc):"
-    echo "  alias claude-worktree='$script_path'"
-    echo ""
-    echo "Then restart your shell or run: source ~/.bashrc (or ~/.zshrc)"
-}
-
 # Show help
 show_help() {
     cat <<EOF
@@ -113,7 +101,6 @@ USAGE:
   tools/worktree/run.sh <command> [args...]
 
 COMMANDS:
-  init                  Setup claude-worktree alias
   create <branch-name>  Create worktree and grant permissions
   rename <new-name>     Rename temp worktree to meaningful name
   list                  List all worktrees
@@ -139,21 +126,12 @@ EOF
     cat <<EOF
 
 EXAMPLES:
-  tools/worktree/run.sh init
   tools/worktree/run.sh create feature-auth
   tools/worktree/run.sh rename my-feature
   tools/worktree/run.sh list
   tools/worktree/run.sh remove feature-auth
 
-WORKFLOWS:
-
-  Temp worktree (via claude-worktree alias):
-  1. Run: claude-worktree (outside Claude)
-  2. Work in temp worktree
-  3. If keeping changes: tools/worktree/run.sh rename feature-name
-  4. Exit Claude (auto-removes if still temp)
-
-  Named worktree (via create command):
+WORKFLOW:
   1. Create worktree: tools/worktree/run.sh create my-feature
   2. Use absolute paths: /path/to/claude-code-my-feature/file.js
   3. Complete feature, commit changes
@@ -179,9 +157,6 @@ main() {
             ;;
         rename)
             worktree_rename "$@"
-            ;;
-        init)
-            worktree_init
             ;;
         help|--help|-h|"")
             show_help
