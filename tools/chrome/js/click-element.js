@@ -235,29 +235,128 @@
     return { el: el, method: method, params: params, count: validElements.length };
   }
 
-  // Capture page state for context detection
-  function captureState() {
-    var dialog = document.querySelector('[role=dialog], dialog');
-    var hasDialog = false;
+  // Find semantic parent element
+  function findSemanticParent(element) {
+    var semanticTags = ['dialog', 'form', 'section', 'article', 'aside', 'nav', 'main', 'header', 'footer'];
+    var current = element;
 
-    // Check if dialog exists AND is visible
-    if (dialog) {
-      var style = getComputedStyle(dialog);
-      hasDialog = dialog.offsetParent !== null &&
-                  style.display !== 'none' &&
-                  style.visibility !== 'hidden';
+    while (current && current !== document.body) {
+      var tag = current.tagName.toLowerCase();
+
+      // Check HTML5 semantic tags
+      if (semanticTags.indexOf(tag) !== -1) {
+        return current;
+      }
+
+      // Check ARIA roles
+      var role = current.getAttribute('role');
+      if (role === 'dialog' || role === 'form' || role === 'region') {
+        return current;
+      }
+
+      current = current.parentElement;
     }
 
-    return {
-      url: location.href,
-      hasDialog: hasDialog
-    };
+    return document.body; // fallback
   }
 
-  // Detect what changed after click
-  function detectContext(beforeState, afterState) {
-    // Navigation detected
-    if (afterState.url !== beforeState.url) {
+  // Get scope token from semantic element
+  function getScopeToken(element) {
+    if (!element) return 'full';
+
+    var tag = element.tagName.toLowerCase();
+    var role = element.getAttribute('role');
+
+    if (tag === 'dialog' || role === 'dialog') return 'dialog';
+    if (tag === 'form') return 'form';
+    if (tag === 'main') return 'main';
+    if (tag === 'nav') return 'nav';
+    if (tag === 'section' || role === 'region') return 'section';
+    if (tag === 'article') return 'article';
+    if (tag === 'header') return 'header';
+    if (tag === 'aside') return 'aside';
+
+    return 'full'; // fallback
+  }
+
+  // Check if element is visible
+  function isElementVisible(element) {
+    if (!element) return false;
+    var style = getComputedStyle(element);
+
+    // Check display and visibility
+    if (style.display === 'none' || style.visibility === 'hidden') {
+      return false;
+    }
+
+    // offsetParent is null for position:fixed elements, so check position
+    // Also handle position:absolute elements that might be at body level
+    if (style.position === 'fixed' || style.position === 'absolute') {
+      // For positioned elements, check if they have dimensions
+      var rect = element.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    }
+
+    // For other elements, check offsetParent
+    return element.offsetParent !== null;
+  }
+
+  // Check if dialog is visible
+  function isDialogVisible(dialog) {
+    if (!dialog) return false;
+    return dialog.open || isElementVisible(dialog);
+  }
+
+  // Get all visible dialogs
+  function getVisibleDialogs() {
+    var allDialogs = document.querySelectorAll('dialog, [role=dialog]');
+    var visible = [];
+    for (var i = 0; i < allDialogs.length; i++) {
+      if (isDialogVisible(allDialogs[i])) {
+        visible.push(allDialogs[i]);
+      }
+    }
+    return visible;
+  }
+
+  // Get all visible alerts/toasts
+  function getVisibleAlerts() {
+    var allAlerts = document.querySelectorAll('[role=alert], [role=status], .toast, .notification, [aria-live=assertive], [aria-live=polite]');
+    var visible = [];
+    for (var i = 0; i < allAlerts.length; i++) {
+      if (isElementVisible(allAlerts[i])) {
+        visible.push(allAlerts[i]);
+      }
+    }
+    return visible;
+  }
+
+  // Get all visible listboxes/comboboxes (autocomplete dropdowns)
+  function getVisibleListboxes() {
+    var allListboxes = document.querySelectorAll('[role=listbox], [role=combobox], [role=menu], .autocomplete, .dropdown-menu, [class*="suggestions"]');
+    var visible = [];
+    for (var i = 0; i < allListboxes.length; i++) {
+      if (isElementVisible(allListboxes[i])) {
+        visible.push(allListboxes[i]);
+      }
+    }
+    return visible;
+  }
+
+  // Check if element is top-level (direct child of body)
+  function isTopLevel(element) {
+    return element && element.parentElement === document.body;
+  }
+
+  // Detect context using semantic parent approach
+  function detectContextSemantic(clickedElement, beforeURL, beforeDialogs, beforeAlerts, beforeListboxes, semanticParent) {
+    var afterURL = location.href;
+    var afterDialogs = getVisibleDialogs();
+    var afterAlerts = getVisibleAlerts();
+    var afterListboxes = getVisibleListboxes();
+
+    // Priority 1: Navigation (URL changed)
+    if (afterURL !== beforeURL) {
       return {
         type: 'navigation',
         waitSelector: '',
@@ -265,30 +364,96 @@
       };
     }
 
-    // Modal opened
-    if (!beforeState.hasDialog && afterState.hasDialog) {
+    // Priority 2: New dialog appeared
+    var newDialogs = [];
+    for (var i = 0; i < afterDialogs.length; i++) {
+      var found = false;
+      for (var j = 0; j < beforeDialogs.length; j++) {
+        if (afterDialogs[i] === beforeDialogs[j]) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        newDialogs.push(afterDialogs[i]);
+      }
+    }
+
+    if (newDialogs.length > 0) {
+      var newDialog = newDialogs[newDialogs.length - 1]; // latest
+      // Only prioritize if dialog is top-level or outside semantic parent
+      if (isTopLevel(newDialog) || !semanticParent.contains(newDialog)) {
+        return {
+          type: 'modal-open',
+          waitSelector: '[role=dialog], dialog',
+          reconScope: 'dialog'
+        };
+      }
+    }
+
+    // Priority 2.5: New alert/toast appeared
+    var newAlerts = [];
+    for (var i = 0; i < afterAlerts.length; i++) {
+      var found = false;
+      for (var j = 0; j < beforeAlerts.length; j++) {
+        if (afterAlerts[i] === beforeAlerts[j]) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        newAlerts.push(afterAlerts[i]);
+      }
+    }
+
+    if (newAlerts.length > 0) {
+      // New alert/toast detected - show full page to include it
       return {
-        type: 'modal-open',
-        waitSelector: '[role=dialog], dialog',
-        reconScope: 'dialog'
+        type: 'alert-appeared',
+        waitSelector: '[role=alert], [role=status]',
+        reconScope: 'full'
       };
     }
 
-    // Modal closed
-    if (beforeState.hasDialog && !afterState.hasDialog) {
+    // Priority 2.6: New listbox/autocomplete appeared
+    var newListboxes = [];
+    for (var i = 0; i < afterListboxes.length; i++) {
+      var found = false;
+      for (var j = 0; j < beforeListboxes.length; j++) {
+        if (afterListboxes[i] === beforeListboxes[j]) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        newListboxes.push(afterListboxes[i]);
+      }
+    }
+
+    if (newListboxes.length > 0) {
+      // New autocomplete/dropdown detected - show full page to include it
       return {
-        type: 'modal-close',
-        waitSelector: '[role=dialog]',
-        waitGone: true,
+        type: 'listbox-appeared',
+        waitSelector: '[role=listbox], [role=combobox], [role=menu]',
+        reconScope: 'full'
+      };
+    }
+
+    // Priority 3: Semantic parent disappeared (e.g., modal closed)
+    if (!document.contains(semanticParent)) {
+      return {
+        type: 'semantic-parent-gone',
+        waitSelector: '',
         reconScope: 'main'
       };
     }
 
-    // Inline update (default)
+    // Priority 4: Use semantic parent
+    var scope = getScopeToken(semanticParent);
     return {
-      type: 'inline',
+      type: 'semantic-' + scope,
       waitSelector: '',
-      reconScope: 'full'
+      reconScope: scope
     };
   }
 
@@ -385,16 +550,27 @@
   // times > 1: click same element multiple times
   // Re-find element each time for React components that re-render after state change
   if (times > 1) {
-    var beforeState;
+    var semanticParent;
+    var beforeURL;
+    var beforeDialogs;
+    var beforeAlerts;
+    var beforeListboxes;
+
     for (var i = 0; i < times; i++) {
       var result = findElement(target);
       if (!result.el) {
         return 'FAIL:click ' + (i + 1) + ' not found (' + generateErrorReport(result.params, root) + ')';
       }
-      // Capture state before last click
+
+      // Capture context before last click
       if (i === times - 1) {
-        beforeState = captureState();
+        semanticParent = findSemanticParent(result.el);
+        beforeURL = location.href;
+        beforeDialogs = getVisibleDialogs();
+        beforeAlerts = getVisibleAlerts();
+        beforeListboxes = getVisibleListboxes();
       }
+
       clickElement(result.el);
       if (i < times - 1) sleep(delay);
     }
@@ -402,11 +578,8 @@
     // Wait for DOM/React to update after last click
     sleep(50);
 
-    // Capture state after last click
-    var afterState = captureState();
-
-    // Detect context from last click
-    var context = detectContext(beforeState, afterState);
+    // Detect context using semantic approach
+    var context = detectContextSemantic(result.el, beforeURL, beforeDialogs, beforeAlerts, beforeListboxes, semanticParent);
 
     var lastResult = findElement(target);
     var msg = 'OK:clicked ' + times + ' times ' + getInfo(lastResult.el);
@@ -426,19 +599,20 @@
     return 'FAIL:target not found (' + generateErrorReport(result.params, root) + ')';
   }
 
-  // Capture state before click
-  var beforeState = captureState();
+  // Capture context before click using semantic approach
+  var semanticParent = findSemanticParent(result.el);
+  var beforeURL = location.href;
+  var beforeDialogs = getVisibleDialogs();
+  var beforeAlerts = getVisibleAlerts();
+  var beforeListboxes = getVisibleListboxes();
 
   clickElement(result.el);
 
   // Wait a bit for DOM/React to update (synchronous delay)
   sleep(50);
 
-  // Capture state after click
-  var afterState = captureState();
-
-  // Detect context
-  var context = detectContext(beforeState, afterState);
+  // Detect context using semantic approach
+  var context = detectContextSemantic(result.el, beforeURL, beforeDialogs, beforeAlerts, beforeListboxes, semanticParent);
 
   // Build message with context info
   var msg = 'OK:' + result.method + ' ' + getInfo(result.el);

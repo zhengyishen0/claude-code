@@ -14,7 +14,9 @@ if [[ "$1" == "--help" ]]; then
   echo "  - Navigation: waits for page load, recons full page"
   echo "  - Modal open: waits for dialog, recons dialog section only"
   echo "  - Modal close: waits for dialog gone, recons main content"
-  echo "  - Inline update: waits for DOM change, recons full page"
+  echo "  - Alert/Toast: waits for notification, recons full page"
+  echo "  - Autocomplete: waits for dropdown, recons full page"
+  echo "  - Semantic context: waits for DOM change, recons form/section/article/etc."
   echo ""
   echo "Manual mode (set CHROME_AUTO_MODE=false in tools/chrome/config):"
   echo "  Chain with +: click TARGET + wait + recon"
@@ -87,38 +89,60 @@ echo "$status"
 
 # Auto-wait and auto-recon if enabled
 if [ "$AUTO_MODE" = "true" ]; then
+  # Wait based on context type
   case "$contextType" in
     navigation)
-      # Navigation: small delay then full recon
-      sleep 0.3
-      "$SCRIPT_DIR/commands/recon.sh"
+      sleep 0.3  # Small delay for navigation
       ;;
     modal-open)
-      # Modal opened: wait for dialog, then recon dialog section
       "$SCRIPT_DIR/commands/wait.sh" "$waitSelector" 2>/dev/null || true
-      if [ "$reconScope" = "dialog" ]; then
-        "$SCRIPT_DIR/commands/recon.sh" | awk '/^## Dialog/,/^## [^D]/'
-      else
-        "$SCRIPT_DIR/commands/recon.sh"
-      fi
       ;;
-    modal-close)
-      # Modal closed: wait for dialog to disappear, then recon main
-      "$SCRIPT_DIR/commands/wait.sh" "$waitSelector" --gone 2>/dev/null || true
-      if [ "$reconScope" = "main" ]; then
-        "$SCRIPT_DIR/commands/recon.sh" | awk '/^## Main/,/^## [^M]/'
-      else
-        "$SCRIPT_DIR/commands/recon.sh"
-      fi
+    alert-appeared)
+      # Wait for alert/toast to appear
+      "$SCRIPT_DIR/commands/wait.sh" "$waitSelector" 2>/dev/null || true
       ;;
-    inline)
-      # Inline update: generic wait, full recon
-      "$SCRIPT_DIR/commands/wait.sh" 2>/dev/null || true
-      "$SCRIPT_DIR/commands/recon.sh"
+    listbox-appeared)
+      # Wait for autocomplete/dropdown to appear
+      "$SCRIPT_DIR/commands/wait.sh" "$waitSelector" 2>/dev/null || true
+      ;;
+    semantic-parent-gone)
+      # Parent removed, wait briefly
+      sleep 0.1
       ;;
     *)
-      # Unknown context: just do generic wait and recon
+      # Semantic parent or other: generic DOM wait
       "$SCRIPT_DIR/commands/wait.sh" 2>/dev/null || true
+      ;;
+  esac
+
+  # Recon based on scope
+  case "$reconScope" in
+    dialog)
+      "$SCRIPT_DIR/commands/recon.sh" | awk '/^## Dialog/,/^## [^D]/'
+      ;;
+    form)
+      "$SCRIPT_DIR/commands/recon.sh" | awk '/^## Form/,/^## [^F]/'
+      ;;
+    main)
+      "$SCRIPT_DIR/commands/recon.sh" | awk '/^## Main/,/^## [^M]/'
+      ;;
+    nav)
+      "$SCRIPT_DIR/commands/recon.sh" | awk '/^## Nav/,/^## [^N]/'
+      ;;
+    section)
+      "$SCRIPT_DIR/commands/recon.sh" | awk '/^## Section/,/^## [^S]/'
+      ;;
+    article)
+      "$SCRIPT_DIR/commands/recon.sh" | awk '/^## Article/,/^## [^A]/'
+      ;;
+    header)
+      "$SCRIPT_DIR/commands/recon.sh" | awk '/^## Header/,/^## [^H]/'
+      ;;
+    aside)
+      "$SCRIPT_DIR/commands/recon.sh" | awk '/^## Aside/,/^## [^A]/'
+      ;;
+    full|*)
+      # Full page recon
       "$SCRIPT_DIR/commands/recon.sh"
       ;;
   esac
