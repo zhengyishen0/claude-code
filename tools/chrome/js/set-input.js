@@ -139,7 +139,7 @@
 
     results.push(result.method + ':' + field.selector);
 
-    if (i < fields.length - 1) sleep(100);
+    if (i < fields.length - 1) sleep(p.delay || 100);
   }
 
   if (fields.length === 1) {

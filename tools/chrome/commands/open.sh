@@ -9,6 +9,7 @@ if [[ "$1" == "--help" ]]; then
 fi
 
 SCRIPT_DIR="$(dirname "$0")/.."
+[ -f "$SCRIPT_DIR/config" ] && source "$SCRIPT_DIR/config"
 
 URL=$1
 if [ -z "$URL" ]; then
@@ -19,9 +20,9 @@ fi
 chrome-cli open "$URL"
 
 # Wait for page to fully load (poll readyState)
-TIMEOUT=10
+TIMEOUT=${CHROME_OPEN_TIMEOUT:-10}
 elapsed=0
-interval=0.2
+interval=${CHROME_OPEN_INTERVAL:-0.2}
 while (( $(echo "$elapsed < $TIMEOUT" | bc -l) )); do
   state=$(chrome-cli execute "document.readyState")
   if [ "$state" = "complete" ]; then

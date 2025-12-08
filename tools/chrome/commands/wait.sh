@@ -15,7 +15,10 @@ if [[ "$1" == "--help" ]]; then
   exit 0
 fi
 
-timeout=5  # Fixed timeout, not configurable
+SCRIPT_DIR="$(dirname "$0")/.."
+[ -f "$SCRIPT_DIR/config" ] && source "$SCRIPT_DIR/config"
+
+timeout=${CHROME_WAIT_TIMEOUT:-5}
 SELECTOR=""
 GONE=false
 
@@ -28,7 +31,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-interval=0.5
+interval=${CHROME_WAIT_INTERVAL:-0.5}
 elapsed=0
 
 if [ -n "$SELECTOR" ]; then

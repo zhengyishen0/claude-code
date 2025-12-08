@@ -15,10 +15,11 @@ if [[ "$1" == "--help" ]]; then
 fi
 
 SCRIPT_DIR="$(dirname "$0")/.."
+[ -f "$SCRIPT_DIR/config" ] && source "$SCRIPT_DIR/config"
 
 TARGET=""
 TIMES=1
-DELAY=100
+DELAY=${CHROME_CLICK_DELAY:-100}
 
 while [ $# -gt 0 ]; do
   case "$1" in

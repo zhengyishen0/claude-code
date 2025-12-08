@@ -23,6 +23,7 @@ if [[ "$1" == "--help" ]]; then
 fi
 
 SCRIPT_DIR="$(dirname "$0")/.."
+[ -f "$SCRIPT_DIR/config" ] && source "$SCRIPT_DIR/config"
 
 FIELDS=()
 CLEAR="false"
@@ -86,5 +87,6 @@ FIELDS_JSON+="]"
 JS_CODE=$(cat "$SCRIPT_DIR/js/set-input.js")
 
 # Execute with fields array
-result=$(chrome-cli execute 'var _p={fields:'"$FIELDS_JSON"',clear:'"$CLEAR"'}; '"$JS_CODE")
+INPUT_DELAY=${CHROME_INPUT_DELAY:-100}
+result=$(chrome-cli execute 'var _p={fields:'"$FIELDS_JSON"',clear:'"$CLEAR"',delay:'"$INPUT_DELAY"'}; '"$JS_CODE")
 echo "$result"
