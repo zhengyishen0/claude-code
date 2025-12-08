@@ -24,7 +24,7 @@ worktree_create() {
             echo "Worktree already exists: $abs_path"
             echo "Switching to existing worktree..."
             cd "$abs_path"
-            exec claude --fork-session
+            exec claude --continue --fork-session
         else
             echo "Failed to create worktree"
             exit 1
@@ -40,7 +40,7 @@ worktree_create() {
     # Change to worktree and exec new Claude session
     # exec replaces current process, automatically closing this session
     cd "$abs_path"
-    exec claude --fork-session
+    exec claude --continue --fork-session
 }
 
 # Subcommand: list
