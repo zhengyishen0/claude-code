@@ -283,9 +283,22 @@
   function isElementVisible(element) {
     if (!element) return false;
     var style = getComputedStyle(element);
-    return style.display !== 'none' &&
-           style.visibility !== 'hidden' &&
-           element.offsetParent !== null;
+
+    // Check display and visibility
+    if (style.display === 'none' || style.visibility === 'hidden') {
+      return false;
+    }
+
+    // offsetParent is null for position:fixed elements, so check position
+    // Also handle position:absolute elements that might be at body level
+    if (style.position === 'fixed' || style.position === 'absolute') {
+      // For positioned elements, check if they have dimensions
+      var rect = element.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    }
+
+    // For other elements, check offsetParent
+    return element.offsetParent !== null;
   }
 
   // Check if dialog is visible
