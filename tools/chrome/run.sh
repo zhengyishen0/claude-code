@@ -51,7 +51,7 @@ cmd_recon() {
       --status) STATUS="true"; shift ;;
       --full) FULL_MODE="true"; shift ;;
       --diff) DIFF_MODE="true"; shift ;;
-      -*) echo "Unknown option: $1" >&2; exit 1 ;;
+      -*) echo "Unknown option: $1" >&2; return 1 ;;
       *) shift ;;
     esac
   done
@@ -98,7 +98,7 @@ cmd_open() {
   local URL=$1
   if [ -z "$URL" ]; then
     echo "Usage: open URL [--status]" >&2
-    exit 1
+    return 1
   fi
 
   chrome-cli open "$URL" > /dev/null
@@ -125,7 +125,7 @@ cmd_wait() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --gone) GONE=true; shift ;;
-      -*) echo "Unknown option: $1" >&2; exit 1 ;;
+      -*) echo "Unknown option: $1" >&2; return 1 ;;
       *) SELECTOR="$1"; shift ;;
     esac
   done
@@ -140,20 +140,20 @@ cmd_wait() {
         result=$(chrome-cli execute "document.querySelector('$SELECTOR') ? 'exists' : 'gone'")
         if [ "$result" = "gone" ]; then
           echo "OK: $SELECTOR disappeared"
-          exit 0
+          return 0
         fi
       else
         result=$(chrome-cli execute "document.querySelector('$SELECTOR') ? 'found' : 'waiting'")
         if [ "$result" = "found" ]; then
           echo "OK: $SELECTOR found"
-          exit 0
+          return 0
         fi
       fi
       sleep $interval
       elapsed=$(echo "$elapsed + $interval" | bc)
     done
     echo "TIMEOUT: $SELECTOR not $( [ "$GONE" = true ] && echo 'gone' || echo 'found' ) after ${timeout}s" >&2
-    exit 1
+    return 1
 
   else
     # No selector: wait for page to fully load
@@ -183,7 +183,7 @@ cmd_wait() {
 
     if [ "$state" != "complete" ]; then
       echo "TIMEOUT: readyState not complete after ${timeout}s" >&2
-      exit 1
+      return 1
     fi
 
     # Then wait for DOM to stabilize (no changes for 1s)
@@ -200,7 +200,7 @@ cmd_wait() {
         # Stable for 2 checks (1 second) = done
         if [ $stable_count -ge 2 ]; then
           echo "OK: DOM stable"
-          exit 0
+          return 0
         fi
       else
         SNAPSHOT="$CURRENT"
@@ -209,7 +209,7 @@ cmd_wait() {
     done
 
     echo "OK: DOM changed (still loading)"
-    exit 0
+    return 0
   fi
 }
 
@@ -220,7 +220,7 @@ cmd_click() {
   local SELECTOR="$1"
   if [ -z "$SELECTOR" ]; then
     echo "Usage: click 'CSS selector'" >&2
-    exit 1
+    return 1
   fi
 
   # Escape selector for JS
@@ -232,7 +232,7 @@ cmd_click() {
   echo "$result"
 
   if [[ "$result" == FAIL* ]]; then
-    exit 1
+    return 1
   fi
 }
 
@@ -245,7 +245,7 @@ cmd_input() {
 
   if [ -z "$SELECTOR" ] || [ -z "$VALUE" ]; then
     echo "Usage: input 'CSS selector' 'value'" >&2
-    exit 1
+    return 1
   fi
 
   # Escape for JS
@@ -258,7 +258,7 @@ cmd_input() {
   echo "$result"
 
   if [[ "$result" == FAIL* ]]; then
-    exit 1
+    return 1
   fi
 }
 
