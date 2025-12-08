@@ -69,6 +69,6 @@ Run `tools/chrome/run.sh` for full help.
 4. Chain with + - action + wait + recon in one call
 5. Wait for specific element - not just any DOM change
 6. Use --gone when expecting element to disappear
-7. Scope recon with --section to see only relevant section
+7. Filter recon with grep/awk - `recon | awk '/^## Main($|:)/,/^## [^M]/'`
 
 <!-- TOOLS:END -->

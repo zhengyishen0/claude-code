@@ -1,11 +1,10 @@
 #!/bin/bash
 # click.sh - Smart click using recon format
-# Usage: click.sh "[text@aria](#testid)" [-S SECTION] [--times N]
+# Usage: click.sh "[text@aria](#testid)" [--times N]
 
 if [[ "$1" == "--help" ]]; then
-  echo "click TARGET [--section SECTION] [--times N] [--delay MS]  Smart click element"
+  echo "click TARGET [--times N] [--delay MS]  Smart click element"
   echo "  TARGET: copy from recon output, e.g. \"[@Search](#btn)\""
-  echo "  --section: scope click to section (aria-label, heading, or tag)"
   echo "  --times N: click same element N times"
   echo "  --delay MS: delay between clicks in ms (default: 100)"
   echo "  Also accepts CSS selectors as fallback"
@@ -18,16 +17,11 @@ fi
 SCRIPT_DIR="$(dirname "$0")/.."
 
 TARGET=""
-SECTION=""
 TIMES=1
 DELAY=100
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --section)
-      SECTION="$2"
-      shift 2
-      ;;
     --times)
       TIMES="$2"
       shift 2
@@ -63,8 +57,6 @@ fi
 TARGET_ESC=$(printf '%s' "$TARGET" | sed 's/\\/\\\\/g; s/"/\\"/g')
 TARGETS_JSON='["'"$TARGET_ESC"'"]'
 
-SECTION_ESC=$(printf '%s' "$SECTION" | sed 's/"/\\"/g')
-
 # Read JS file
 JS_CODE=$(cat "$SCRIPT_DIR/js/click-element.js")
 
@@ -77,7 +69,7 @@ if [ "$TIMES" -gt 1 ]; then
   fi
   DELAY_SEC=$(echo "scale=3; $DELAY / 1000" | bc)
   for ((i=1; i<=TIMES; i++)); do
-    result=$(chrome-cli execute 'var _p={targets:'"$TARGETS_JSON"', times:1, section:"'"$SECTION_ESC"'"}; '"$JS_CODE")
+    result=$(chrome-cli execute 'var _p={targets:'"$TARGETS_JSON"', times:1}; '"$JS_CODE")
     if [[ "$result" == FAIL* ]]; then
       echo "FAIL:click $i of $TIMES failed - $result"
       exit 1
@@ -89,6 +81,6 @@ if [ "$TIMES" -gt 1 ]; then
   echo "OK:clicked $TIMES times"
 else
   # Single click
-  result=$(chrome-cli execute 'var _p={targets:'"$TARGETS_JSON"', times:1, section:"'"$SECTION_ESC"'"}; '"$JS_CODE")
+  result=$(chrome-cli execute 'var _p={targets:'"$TARGETS_JSON"', times:1}; '"$JS_CODE")
   echo "$result"
 fi

@@ -12,44 +12,6 @@
     while (Date.now() - start < ms) {}
   }
 
-  // If section specified, find the container first
-  if (p.section) {
-    var sectionLower = p.section.toLowerCase();
-
-    // Strategy 1: Match aria-label of semantic containers only
-    var containers = document.querySelectorAll('dialog,[role=dialog],section,article,form,header,main,nav,aside,footer');
-    for (var i = 0; i < containers.length; i++) {
-      var label = (containers[i].getAttribute('aria-label') || '').toLowerCase();
-      if (label && label.indexOf(sectionLower) > -1) {
-        root = containers[i];
-        break;
-      }
-    }
-
-    // Strategy 2: Match heading text inside semantic containers
-    if (root === document) {
-      var headings = document.querySelectorAll('h1,h2,h3,h4,h5,h6');
-      for (var i = 0; i < headings.length; i++) {
-        var hText = (headings[i].textContent || '').toLowerCase();
-        if (hText.indexOf(sectionLower) > -1) {
-          root = headings[i].closest('dialog,[role=dialog],section,article,form,header,main,nav,aside,footer') || headings[i].parentElement;
-          break;
-        }
-      }
-    }
-
-    // Strategy 3: Direct tag/selector match (e.g., "main", "header", "#my-form")
-    if (root === document) {
-      var direct = document.querySelector(p.section);
-      if (direct) root = direct;
-    }
-
-    // If still not found, return error
-    if (root === document) {
-      return 'FAIL:section not found (' + p.section + ')';
-    }
-  }
-
   // Parse recon format and find element
   function findElement(auto) {
     var params = {};
