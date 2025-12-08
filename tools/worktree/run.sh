@@ -33,7 +33,7 @@ worktree_create() {
     local abs_path="$(cd "$worktree_path" && pwd)"
 
     echo "Worktree ready: $abs_path"
-    echo "Continue your work"
+    echo "Use absolute paths, do not cd into the worktree directly."
 }
 
 # Subcommand: list
