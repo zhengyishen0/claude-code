@@ -2,21 +2,6 @@
 # click.sh - Click element by CSS selector
 # Usage: click.sh "selector"
 
-if [[ "$1" == "--help" ]]; then
-  echo "click SELECTOR          Click element by CSS selector"
-  echo ""
-  echo "Examples:"
-  echo "  click '[data-testid=\"search-button\"]'"
-  echo "  click '#submit-btn'"
-  echo "  click '[aria-label=\"Search\"]'"
-  echo "  click 'button.primary'"
-  echo ""
-  echo "Chain with wait/recon as needed:"
-  echo "  click '...' + wait + recon"
-  echo "  click '...' + wait '[role=dialog]' + recon"
-  exit 0
-fi
-
 SCRIPT_DIR="$(dirname "$0")/.."
 [ -f "$SCRIPT_DIR/config" ] && source "$SCRIPT_DIR/config"
 

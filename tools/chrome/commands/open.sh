@@ -2,12 +2,6 @@
 # open.sh - Open URL and recon
 # Usage: open.sh URL [--status]
 
-if [[ "$1" == "--help" ]]; then
-  echo "open URL [--status]      Open URL (waits for load), then recon"
-  echo "  --status: show loading info after page loads"
-  exit 0
-fi
-
 SCRIPT_DIR="$(dirname "$0")/.."
 [ -f "$SCRIPT_DIR/config" ] && source "$SCRIPT_DIR/config"
 

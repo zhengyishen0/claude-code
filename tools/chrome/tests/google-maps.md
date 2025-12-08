@@ -1,1 +1,0 @@
-Plan a road trip from San Francisco to Los Angeles with 3 stops along the way. Find the best-rated coffee shop near each stop (Monterey, San Luis Obispo, and Santa Barbara). Get directions for the full route, note the total driving time and distance, and save each coffee shop to a new list called "Road Trip Stops". Repeat the requirement, then tell me your plan, and go.

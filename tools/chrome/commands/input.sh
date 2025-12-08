@@ -2,19 +2,6 @@
 # input.sh - Set input value by CSS selector
 # Usage: input.sh "selector" "value"
 
-if [[ "$1" == "--help" ]]; then
-  echo "input SELECTOR VALUE    Set input value by CSS selector"
-  echo ""
-  echo "Examples:"
-  echo "  input '[aria-label=\"Where\"]' 'Paris'"
-  echo "  input '#email' 'test@example.com'"
-  echo "  input '[name=\"search\"]' 'query'"
-  echo ""
-  echo "Chain with wait/recon as needed:"
-  echo "  input '...' 'value' + wait + recon"
-  exit 0
-fi
-
 SCRIPT_DIR="$(dirname "$0")/.."
 [ -f "$SCRIPT_DIR/config" ] && source "$SCRIPT_DIR/config"
 

@@ -2,23 +2,6 @@
 # recon.sh - Get page structure in markdown
 # Usage: recon.sh [--status]
 
-if [[ "$1" == "--help" ]]; then
-  echo "recon [--full] [--status]  Get page structure as markdown"
-  echo ""
-  echo "By default, shows structure + interactive sections (Dialog, Form, Nav)"
-  echo "with collapsed repetitive content."
-  echo ""
-  echo "Options:"
-  echo "  --full:   Show all details (original verbose behavior)"
-  echo "  --status: Show loading info (images, scripts, etc.)"
-  echo ""
-  echo "Filter output with grep/awk:"
-  echo "  Show Nav:    recon | awk '/^## Nav(\$|:)/,/^## [^N]/'"
-  echo "  Show Main:   recon | awk '/^## Main(\$|:)/,/^## [^M]/'"
-  echo "  Show Dialog: recon | awk '/^## Dialog/,/^## [^D]/'"
-  exit 0
-fi
-
 SCRIPT_DIR="$(dirname "$0")/.."
 
 STATUS=""

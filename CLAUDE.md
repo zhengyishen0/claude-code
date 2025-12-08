@@ -74,7 +74,7 @@ Browser automation with React/SPA support
 
 Run `tools/chrome/run.sh` for full help.
 
-**Commands:** recon, open, wait, click, input, esc, tabs, info, close, help
+**Commands:** recon, open, wait, click, input, esc, help
 
 **Key Principles:**
 1. URL params first - always prefer direct URLs over clicking

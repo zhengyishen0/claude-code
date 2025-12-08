@@ -2,20 +2,6 @@
 # wait.sh - Wait for DOM changes or specific elements
 # Usage: wait.sh [selector] [--gone]
 
-if [[ "$1" == "--help" ]]; then
-  echo "wait [sel] [--gone]  Wait for DOM/element (10s timeout)"
-  echo "  No selector: wait for readyState=complete + DOM stable"
-  echo "  With selector: wait for CSS selector to appear"
-  echo "  --gone: wait for element to disappear"
-  echo ""
-  echo "Examples:"
-  echo "  wait                          # readyState + DOM stable"
-  echo "  wait '[role=dialog]'          # wait for modal"
-  echo "  wait '[data-testid=\"x\"]'      # wait for element"
-  echo "  wait '[role=dialog]' --gone   # wait for modal to close"
-  exit 0
-fi
-
 SCRIPT_DIR="$(dirname "$0")/.."
 [ -f "$SCRIPT_DIR/config" ] && source "$SCRIPT_DIR/config"
 
