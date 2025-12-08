@@ -9,7 +9,15 @@ if [[ "$1" == "--help" ]]; then
   echo "  --delay MS: delay between clicks in ms (default: 100)"
   echo "  Also accepts CSS selectors as fallback"
   echo ""
-  echo "Chain with +: click TARGET + wait + recon"
+  echo "Auto-mode (CHROME_AUTO_MODE=true, default):"
+  echo "  Automatically detects context and runs wait+recon:"
+  echo "  - Navigation: waits for page load, recons full page"
+  echo "  - Modal open: waits for dialog, recons dialog section only"
+  echo "  - Modal close: waits for dialog gone, recons main content"
+  echo "  - Inline update: waits for DOM change, recons full page"
+  echo ""
+  echo "Manual mode (export CHROME_AUTO_MODE=false):"
+  echo "  Chain with +: click TARGET + wait + recon"
   echo "  Multiple clicks: click \"[a]\" + click \"[b]\" + click \"[c]\""
   exit 0
 fi
@@ -20,6 +28,7 @@ SCRIPT_DIR="$(dirname "$0")/.."
 TARGET=""
 TIMES=1
 DELAY=${CHROME_CLICK_DELAY:-100}
+AUTO_MODE=${CHROME_AUTO_MODE:-true}
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -61,27 +70,48 @@ TARGETS_JSON='["'"$TARGET_ESC"'"]'
 # Read JS file
 JS_CODE=$(cat "$SCRIPT_DIR/js/click-element.js")
 
-# For --times with React components, execute separate chrome-cli calls with shell delays
-# This allows React to process state updates between clicks
-# Minimum 50ms delay for safety across different sites
-if [ "$TIMES" -gt 1 ]; then
-  if [ "$DELAY" -lt 50 ]; then
-    DELAY=50
-  fi
-  DELAY_SEC=$(echo "scale=3; $DELAY / 1000" | bc)
-  for ((i=1; i<=TIMES; i++)); do
-    result=$(chrome-cli execute 'var _p={targets:'"$TARGETS_JSON"', times:1}; '"$JS_CODE")
-    if [[ "$result" == FAIL* ]]; then
-      echo "FAIL:click $i of $TIMES failed - $result"
-      exit 1
-    fi
-    if [ $i -lt $TIMES ]; then
-      sleep "$DELAY_SEC"
-    fi
-  done
-  echo "OK:clicked $TIMES times"
-else
-  # Single click
-  result=$(chrome-cli execute 'var _p={targets:'"$TARGETS_JSON"', times:1}; '"$JS_CODE")
+# Execute click (with or without --times)
+result=$(chrome-cli execute 'var _p={targets:'"$TARGETS_JSON"', times:'"$TIMES"'}; '"$JS_CODE")
+
+# Check for failure
+if [[ "$result" == FAIL* ]]; then
   echo "$result"
+  exit 1
+fi
+
+# Parse result: OK:...|contextType|waitSelector|waitGone|reconFilter
+IFS='|' read -r status contextType waitSelector waitGone reconFilter <<< "$result"
+
+# Always echo the click result (without context info)
+echo "$status"
+
+# Auto-wait and auto-recon if enabled
+if [ "$AUTO_MODE" = "true" ]; then
+  case "$contextType" in
+    navigation)
+      # Navigation: small delay then full recon
+      sleep 0.3
+      "$SCRIPT_DIR/commands/recon.sh"
+      ;;
+    modal-open)
+      # Modal opened: wait for dialog, then recon dialog section
+      "$SCRIPT_DIR/commands/wait.sh" "$waitSelector" 2>/dev/null || true
+      "$SCRIPT_DIR/commands/recon.sh" | eval "$reconFilter" 2>/dev/null || "$SCRIPT_DIR/commands/recon.sh"
+      ;;
+    modal-close)
+      # Modal closed: wait for dialog to disappear, then recon main
+      "$SCRIPT_DIR/commands/wait.sh" "$waitSelector" --gone 2>/dev/null || true
+      "$SCRIPT_DIR/commands/recon.sh" | eval "$reconFilter" 2>/dev/null || "$SCRIPT_DIR/commands/recon.sh"
+      ;;
+    inline)
+      # Inline update: generic wait, full recon
+      "$SCRIPT_DIR/commands/wait.sh" 2>/dev/null || true
+      "$SCRIPT_DIR/commands/recon.sh"
+      ;;
+    *)
+      # Unknown context: just do generic wait and recon
+      "$SCRIPT_DIR/commands/wait.sh" 2>/dev/null || true
+      "$SCRIPT_DIR/commands/recon.sh"
+      ;;
+  esac
 fi

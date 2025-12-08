@@ -235,6 +235,52 @@
     return { el: el, method: method, params: params, count: validElements.length };
   }
 
+  // Capture page state for context detection
+  function captureState() {
+    return {
+      url: location.href,
+      hasDialog: !!document.querySelector('[role=dialog], dialog')
+    };
+  }
+
+  // Detect what changed after click
+  function detectContext(beforeState, afterState) {
+    // Navigation detected
+    if (afterState.url !== beforeState.url) {
+      return {
+        type: 'navigation',
+        waitSelector: '',
+        reconFilter: ''
+      };
+    }
+
+    // Modal opened
+    if (!beforeState.hasDialog && afterState.hasDialog) {
+      return {
+        type: 'modal-open',
+        waitSelector: '[role=dialog], dialog',
+        reconFilter: "awk '/^## Dialog/,/^## [^D]/'"
+      };
+    }
+
+    // Modal closed
+    if (beforeState.hasDialog && !afterState.hasDialog) {
+      return {
+        type: 'modal-close',
+        waitSelector: '[role=dialog]',
+        waitGone: true,
+        reconFilter: "awk '/^## Main/,/^## [^M]/'"
+      };
+    }
+
+    // Inline update (default)
+    return {
+      type: 'inline',
+      waitSelector: '',
+      reconFilter: ''
+    };
+  }
+
   // Click an element
   function clickElement(el) {
     el.scrollIntoView({block: 'center', behavior: 'instant'});
@@ -328,19 +374,38 @@
   // times > 1: click same element multiple times
   // Re-find element each time for React components that re-render after state change
   if (times > 1) {
+    var beforeState;
     for (var i = 0; i < times; i++) {
       var result = findElement(target);
       if (!result.el) {
         return 'FAIL:click ' + (i + 1) + ' not found (' + generateErrorReport(result.params, root) + ')';
       }
+      // Capture state before last click
+      if (i === times - 1) {
+        beforeState = captureState();
+      }
       clickElement(result.el);
       if (i < times - 1) sleep(delay);
     }
+
+    // Wait for DOM/React to update after last click
+    sleep(50);
+
+    // Capture state after last click
+    var afterState = captureState();
+
+    // Detect context from last click
+    var context = detectContext(beforeState, afterState);
+
     var lastResult = findElement(target);
     var msg = 'OK:clicked ' + times + ' times ' + getInfo(lastResult.el);
     if (lastResult.count > 1) {
       msg = 'OK(' + lastResult.count + ' matches):clicked ' + times + ' times ' + getInfo(lastResult.el);
     }
+
+    // Append context info
+    msg += '|' + context.type + '|' + context.waitSelector + '|' + (context.waitGone ? 'true' : 'false') + '|' + context.reconFilter;
+
     return msg;
   }
 
@@ -350,10 +415,28 @@
     return 'FAIL:target not found (' + generateErrorReport(result.params, root) + ')';
   }
 
+  // Capture state before click
+  var beforeState = captureState();
+
   clickElement(result.el);
+
+  // Wait a bit for DOM/React to update (synchronous delay)
+  sleep(50);
+
+  // Capture state after click
+  var afterState = captureState();
+
+  // Detect context
+  var context = detectContext(beforeState, afterState);
+
+  // Build message with context info
   var msg = 'OK:' + result.method + ' ' + getInfo(result.el);
   if (result.count > 1) {
     msg = 'OK(' + result.count + ' matches):' + result.method + ' ' + getInfo(result.el);
   }
+
+  // Append context info: |contextType|waitSelector|waitGone|reconFilter
+  msg += '|' + context.type + '|' + context.waitSelector + '|' + (context.waitGone ? 'true' : 'false') + '|' + context.reconFilter;
+
   return msg;
 })();

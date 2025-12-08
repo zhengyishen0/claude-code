@@ -13,12 +13,16 @@ if [[ "$1" == "--help" ]]; then
   echo "Options:"
   echo "  --clear: clear field(s) first"
   echo ""
+  echo "Auto-mode (CHROME_AUTO_MODE=true, default):"
+  echo "  Automatically waits for form validation/updates and recons form section"
+  echo ""
+  echo "Manual mode (export CHROME_AUTO_MODE=false):"
+  echo "  Chain with +: input \"@Where=Paris\" + wait + recon"
+  echo ""
   echo "Examples:"
   echo "  input \"@Where=Paris\""
   echo "  input \"#email=test@example.com\" \"#password=secret\""
   echo "  input \"Where=Paris\" \"When=March\" -c"
-  echo ""
-  echo "Chain with +: input \"@Where=Paris\" + wait + recon"
   exit 0
 fi
 
@@ -27,6 +31,7 @@ SCRIPT_DIR="$(dirname "$0")/.."
 
 FIELDS=()
 CLEAR="false"
+AUTO_MODE=${CHROME_AUTO_MODE:-true}
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -90,3 +95,20 @@ JS_CODE=$(cat "$SCRIPT_DIR/js/set-input.js")
 INPUT_DELAY=${CHROME_INPUT_DELAY:-100}
 result=$(chrome-cli execute 'var _p={fields:'"$FIELDS_JSON"',clear:'"$CLEAR"',delay:'"$INPUT_DELAY"'}; '"$JS_CODE")
 echo "$result"
+
+# Check for failure
+if [[ "$result" == FAIL* ]]; then
+  exit 1
+fi
+
+# Auto-wait and auto-recon if enabled
+if [ "$AUTO_MODE" = "true" ]; then
+  # Wait for validation messages or DOM updates
+  # Try common validation selectors, fallback to generic DOM wait
+  "$SCRIPT_DIR/commands/wait.sh" "[role=alert], [aria-invalid=true], .error, .success" 2>/dev/null || \
+    "$SCRIPT_DIR/commands/wait.sh" 2>/dev/null || true
+
+  # Recon form section, fallback to full page
+  "$SCRIPT_DIR/commands/recon.sh" | awk '/^## Form/,/^## [^F]/' 2>/dev/null || \
+    "$SCRIPT_DIR/commands/recon.sh"
+fi
