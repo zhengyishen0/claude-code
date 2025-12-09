@@ -26,9 +26,9 @@ CHROME_CLICK_DELAY=150
 CHROME_INPUT_DELAY=150
 
 # ============================================================================
-# Snapshot directory for recon --diff
+# Snapshot directory
 # ============================================================================
-SNAPSHOT_DIR="/tmp/recon-snapshots"
+SNAPSHOT_DIR="/tmp/chrome-snapshots"
 mkdir -p "$SNAPSHOT_DIR" 2>/dev/null
 
 # Get sanitized URL for snapshot filename
@@ -44,33 +44,18 @@ get_page_state() {
 }
 
 # ============================================================================
-# Command: recon
+# Command: snapshot
 # ============================================================================
-cmd_recon() {
-  local STATUS=""
-  local FULL_MODE=""
-  local SMART_MODE=""
+cmd_snapshot() {
   local DIFF_MODE=""
 
   while [ $# -gt 0 ]; do
     case "$1" in
-      --status) STATUS="true"; shift ;;
-      --full) FULL_MODE="true"; shift ;;
-      --smart) SMART_MODE="true"; shift ;;
       --diff) DIFF_MODE="true"; shift ;;
       -*) echo "Unknown option: $1" >&2; return 1 ;;
       *) shift ;;
     esac
   done
-
-  # Default to full mode for diff, unless --smart is specified
-  if [ "$DIFF_MODE" = "true" ] && [ "$SMART_MODE" != "true" ] && [ "$FULL_MODE" != "true" ]; then
-    FULL_MODE="true"
-  fi
-
-  if [ "$STATUS" = "true" ]; then
-    chrome-cli execute "$(cat "$SCRIPT_DIR/js/page-status.js")"
-  fi
 
   # Get URL prefix and page state for snapshot files
   local prefix=$(get_snapshot_prefix)
@@ -78,30 +63,29 @@ cmd_recon() {
   local timestamp=$(date +%s)
   local snapshot_file="$SNAPSHOT_DIR/${prefix}-${state}-${timestamp}.md"
 
+  # Always capture full content
+  local content=$(chrome-cli execute "window.__RECON_FULL__ = true; $(cat "$SCRIPT_DIR/js/html2md.js")")
+
   # Diff mode: compare against previous snapshot with same state
   if [ "$DIFF_MODE" = "true" ]; then
     # Find most recent snapshot for this URL + state
     local latest=$(ls -t "$SNAPSHOT_DIR/${prefix}-${state}"-*.md 2>/dev/null | head -1)
     if [ -z "$latest" ]; then
-      echo "No previous snapshot for this URL state ($state). Run recon first."
+      echo "No previous snapshot for this URL state ($state). Run snapshot first." >&2
       return 1
     fi
 
-    # Run recon and diff against previous
-    if [ "$FULL_MODE" = "true" ]; then
-      chrome-cli execute "window.__RECON_FULL__ = true; $(cat "$SCRIPT_DIR/js/html2md.js")" | diff "$latest" - || true
-    else
-      chrome-cli execute "window.__RECON_FULL__ = false; $(cat "$SCRIPT_DIR/js/html2md.js")" | diff "$latest" - || true
-    fi
-    return
-  fi
-
-  # Normal recon: output and save snapshot
-  if [ "$FULL_MODE" = "true" ]; then
-    chrome-cli execute "window.__RECON_FULL__ = true; $(cat "$SCRIPT_DIR/js/html2md.js")" | tee "$snapshot_file"
+    # Save snapshot and show diff
+    echo "$content" | tee "$snapshot_file" | diff "$latest" - || true
   else
-    chrome-cli execute "window.__RECON_FULL__ = false; $(cat "$SCRIPT_DIR/js/html2md.js")" | tee "$snapshot_file"
+    # Normal mode: save and output snapshot
+    echo "$content" | tee "$snapshot_file"
   fi
+}
+
+# Alias for backward compatibility
+cmd_recon() {
+  cmd_snapshot "$@"
 }
 
 # ============================================================================
@@ -110,7 +94,7 @@ cmd_recon() {
 cmd_open() {
   local URL=$1
   if [ -z "$URL" ]; then
-    echo "Usage: open URL [--status]" >&2
+    echo "Usage: open URL" >&2
     return 1
   fi
 
@@ -119,11 +103,7 @@ cmd_open() {
   # Wait for page to fully load
   cmd_wait > /dev/null 2>&1
 
-  if [ "$2" = "--status" ]; then
-    cmd_recon --status
-  else
-    cmd_recon
-  fi
+  cmd_snapshot
 }
 
 # ============================================================================
@@ -309,12 +289,9 @@ cmd_help() {
   echo "Usage: $TOOL_NAME <command> [args...] [+ command [args...]]..."
   echo ""
   echo "Commands:"
-  echo "  recon [--diff] [--smart] [--full] [--status]"
-  echo "                              Get page structure as markdown"
-  echo "                              --diff: Show changes (defaults to --full)"
-  echo "                              --smart: Use smart mode (collapsed sections)"
-  echo "                              --full: Show all content (default for --diff)"
-  echo "  open URL [--status]         Open URL (waits for load), then recon"
+  echo "  snapshot [--diff]           Capture page state (always saves full content)"
+  echo "                              --diff: Show changes vs previous snapshot"
+  echo "  open URL                    Open URL (waits for load), then snapshot"
   echo "  wait [sel] [--gone] [--network]"
   echo "                              Wait for DOM/element (10s timeout)"
   echo "                              --gone: Wait for element to disappear"
@@ -326,9 +303,12 @@ cmd_help() {
   echo ""
   echo "Quick Examples:"
   echo "  $TOOL_NAME open \"https://example.com\""
-  echo "  $TOOL_NAME recon"
-  echo "  $TOOL_NAME click '[data-testid=\"btn\"]' + wait + recon"
-  echo "  $TOOL_NAME input '#email' 'test@example.com' + wait + recon"
+  echo "  $TOOL_NAME snapshot"
+  echo "  $TOOL_NAME snapshot --diff"
+  echo "  $TOOL_NAME click '[data-testid=\"btn\"]' + wait + snapshot --diff"
+  echo "  $TOOL_NAME input '#email' 'test@example.com' + wait + snapshot --diff"
+  echo ""
+  echo "Note: 'recon' is aliased to 'snapshot' for backward compatibility"
   echo ""
   echo "For detailed documentation, see: $SCRIPT_DIR/README.md"
 }
@@ -370,7 +350,8 @@ execute_single() {
   local cmd="$1"
   shift
   case "$cmd" in
-    recon)      cmd_recon "$@" ;;
+    snapshot)   cmd_snapshot "$@" ;;
+    recon)      cmd_recon "$@" ;;  # backward compatibility
     open)       cmd_open "$@" ;;
     wait)       cmd_wait "$@" ;;
     click)      cmd_click "$@" ;;
@@ -433,6 +414,11 @@ fi
 
 # No chain - single command
 case "$1" in
+  snapshot)
+    shift
+    cmd_snapshot "$@"
+    ;;
+
   recon)
     shift
     cmd_recon "$@"

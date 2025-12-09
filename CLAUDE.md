@@ -74,16 +74,26 @@ Browser automation with React/SPA support
 
 Run `tools/chrome/run.sh` for full help.
 
-**Commands:** recon, open, wait, click, input, esc, help
+**Commands:** snapshot, open, wait, click, input, esc, help
 
 **Key Principles:**
 1. URL params first - always prefer direct URLs over clicking
-2. Use chrome tool commands - avoid chrome-cli execute unless truly needed
-3. Recon first - understand page before interacting
-4. Chain with + - action + wait + recon in one call
-5. Wait for specific element - not just any DOM change
-6. Use --gone when expecting element to disappear
-7. Filter recon with grep/awk - `recon | awk '/^## Main($|:)/,/^## [^M]/'`
+2. Snapshot first - understand page before interacting
+3. Track changes with --diff - see what changed after interactions
+   - `snapshot` - capture current state (always saves full content)
+   - `snapshot --diff` - show changes vs previous
+4. Chain with + - action + wait + snapshot --diff in one call
+5. State-based snapshots - auto-detects base/dropdown/overlay/dialog
+6. Wait for specific element - not just any DOM change
+7. Use --gone when expecting element to disappear
+8. Use --network for lazy content - wait for footer/ads to load
+
+**Typical workflow:**
+```bash
+open "https://example.com" + wait + snapshot
+input '#search' 'query' + wait + snapshot --diff
+click '[data-testid="btn"]' + wait + snapshot --diff
+```
 
 ### worktree
 Git worktree management for isolated feature development
