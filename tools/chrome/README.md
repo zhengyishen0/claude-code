@@ -35,7 +35,7 @@ recon | awk '/^## Dialog/,/^## [^D]/'     # Show Dialog
 Discover URL parameters and form structures (Universal URL Discovery)
 
 ```bash
-inspect [--json]
+inspect
 ```
 
 Combines **Tier 1** (link extraction) + **Tier 2** (form inspection) to discover all URL parameters and forms on the current page.
@@ -45,9 +45,6 @@ Combines **Tier 1** (link extraction) + **Tier 2** (form inspection) to discover
 - Includes example values from the page: `adults: [links] '2'`
 - Self-documenting URL patterns
 
-**Options:**
-- `--json`: Output raw JSON for programmatic use
-
 **Examples:**
 ```bash
 # Discover URL structure
@@ -56,9 +53,6 @@ inspect
 #   adults    [links] '2'
 #   checkin   [links] '2025-12-16'
 #   URL Pattern: https://airbnb.com/homes?adults=<adults>&checkin=<checkin>
-
-# Get JSON for parsing
-inspect --json
 
 # Chain with open
 open "https://airbnb.com" + wait + inspect

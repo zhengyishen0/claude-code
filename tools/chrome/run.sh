@@ -274,26 +274,11 @@ cmd_esc() {
 # Command: inspect
 # ============================================================================
 cmd_inspect() {
-  local FORMAT="pretty"
-
-  # Parse arguments
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --json) FORMAT="json"; shift ;;
-      -*) echo "Unknown option: $1" >&2; return 1 ;;
-      *) shift ;;
-    esac
-  done
-
   # Execute the inspection
   local result=$(chrome-cli execute "$(cat "$SCRIPT_DIR/js/inspect.js")")
 
-  if [ "$FORMAT" = "json" ]; then
-    # Output raw JSON
-    echo "$result"
-  else
-    # Pretty print for human reading
-    echo "$result" | python3 -c "
+  # Pretty print for human reading
+  echo "$result" | python3 -c "
 import json, sys
 
 data = json.load(sys.stdin)
@@ -347,7 +332,6 @@ if pattern:
     print(f\"  {pattern}\")
     print()
 " 2>/dev/null || echo "$result"
-  fi
 }
 
 # ============================================================================
@@ -360,7 +344,7 @@ cmd_help() {
   echo ""
   echo "Commands:"
   echo "  recon [--full] [--status] [--diff]  Get page structure as markdown"
-  echo "  inspect [--json]         Discover URL params and forms (Tier 1+2)"
+  echo "  inspect                  Discover URL params and forms (Tier 1+2)"
   echo "  open URL [--status]      Open URL (waits for load), then recon"
   echo "  wait [sel] [--gone]  Wait for DOM/element (10s timeout)"
   echo "  click SELECTOR          Click element by CSS selector"
