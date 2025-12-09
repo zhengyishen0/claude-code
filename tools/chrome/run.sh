@@ -271,6 +271,86 @@ cmd_esc() {
 }
 
 # ============================================================================
+# Command: inspect
+# ============================================================================
+cmd_inspect() {
+  local FORMAT="pretty"
+
+  # Parse arguments
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --json) FORMAT="json"; shift ;;
+      -*) echo "Unknown option: $1" >&2; return 1 ;;
+      *) shift ;;
+    esac
+  done
+
+  # Execute the inspection
+  local result=$(chrome-cli execute "$(cat "$SCRIPT_DIR/js/inspect.js")")
+
+  if [ "$FORMAT" = "json" ]; then
+    # Output raw JSON
+    echo "$result"
+  else
+    # Pretty print for human reading
+    echo "$result" | python3 -c "
+import json, sys
+
+data = json.load(sys.stdin)
+
+print('URL Parameter Discovery')
+print('=' * 60)
+print()
+
+# Summary
+summary = data.get('summary', {})
+print(f\"Summary:\")
+print(f\"  Parameters from links: {summary.get('paramsFromLinks', 0)}\")
+print(f\"  Parameters from forms: {summary.get('paramsFromForms', 0)}\")
+print(f\"  Total forms found: {summary.get('totalForms', 0)}\")
+print()
+
+# URL Parameters
+params = data.get('urlParams', {})
+if params:
+    print('Discovered Parameters:')
+    print('-' * 60)
+    for name, info in params.items():
+        source = info.get('source', 'unknown')
+        examples = info.get('examples', [])
+        ex_str = ', '.join(repr(e) for e in examples[:3])
+        print(f\"  {name:<20} [{source:>5}] {ex_str}\")
+    print()
+
+# Forms
+forms = data.get('forms', [])
+if forms:
+    print('Forms:')
+    print('-' * 60)
+    for form in forms:
+        idx = form.get('index', 0)
+        action = form.get('action', '')
+        method = form.get('method', 'GET')
+        fields = form.get('fields', [])
+        print(f\"  Form #{idx}: {method} {action}\")
+        for field in fields:
+            fname = field.get('name', '')
+            ftype = field.get('type', '')
+            print(f\"    - {fname:<20} ({ftype})\")
+    print()
+
+# Suggested URL
+suggested = summary.get('suggestedUrl', '')
+if suggested:
+    print('Suggested URL Pattern:')
+    print('-' * 60)
+    print(f\"  {suggested}\")
+    print()
+" 2>/dev/null || echo "$result"
+  fi
+}
+
+# ============================================================================
 # Command: help
 # ============================================================================
 cmd_help() {
@@ -280,6 +360,7 @@ cmd_help() {
   echo ""
   echo "Commands:"
   echo "  recon [--full] [--status] [--diff]  Get page structure as markdown"
+  echo "  inspect [--json]        Discover URL params and forms (Tier 1+2)"
   echo "  open URL [--status]      Open URL (waits for load), then recon"
   echo "  wait [sel] [--gone]  Wait for DOM/element (10s timeout)"
   echo "  click SELECTOR          Click element by CSS selector"
@@ -290,6 +371,7 @@ cmd_help() {
   echo "Quick Examples:"
   echo "  $TOOL_NAME open \"https://example.com\""
   echo "  $TOOL_NAME recon"
+  echo "  $TOOL_NAME inspect"
   echo "  $TOOL_NAME click '[data-testid=\"btn\"]' + wait + recon"
   echo "  $TOOL_NAME input '#email' 'test@example.com' + wait + recon"
   echo ""
@@ -334,6 +416,7 @@ execute_single() {
   shift
   case "$cmd" in
     recon)      cmd_recon "$@" ;;
+    inspect)    cmd_inspect "$@" ;;
     open)       cmd_open "$@" ;;
     wait)       cmd_wait "$@" ;;
     click)      cmd_click "$@" ;;
@@ -399,6 +482,11 @@ case "$1" in
   recon)
     shift
     cmd_recon "$@"
+    ;;
+
+  inspect)
+    shift
+    cmd_inspect "$@"
     ;;
 
   open)
