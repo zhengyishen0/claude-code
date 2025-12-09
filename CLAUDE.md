@@ -99,4 +99,23 @@ Run `tools/worktree/run.sh` for full help.
 - Grant permission when prompted (one-time per session)
 - Rename temp worktrees: `tools/worktree/run.sh rename new-name`
 
+### playwright
+Cross-platform browser automation with Playwright
+
+**Structure:**
+- Single `run.sh` file with command dispatcher
+- JavaScript command implementations in `js/` directory
+- Full documentation in `README.md`
+
+**Commands:** open, click, input, wait, recon, close, help
+
+**Key Features:**
+1. Cross-platform - Works on macOS, Linux, Windows
+2. Multi-browser - Chrome, Firefox, WebKit support
+3. Auto-waiting - Built-in element waiting
+4. Accessibility tree - Structured page analysis via recon
+5. Command chaining - Combine actions with +
+
+Run `tools/playwright/run.sh` for help or see `tools/playwright/README.md` for full documentation.
+
 <!-- TOOLS:END -->
