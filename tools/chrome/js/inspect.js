@@ -96,7 +96,59 @@
   result.summary.totalForms = result.forms.length;
 
   // ============================================================================
-  // Generate suggested URL pattern
+  // Helper: Generate meaningful placeholder for a parameter name
+  // ============================================================================
+  function getMeaningfulPlaceholder(paramName) {
+    const lower = paramName.toLowerCase();
+
+    // Common search/query params
+    if (/^(q|query|search|keyword|term)$/i.test(lower)) return 'query';
+    if (/^search[_-]?query$/i.test(lower)) return 'query';
+
+    // Video/media IDs
+    if (/^v(id(eo)?)?$/i.test(lower)) return 'video_id';
+    if (/^(track|song|audio)[_-]?id$/i.test(lower)) return 'track_id';
+
+    // Generic IDs
+    if (/^id$/i.test(lower)) return 'id';
+    if (/[_-]id$/i.test(lower)) return paramName; // Keep specific IDs like user_id
+
+    // Pagination
+    if (/^(page|p)$/i.test(lower)) return 'page';
+    if (/^(offset|start)$/i.test(lower)) return 'offset';
+    if (/^(limit|per[_-]?page|page[_-]?size)$/i.test(lower)) return 'limit';
+
+    // Filtering/sorting
+    if (/^sort([_-]?by)?$/i.test(lower)) return 'sort';
+    if (/^order([_-]?by)?$/i.test(lower)) return 'order';
+    if (/^filter$/i.test(lower)) return 'filter';
+    if (/^category$/i.test(lower)) return 'category';
+
+    // Authentication/security
+    if (/^(token|auth|api[_-]?key)$/i.test(lower)) return 'token';
+    if (/^(session|sid)$/i.test(lower)) return 'session_id';
+
+    // Dates
+    if (/^(from|start)[_-]?date$/i.test(lower)) return 'start_date';
+    if (/^(to|end)[_-]?date$/i.test(lower)) return 'end_date';
+    if (/^date$/i.test(lower)) return 'date';
+
+    // Location
+    if (/^(loc|location|place)$/i.test(lower)) return 'location';
+    if (/^(lat|latitude)$/i.test(lower)) return 'latitude';
+    if (/^(lng|lon|longitude)$/i.test(lower)) return 'longitude';
+
+    // Common params
+    if (/^lang(uage)?$/i.test(lower)) return 'language';
+    if (/^(format|type)$/i.test(lower)) return 'format';
+    if (/^callback$/i.test(lower)) return 'callback';
+
+    // Default: use the param name itself
+    return paramName;
+  }
+
+  // ============================================================================
+  // Generate suggested URL patterns
   // ============================================================================
   if (Object.keys(result.urlParams).length > 0) {
     // Use first form action if available, otherwise current URL
@@ -111,12 +163,19 @@
       baseUrl = url.href;
     } catch(e) {}
 
-    // Build param template
+    // Build generic template (existing)
     const params = Object.keys(result.urlParams)
       .map(k => `${k}=<value>`)
       .join('&');
 
     result.summary.suggestedUrl = `${baseUrl}?${params}`;
+
+    // Build pattern template with meaningful placeholders
+    const patternParams = Object.keys(result.urlParams)
+      .map(k => `${k}=<${getMeaningfulPlaceholder(k)}>`)
+      .join('&');
+
+    result.summary.patternUrl = `${baseUrl}?${patternParams}`;
   }
 
   // ============================================================================

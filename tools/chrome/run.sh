@@ -275,11 +275,13 @@ cmd_esc() {
 # ============================================================================
 cmd_inspect() {
   local FORMAT="pretty"
+  local USE_PATTERN="false"
 
   # Parse arguments
   while [ $# -gt 0 ]; do
     case "$1" in
       --json) FORMAT="json"; shift ;;
+      --pattern) USE_PATTERN="true"; shift ;;
       -*) echo "Unknown option: $1" >&2; return 1 ;;
       *) shift ;;
     esac
@@ -297,6 +299,7 @@ cmd_inspect() {
 import json, sys
 
 data = json.load(sys.stdin)
+use_pattern = '$USE_PATTERN' == 'true'
 
 print('URL Parameter Discovery')
 print('=' * 60)
@@ -340,12 +343,22 @@ if forms:
     print()
 
 # Suggested URL
-suggested = summary.get('suggestedUrl', '')
-if suggested:
-    print('Suggested URL Pattern:')
-    print('-' * 60)
-    print(f\"  {suggested}\")
-    print()
+if use_pattern:
+    pattern = summary.get('patternUrl', '')
+    if pattern:
+        print('URL Pattern (with meaningful placeholders):')
+        print('-' * 60)
+        print(f\"  {pattern}\")
+        print()
+else:
+    suggested = summary.get('suggestedUrl', '')
+    if suggested:
+        print('Suggested URL Pattern:')
+        print('-' * 60)
+        print(f\"  {suggested}\")
+        print()
+        print('Tip: Use --pattern flag for meaningful placeholders')
+        print()
 " 2>/dev/null || echo "$result"
   fi
 }
@@ -360,7 +373,7 @@ cmd_help() {
   echo ""
   echo "Commands:"
   echo "  recon [--full] [--status] [--diff]  Get page structure as markdown"
-  echo "  inspect [--json]        Discover URL params and forms (Tier 1+2)"
+  echo "  inspect [--json] [--pattern]  Discover URL params and forms (Tier 1+2)"
   echo "  open URL [--status]      Open URL (waits for load), then recon"
   echo "  wait [sel] [--gone]  Wait for DOM/element (10s timeout)"
   echo "  click SELECTOR          Click element by CSS selector"
