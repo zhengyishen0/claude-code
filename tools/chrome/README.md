@@ -14,7 +14,7 @@ tools/chrome/run.sh <command> [args...] [+ command [args...]]...
 Get page structure as markdown
 
 ```bash
-recon [--full] [--status]
+recon [--full] [--status] [--diff]
 ```
 
 By default, shows structure + interactive sections (Dialog, Form, Nav) with collapsed repetitive content.
@@ -22,6 +22,7 @@ By default, shows structure + interactive sections (Dialog, Form, Nav) with coll
 **Options:**
 - `--full`: Show all details (original verbose behavior)
 - `--status`: Show loading info (images, scripts, etc.)
+- `--diff`: Show changes since last recon
 
 **Filter output with grep/awk:**
 ```bash
@@ -29,6 +30,56 @@ recon | awk '/^## Nav($|:)/,/^## [^N]/'   # Show Nav
 recon | awk '/^## Main($|:)/,/^## [^M]/'  # Show Main
 recon | awk '/^## Dialog/,/^## [^D]/'     # Show Dialog
 ```
+
+### inspect
+Discover URL parameters and form structures (Universal URL Discovery)
+
+```bash
+inspect [--json] [--detail]
+```
+
+Combines **Tier 1** (link extraction) + **Tier 2** (form inspection) to discover all URL parameters and forms on the current page.
+
+**Default behavior:**
+- Shows meaningful placeholders: `search_query=<query>&v=<video_id>`
+- Self-documenting URL patterns
+
+**Options:**
+- `--json`: Output raw JSON for programmatic use
+- `--detail`: Show generic placeholders: `search_query=<value>&v=<value>`
+
+**Examples:**
+```bash
+# Discover URL structure
+inspect
+# Output: https://youtube.com/results?search_query=<query>&v=<video_id>
+
+# Get JSON for parsing
+inspect --json
+
+# Show all params with generic placeholders
+inspect --detail
+
+# Chain with open
+open "https://airbnb.com" + wait + inspect
+```
+
+**What it discovers:**
+- Parameters from existing links (Tier 1)
+- Form field names and types (Tier 2)
+- Suggested URL pattern with examples
+- All forms and their actions
+
+**Smart placeholder conversion:**
+- `v` → `<video_id>` (YouTube)
+- `q`, `query`, `search` → `<query>`
+- `checkin`, `checkout` → `<checkin>`, `<checkout>`
+- `page`, `offset`, `limit` → `<page>`, `<offset>`, `<limit>`
+- `token`, `auth` → `<token>`
+- 20+ more patterns
+
+**Use case:**
+Build search URLs without manual clicking - inspect discovers the structure, you construct the URL.
 
 ### open
 Open URL (waits for load), then recon
