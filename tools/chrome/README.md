@@ -35,30 +35,30 @@ recon | awk '/^## Dialog/,/^## [^D]/'     # Show Dialog
 Discover URL parameters and form structures (Universal URL Discovery)
 
 ```bash
-inspect [--json] [--detail]
+inspect [--json]
 ```
 
 Combines **Tier 1** (link extraction) + **Tier 2** (form inspection) to discover all URL parameters and forms on the current page.
 
-**Default behavior:**
+**Output format:**
 - Shows meaningful placeholders: `search_query=<query>&v=<video_id>`
+- Includes example values from the page: `adults: [links] '2'`
 - Self-documenting URL patterns
 
 **Options:**
 - `--json`: Output raw JSON for programmatic use
-- `--detail`: Show generic placeholders: `search_query=<value>&v=<value>`
 
 **Examples:**
 ```bash
 # Discover URL structure
 inspect
-# Output: https://youtube.com/results?search_query=<query>&v=<video_id>
+# Output shows:
+#   adults    [links] '2'
+#   checkin   [links] '2025-12-16'
+#   URL Pattern: https://airbnb.com/homes?adults=<adults>&checkin=<checkin>
 
 # Get JSON for parsing
 inspect --json
-
-# Show all params with generic placeholders
-inspect --detail
 
 # Chain with open
 open "https://airbnb.com" + wait + inspect
@@ -67,7 +67,7 @@ open "https://airbnb.com" + wait + inspect
 **What it discovers:**
 - Parameters from existing links (Tier 1)
 - Form field names and types (Tier 2)
-- Suggested URL pattern with examples
+- Example values for each parameter
 - All forms and their actions
 
 **Smart placeholder conversion:**
@@ -78,8 +78,21 @@ open "https://airbnb.com" + wait + inspect
 - `token`, `auth` → `<token>`
 - 20+ more patterns
 
-**Use case:**
-Build search URLs without manual clicking - inspect discovers the structure, you construct the URL.
+**When to use inspect:**
+- Before constructing search/filter URLs
+- When you need to understand a site's URL structure
+- To discover available query parameters without clicking through UI
+- When building automated workflows that require URL construction
+- To find form fields and their expected values
+
+**Workflow example:**
+```bash
+# 1. Open the site and inspect
+open "https://airbnb.com" + wait + inspect
+
+# 2. Use discovered params to build direct URL
+open "https://airbnb.com/homes?checkin=2025-12-16&checkout=2025-12-23&adults=5"
+```
 
 ### open
 Open URL (waits for load), then recon

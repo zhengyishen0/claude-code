@@ -79,12 +79,24 @@ Run `tools/chrome/run.sh` for full help.
 **Key Principles:**
 1. URL params first - always prefer direct URLs over clicking
 2. Inspect before clicking - use `inspect` to discover URL structure
+   - Use when you need to build search/filter URLs
+   - Discovers all available parameters from links and forms
+   - Shows example values to understand expected formats
+   - Outputs self-documenting patterns: `?checkin=<checkin>&adults=<adults>`
 3. Use chrome tool commands - avoid chrome-cli execute unless truly needed
 4. Recon first - understand page before interacting
 5. Chain with + - action + wait + recon in one call
 6. Wait for specific element - not just any DOM change
 7. Use --gone when expecting element to disappear
 8. Filter recon with grep/awk - `recon | awk '/^## Main($|:)/,/^## [^M]/'`
+
+**Typical workflow:**
+```bash
+# Discover → Build → Execute
+open "https://site.com" + wait + inspect
+# See: checkin=<checkin>&adults=<adults>
+open "https://site.com?checkin=2025-12-16&adults=5"
+```
 
 ### worktree
 Git worktree management for isolated feature development
