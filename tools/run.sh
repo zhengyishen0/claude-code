@@ -199,133 +199,101 @@ sync_md() {
   echo "✓ Updated $(basename "$md_file")"
 }
 
-# Initialize project - check and install prerequisites
+# Initialize project - check and install prerequisites using Brewfile
 init_project() {
+  local brewfile="$TOOLS_DIR/../Brewfile"
+
   echo "Claude Code - Prerequisites Check"
   echo "=================================="
   echo ""
 
-  # Temporary file for storing prerequisites data
-  local tmpfile="/tmp/claude-code-prereqs-$$"
-  : > "$tmpfile"
-
-  # Collect all prerequisites from tool READMEs
-  for dir in "$TOOLS_DIR"/*/; do
-    [ ! -d "$dir" ] && continue
-    local readme="$dir/README.md"
-    [ ! -f "$readme" ] && continue
-
-    # Extract prerequisites and save to temp file
-    # Format: tool|type|cmd
-    awk '/^## Prerequisites/{flag=1; next} flag && /^## /{flag=0} flag && /^- /{print}' "$readme" | while IFS= read -r line; do
-      # Parse: - tool (required|optional): install command
-      echo "$line" | sed -E 's/^- (.+) \((required|optional)\): (.+)$/\1|\2|\3/' >> "$tmpfile"
-    done
-  done
-
-  # Check status and display
-  local installed=""
-  local missing_req=""
-  local missing_opt=""
-
-  while IFS='|' read -r tool type cmd; do
-    if command -v "$tool" >/dev/null 2>&1; then
-      installed="$installed $tool"
-    else
-      if [ "$type" = "required" ]; then
-        missing_req="$missing_req $tool|$cmd"
-      else
-        missing_opt="$missing_opt $tool|$cmd"
-      fi
-    fi
-  done < "$tmpfile"
-
-  # Display installed
-  if [ -n "$installed" ]; then
-    echo "✓ Installed:"
-    for tool in $(echo "$installed" | tr ' ' '\n' | grep -v '^$' | sort); do
-      echo "  ✓ $tool"
-    done
+  # Check if Homebrew is installed
+  if ! command -v brew >/dev/null 2>&1; then
+    echo "✗ Homebrew not found"
     echo ""
+    echo "Homebrew is required to install dependencies."
+    echo "Install from: https://brew.sh"
+    echo ""
+    echo "Run this command:"
+    echo '  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+    return 1
   fi
 
-  # Display missing required
-  if [ -n "$missing_req" ]; then
-    echo "✗ Missing (required):"
-    for entry in $(echo "$missing_req" | tr ' ' '\n' | grep -v '^$' | sort); do
-      local tool=$(echo "$entry" | cut -d'|' -f1)
-      local cmd=$(echo "$entry" | cut -d'|' -f2-)
-      echo "  ✗ $tool - $cmd"
-    done
-    echo ""
+  echo "✓ Homebrew installed"
+  echo ""
+
+  # Check if Brewfile exists
+  if [ ! -f "$brewfile" ]; then
+    echo "✗ Brewfile not found at: $brewfile"
+    return 1
   fi
 
-  # Display missing optional
-  if [ -n "$missing_opt" ]; then
-    echo "⚠ Missing (optional):"
-    for entry in $(echo "$missing_opt" | tr ' ' '\n' | grep -v '^$' | sort); do
-      local tool=$(echo "$entry" | cut -d'|' -f1)
-      local cmd=$(echo "$entry" | cut -d'|' -f2-)
-      echo "  ⚠ $tool - $cmd"
-    done
-    echo ""
-  fi
+  # Check current status
+  echo "Checking installed dependencies..."
+  echo ""
 
-  # Auto-install missing required tools
-  if [ -n "$missing_req" ]; then
-    echo "Installing missing required tools..."
+  if brew bundle check --file="$brewfile" >/dev/null 2>&1; then
+    echo "✓ All dependencies are already installed!"
+    echo ""
+    show_versions
+  else
+    echo "Some dependencies are missing. Installing..."
     echo ""
 
-    for entry in $(echo "$missing_req" | tr ' ' '\n' | grep -v '^$' | sort); do
-      local tool=$(echo "$entry" | cut -d'|' -f1)
-      local cmd=$(echo "$entry" | cut -d'|' -f2-)
-
-      # Skip pre-installed or download-only tools
-      if echo "$cmd" | grep -q "Pre-installed on macOS\|Download from"; then
-        echo "⚠ $tool: $cmd"
-        continue
-      fi
-
-      echo "→ Installing $tool..."
-      echo "  Running: $cmd"
-
-      # Execute installation command
-      if eval "$cmd" >/dev/null 2>&1; then
-        echo "  ✓ $tool installed successfully"
-      else
-        echo "  ✗ $tool installation failed"
-      fi
+    # Install missing dependencies
+    if brew bundle install --file="$brewfile"; then
       echo ""
-    done
+      echo "✓ Dependencies installed successfully!"
+      echo ""
+      show_versions
 
-    # Re-check
-    echo "Re-checking prerequisites..."
-    echo ""
-
-    local all_ok=true
-    while IFS='|' read -r tool type cmd; do
-      [ "$type" != "required" ] && continue
-      if command -v "$tool" >/dev/null 2>&1; then
-        echo "  ✓ $tool"
-      else
-        echo "  ✗ $tool (still missing)"
-        all_ok=false
+      # Remind about lockfile
+      if [ -f "$TOOLS_DIR/../Brewfile.lock.json" ]; then
+        echo ""
+        echo "💡 Brewfile.lock.json was updated. Consider committing it:"
+        echo "   git add Brewfile.lock.json"
       fi
-    done < "$tmpfile"
-    echo ""
-
-    rm -f "$tmpfile"
-
-    if [ "$all_ok" = "true" ]; then
-      echo "✓ All required tools installed!"
     else
-      echo "⚠ Some tools still missing. Please install manually."
+      echo ""
+      echo "✗ Some dependencies failed to install"
+      echo ""
+      echo "Run 'brew bundle install --file=Brewfile' to see detailed errors"
       return 1
     fi
-  else
-    echo "✓ All required tools are installed!"
-    rm -f "$tmpfile"
   fi
+}
+
+# Show installed versions of key tools
+show_versions() {
+  echo "Installed versions:"
+
+  # Check each tool and show version
+  local tools="node git chrome-cli claude"
+
+  for tool in $tools; do
+    if command -v "$tool" >/dev/null 2>&1; then
+      case "$tool" in
+        node)
+          local version=$(node --version 2>/dev/null)
+          echo "  ✓ node $version"
+          ;;
+        git)
+          local version=$(git --version 2>/dev/null | awk '{print $3}')
+          echo "  ✓ git $version"
+          ;;
+        chrome-cli)
+          local version=$(chrome-cli version 2>/dev/null || echo "installed")
+          echo "  ✓ chrome-cli $version"
+          ;;
+        claude)
+          local version=$(claude --version 2>/dev/null | head -1 || echo "installed")
+          echo "  ✓ claude $version"
+          ;;
+      esac
+    else
+      echo "  ✗ $tool (not found)"
+    fi
+  done
 }
 
 case "$1" in

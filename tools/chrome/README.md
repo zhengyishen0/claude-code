@@ -277,6 +277,3 @@ chrome-cli activate -t ID         # Switch to tab
 chrome-cli execute JS             # Execute JavaScript
 ```
 
-## Prerequisites
-
-- chrome-cli (required): brew install chrome-cli

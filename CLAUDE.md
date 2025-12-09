@@ -2,22 +2,35 @@
 
 ## Project Setup
 
-**First-time setup**: Run `tools/run.sh init` to check and install all prerequisites.
+**First-time setup**: Run `tools/run.sh init` to install all prerequisites via Brewfile.
 
 ```bash
 tools/run.sh init
 ```
 
 This command:
-- Scans all tool READMEs for prerequisites
-- Checks which tools are installed
-- Automatically installs missing required tools
-- Shows optional tools that could improve performance
+- Checks if Homebrew is installed
+- Runs `brew bundle install` to install missing dependencies
+- Shows installed versions of all tools
+- Generates/updates `Brewfile.lock.json` for reproducibility
 
-**What it checks:**
-- System tools: git, node, npm
-- Browser automation: chrome-cli, Google Chrome
-- Tool-specific: playwright browsers, claude CLI
+**Dependencies managed via Brewfile:**
+- `git` - Version control
+- `node@18` - Node.js 18.x runtime
+- `chrome-cli` - Browser automation CLI
+- `claude` - Claude Code CLI tool
+
+**Version locking:**
+- `Brewfile` defines dependencies with version constraints (e.g., `node@18`)
+- `Brewfile.lock.json` pins exact versions for reproducibility
+- Commit both files to ensure consistent environments
+
+**Manual Brewfile operations:**
+```bash
+brew bundle check              # Check if all dependencies installed
+brew bundle install            # Install missing dependencies
+brew bundle install --upgrade  # Update all dependencies & lockfile
+```
 
 **After running init**, use `tools/run.sh sync` to update CLAUDE.md with tool documentation.
 
@@ -66,8 +79,8 @@ When creating tools:
 1. **Self-documenting** - Tools document themselves via `help` command
 2. **Help as default** - Running with no args shows help
 3. **README-based docs** - Full documentation in README.md (used by `tools/run.sh sync`)
-4. **Prerequisites in README** - Add `## Prerequisites` section for `tools/run.sh init`
-5. **Standard entry point** - Each tool uses `run.sh`, name derived from folder
+4. **Standard entry point** - Each tool uses `run.sh`, name derived from folder
+5. **Add to Brewfile** - If tool needs system dependencies, add to Brewfile
 
 **README Structure** (required for sync):
 ```markdown
@@ -87,11 +100,14 @@ Description
 
 1. Principle one
 2. Principle two
+```
 
-## Prerequisites
-
-- tool (required): brew install tool
-- optional-tool (optional): npm install -g optional-tool
+**Adding dependencies:**
+If your tool needs system packages, add them to the root `Brewfile`:
+```ruby
+# In Brewfile
+brew "new-dependency"           # Latest version
+brew "versioned-dep@14"        # Specific major version
 ```
 
 ## Command Execution Guidelines
