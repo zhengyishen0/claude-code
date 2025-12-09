@@ -74,28 +74,25 @@ Browser automation with React/SPA support
 
 Run `tools/chrome/run.sh` for full help.
 
-**Commands:** recon, inspect, open, wait, click, input, esc, help
+**Commands:** snapshot, open, wait, click, input, esc, help
 
 **Key Principles:**
 1. URL params first - always prefer direct URLs over clicking
-2. Inspect before clicking - use `inspect` to discover URL structure
-   - Use when you need to build search/filter URLs
-   - Discovers all available parameters from links and forms
-   - Shows example values to understand expected formats
-   - Outputs self-documenting patterns: `?checkin=<checkin>&adults=<adults>`
-3. Use chrome tool commands - avoid chrome-cli execute unless truly needed
-4. Recon first - understand page before interacting
-5. Chain with + - action + wait + recon in one call
+2. Snapshot first - understand page before interacting
+3. Track changes with --diff - see what changed after interactions
+   - `snapshot` - capture current state (always saves full content)
+   - `snapshot --diff` - show changes vs previous
+4. Chain with + - action + wait + snapshot --diff in one call
+5. State-based snapshots - auto-detects base/dropdown/overlay/dialog
 6. Wait for specific element - not just any DOM change
 7. Use --gone when expecting element to disappear
-8. Filter recon with grep/awk - `recon | awk '/^## Main($|:)/,/^## [^M]/'`
+8. Use --network for lazy content - wait for footer/ads to load
 
 **Typical workflow:**
 ```bash
-# Discover → Build → Execute
-open "https://site.com" + wait + inspect
-# See: checkin=<checkin>&adults=<adults>
-open "https://site.com?checkin=2025-12-16&adults=5"
+open "https://example.com" + wait + snapshot
+input '#search' 'query' + wait + snapshot --diff
+click '[data-testid="btn"]' + wait + snapshot --diff
 ```
 
 ### worktree
@@ -110,24 +107,5 @@ Run `tools/worktree/run.sh` for full help.
 - Use absolute paths when working in worktrees
 - Grant permission when prompted (one-time per session)
 - Rename temp worktrees: `tools/worktree/run.sh rename new-name`
-
-### playwright
-Cross-platform browser automation with Playwright
-
-**Structure:**
-- Single `run.sh` file with command dispatcher
-- JavaScript command implementations in `js/` directory
-- Full documentation in `README.md`
-
-**Commands:** open, click, input, wait, recon, close, help
-
-**Key Features:**
-1. Cross-platform - Works on macOS, Linux, Windows
-2. Multi-browser - Chrome, Firefox, WebKit support
-3. Auto-waiting - Built-in element waiting
-4. Accessibility tree - Structured page analysis via recon
-5. Command chaining - Combine actions with +
-
-Run `tools/playwright/run.sh` for help or see `tools/playwright/README.md` for full documentation.
 
 <!-- TOOLS:END -->

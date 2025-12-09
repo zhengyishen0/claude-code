@@ -26,9 +26,9 @@ CHROME_CLICK_DELAY=150
 CHROME_INPUT_DELAY=150
 
 # ============================================================================
-# Snapshot directory for recon --diff
+# Snapshot directory
 # ============================================================================
-SNAPSHOT_DIR="/tmp/recon-snapshots"
+SNAPSHOT_DIR="/tmp/chrome-snapshots"
 mkdir -p "$SNAPSHOT_DIR" 2>/dev/null
 
 # Get sanitized URL for snapshot filename
@@ -38,57 +38,54 @@ get_snapshot_prefix() {
   echo "$url" | tr -d '"' | tr '/:?&=' '-' | tr -s '-' | sed 's/-$//'
 }
 
+# Detect page state for snapshot comparison
+get_page_state() {
+  chrome-cli execute "$(cat "$SCRIPT_DIR/js/detect-page-state.js")" | tr -d '"'
+}
+
 # ============================================================================
-# Command: recon
+# Command: snapshot
 # ============================================================================
-cmd_recon() {
-  local STATUS=""
-  local FULL_MODE=""
+cmd_snapshot() {
   local DIFF_MODE=""
 
   while [ $# -gt 0 ]; do
     case "$1" in
-      --status) STATUS="true"; shift ;;
-      --full) FULL_MODE="true"; shift ;;
       --diff) DIFF_MODE="true"; shift ;;
       -*) echo "Unknown option: $1" >&2; return 1 ;;
       *) shift ;;
     esac
   done
 
-  if [ "$STATUS" = "true" ]; then
-    chrome-cli execute "$(cat "$SCRIPT_DIR/js/page-status.js")"
-  fi
-
-  # Get URL prefix for snapshot files
+  # Get URL prefix and page state for snapshot files
   local prefix=$(get_snapshot_prefix)
+  local state=$(get_page_state)
   local timestamp=$(date +%s)
-  local snapshot_file="$SNAPSHOT_DIR/${prefix}-${timestamp}.md"
+  local snapshot_file="$SNAPSHOT_DIR/${prefix}-${state}-${timestamp}.md"
 
-  # Diff mode: compare against previous snapshot
+  # Always capture full content
+  local content=$(chrome-cli execute "window.__RECON_FULL__ = true; $(cat "$SCRIPT_DIR/js/html2md.js")")
+
+  # Diff mode: compare against previous snapshot with same state
   if [ "$DIFF_MODE" = "true" ]; then
-    # Find most recent snapshot for this URL
-    local latest=$(ls -t "$SNAPSHOT_DIR/${prefix}"-*.md 2>/dev/null | head -1)
+    # Find most recent snapshot for this URL + state
+    local latest=$(ls -t "$SNAPSHOT_DIR/${prefix}-${state}"-*.md 2>/dev/null | head -1)
     if [ -z "$latest" ]; then
-      echo "No previous snapshot for this URL. Run recon first."
+      echo "No previous snapshot for this URL state ($state). Run snapshot first." >&2
       return 1
     fi
 
-    # Run recon and diff against previous
-    if [ "$FULL_MODE" = "true" ]; then
-      chrome-cli execute "window.__RECON_FULL__ = true; $(cat "$SCRIPT_DIR/js/html2md.js")" | diff "$latest" - || true
-    else
-      chrome-cli execute "window.__RECON_FULL__ = false; $(cat "$SCRIPT_DIR/js/html2md.js")" | diff "$latest" - || true
-    fi
-    return
-  fi
-
-  # Normal recon: output and save snapshot
-  if [ "$FULL_MODE" = "true" ]; then
-    chrome-cli execute "window.__RECON_FULL__ = true; $(cat "$SCRIPT_DIR/js/html2md.js")" | tee "$snapshot_file"
+    # Save snapshot and show diff
+    echo "$content" | tee "$snapshot_file" | diff "$latest" - || true
   else
-    chrome-cli execute "window.__RECON_FULL__ = false; $(cat "$SCRIPT_DIR/js/html2md.js")" | tee "$snapshot_file"
+    # Normal mode: save and output snapshot
+    echo "$content" | tee "$snapshot_file"
   fi
+}
+
+# Alias for backward compatibility
+cmd_recon() {
+  cmd_snapshot "$@"
 }
 
 # ============================================================================
@@ -97,7 +94,7 @@ cmd_recon() {
 cmd_open() {
   local URL=$1
   if [ -z "$URL" ]; then
-    echo "Usage: open URL [--status]" >&2
+    echo "Usage: open URL" >&2
     return 1
   fi
 
@@ -106,11 +103,7 @@ cmd_open() {
   # Wait for page to fully load
   cmd_wait > /dev/null 2>&1
 
-  if [ "$2" = "--status" ]; then
-    cmd_recon --status
-  else
-    cmd_recon
-  fi
+  cmd_snapshot
 }
 
 # ============================================================================
@@ -120,11 +113,13 @@ cmd_wait() {
   local timeout=${CHROME_WAIT_TIMEOUT}
   local SELECTOR=""
   local GONE=false
+  local NETWORK=false
 
   # Parse arguments
   while [ $# -gt 0 ]; do
     case "$1" in
       --gone) GONE=true; shift ;;
+      --network) NETWORK=true; shift ;;
       -*) echo "Unknown option: $1" >&2; return 1 ;;
       *) SELECTOR="$1"; shift ;;
     esac
@@ -186,9 +181,24 @@ cmd_wait() {
       return 1
     fi
 
-    # Then wait for DOM to stabilize (no changes for 1s)
+    # Wait for network idle if --network flag is set
+    if [ "$NETWORK" = true ]; then
+      while (( $(echo "$elapsed < $timeout" | bc -l) )); do
+        # Check for active network requests
+        active=$(chrome-cli execute "performance.getEntriesByType('resource').filter(r => !r.responseEnd).length")
+        if [ "$active" = "0" ]; then
+          echo "OK: Network idle"
+          break
+        fi
+        sleep $interval
+        elapsed=$(echo "$elapsed + $interval" | bc)
+      done
+    fi
+
+    # Then wait for DOM to stabilize (no changes for 1.2-1.5s for lazy content)
     SNAPSHOT=$(chrome-cli execute "document.body.innerHTML.length + '|' + document.querySelectorAll('*').length")
     stable_count=0
+    required_stable=4  # 4 checks * 0.3s = 1.2s stability required
 
     while (( $(echo "$elapsed < $timeout" | bc -l) )); do
       sleep $interval
@@ -197,8 +207,8 @@ cmd_wait() {
       CURRENT=$(chrome-cli execute "document.body.innerHTML.length + '|' + document.querySelectorAll('*').length")
       if [ "$CURRENT" = "$SNAPSHOT" ]; then
         stable_count=$((stable_count + 1))
-        # Stable for 2 checks (1 second) = done
-        if [ $stable_count -ge 2 ]; then
+        # Stable for required checks = done
+        if [ $stable_count -ge $required_stable ]; then
           echo "OK: DOM stable"
           return 0
         fi
@@ -271,70 +281,6 @@ cmd_esc() {
 }
 
 # ============================================================================
-# Command: inspect
-# ============================================================================
-cmd_inspect() {
-  # Execute the inspection
-  local result=$(chrome-cli execute "$(cat "$SCRIPT_DIR/js/inspect.js")")
-
-  # Pretty print for human reading
-  echo "$result" | python3 -c "
-import json, sys
-
-data = json.load(sys.stdin)
-
-print('URL Parameter Discovery')
-print('=' * 60)
-print()
-
-# Summary
-summary = data.get('summary', {})
-print(f\"Summary:\")
-print(f\"  Parameters from links: {summary.get('paramsFromLinks', 0)}\")
-print(f\"  Parameters from forms: {summary.get('paramsFromForms', 0)}\")
-print(f\"  Total forms found: {summary.get('totalForms', 0)}\")
-print()
-
-# URL Parameters
-params = data.get('urlParams', {})
-if params:
-    print('Discovered Parameters:')
-    print('-' * 60)
-    for name, info in params.items():
-        source = info.get('source', 'unknown')
-        examples = info.get('examples', [])
-        ex_str = ', '.join(repr(e) for e in examples[:3])
-        print(f\"  {name:<20} [{source:>5}] {ex_str}\")
-    print()
-
-# Forms
-forms = data.get('forms', [])
-if forms:
-    print('Forms:')
-    print('-' * 60)
-    for form in forms:
-        idx = form.get('index', 0)
-        action = form.get('action', '')
-        method = form.get('method', 'GET')
-        fields = form.get('fields', [])
-        print(f\"  Form #{idx}: {method} {action}\")
-        for field in fields:
-            fname = field.get('name', '')
-            ftype = field.get('type', '')
-            print(f\"    - {fname:<20} ({ftype})\")
-    print()
-
-# URL Pattern with meaningful placeholders
-pattern = summary.get('patternUrl', '')
-if pattern:
-    print('URL Pattern:')
-    print('-' * 60)
-    print(f\"  {pattern}\")
-    print()
-" 2>/dev/null || echo "$result"
-}
-
-# ============================================================================
 # Command: help
 # ============================================================================
 cmd_help() {
@@ -343,21 +289,26 @@ cmd_help() {
   echo "Usage: $TOOL_NAME <command> [args...] [+ command [args...]]..."
   echo ""
   echo "Commands:"
-  echo "  recon [--full] [--status] [--diff]  Get page structure as markdown"
-  echo "  inspect                  Discover URL params and forms (Tier 1+2)"
-  echo "  open URL [--status]      Open URL (waits for load), then recon"
-  echo "  wait [sel] [--gone]  Wait for DOM/element (10s timeout)"
-  echo "  click SELECTOR          Click element by CSS selector"
-  echo "  input SELECTOR VALUE    Set input value by CSS selector"
+  echo "  snapshot [--diff]           Capture page state (always saves full content)"
+  echo "                              --diff: Show changes vs previous snapshot"
+  echo "  open URL                    Open URL (waits for load), then snapshot"
+  echo "  wait [sel] [--gone] [--network]"
+  echo "                              Wait for DOM/element (10s timeout)"
+  echo "                              --gone: Wait for element to disappear"
+  echo "                              --network: Wait for network idle"
+  echo "  click SELECTOR              Click element by CSS selector"
+  echo "  input SELECTOR VALUE        Set input value by CSS selector"
   echo "  esc                         Send ESC key (close dialogs/modals)"
   echo "  help                        Show this help message"
   echo ""
   echo "Quick Examples:"
   echo "  $TOOL_NAME open \"https://example.com\""
-  echo "  $TOOL_NAME recon"
-  echo "  $TOOL_NAME inspect"
-  echo "  $TOOL_NAME click '[data-testid=\"btn\"]' + wait + recon"
-  echo "  $TOOL_NAME input '#email' 'test@example.com' + wait + recon"
+  echo "  $TOOL_NAME snapshot"
+  echo "  $TOOL_NAME snapshot --diff"
+  echo "  $TOOL_NAME click '[data-testid=\"btn\"]' + wait + snapshot --diff"
+  echo "  $TOOL_NAME input '#email' 'test@example.com' + wait + snapshot --diff"
+  echo ""
+  echo "Note: 'recon' is aliased to 'snapshot' for backward compatibility"
   echo ""
   echo "For detailed documentation, see: $SCRIPT_DIR/README.md"
 }
@@ -399,8 +350,8 @@ execute_single() {
   local cmd="$1"
   shift
   case "$cmd" in
-    recon)      cmd_recon "$@" ;;
-    inspect)    cmd_inspect "$@" ;;
+    snapshot)   cmd_snapshot "$@" ;;
+    recon)      cmd_recon "$@" ;;  # backward compatibility
     open)       cmd_open "$@" ;;
     wait)       cmd_wait "$@" ;;
     click)      cmd_click "$@" ;;
@@ -463,14 +414,14 @@ fi
 
 # No chain - single command
 case "$1" in
+  snapshot)
+    shift
+    cmd_snapshot "$@"
+    ;;
+
   recon)
     shift
     cmd_recon "$@"
-    ;;
-
-  inspect)
-    shift
-    cmd_inspect "$@"
     ;;
 
   open)

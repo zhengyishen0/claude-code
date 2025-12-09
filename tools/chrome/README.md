@@ -10,109 +10,63 @@ tools/chrome/run.sh <command> [args...] [+ command [args...]]...
 
 ## Commands
 
-### recon
-Get page structure as markdown
+### snapshot
+Capture page state as markdown (always saves full content)
 
 ```bash
-recon [--full] [--status] [--diff]
+snapshot [--diff]
 ```
 
-By default, shows structure + interactive sections (Dialog, Form, Nav) with collapsed repetitive content.
-
-**Options:**
-- `--full`: Show all details (original verbose behavior)
-- `--status`: Show loading info (images, scripts, etc.)
-- `--diff`: Show changes since last recon
-
-**Filter output with grep/awk:**
-```bash
-recon | awk '/^## Nav($|:)/,/^## [^N]/'   # Show Nav
-recon | awk '/^## Main($|:)/,/^## [^M]/'  # Show Main
-recon | awk '/^## Dialog/,/^## [^D]/'     # Show Dialog
-```
-
-### inspect
-Discover URL parameters and form structures (Universal URL Discovery)
-
-```bash
-inspect
-```
-
-Combines **Tier 1** (link extraction) + **Tier 2** (form inspection) to discover all URL parameters and forms on the current page.
-
-**Output format:**
-- Shows meaningful placeholders: `search_query=<query>&v=<video_id>`
-- Includes example values from the page: `adults: [links] '2'`
-- Self-documenting URL patterns
+**Behavior:**
+- Always captures full page content
+- Saves to `/tmp/chrome-snapshots/` with state-based naming
+- Default: Show current page state
+- `--diff`: Show changes vs previous snapshot (same URL + state)
 
 **Examples:**
 ```bash
-# Discover URL structure
-inspect
-# Output shows:
-#   adults    [links] '2'
-#   checkin   [links] '2025-12-16'
-#   URL Pattern: https://airbnb.com/homes?adults=<adults>&checkin=<checkin>
-
-# Chain with open
-open "https://airbnb.com" + wait + inspect
+snapshot              # Capture and show current state
+snapshot --diff       # Show changes since last snapshot
 ```
 
-**What it discovers:**
-- Parameters from existing links (Tier 1)
-- Form field names and types (Tier 2)
-- Example values for each parameter
-- All forms and their actions
+**State-Based Snapshots:**
+Automatically detects page state for accurate comparisons:
+- `base` - Normal page
+- `dropdown` - Autocomplete/combobox expanded
+- `overlay` - Date picker, filters, large popups
+- `dialog` - Modal dialogs
 
-**Smart placeholder conversion:**
-- `v` → `<video_id>` (YouTube)
-- `q`, `query`, `search` → `<query>`
-- `checkin`, `checkout` → `<checkin>`, `<checkout>`
-- `page`, `offset`, `limit` → `<page>`, `<offset>`, `<limit>`
-- `token`, `auth` → `<token>`
-- 20+ more patterns
+Example filenames:
+- `www.airbnb.com-base-1234567890.md`
+- `www.airbnb.com-dropdown-1234567891.md`
+- `www.airbnb.com-dialog-1234567892.md`
 
-**When to use inspect:**
-- Before constructing search/filter URLs
-- When you need to understand a site's URL structure
-- To discover available query parameters without clicking through UI
-- When building automated workflows that require URL construction
-- To find form fields and their expected values
-
-**Workflow example:**
-```bash
-# 1. Open the site and inspect
-open "https://airbnb.com" + wait + inspect
-
-# 2. Use discovered params to build direct URL
-open "https://airbnb.com/homes?checkin=2025-12-16&checkout=2025-12-23&adults=5"
-```
+**Note:** `recon` is aliased to `snapshot` for backward compatibility
 
 ### open
-Open URL (waits for load), then recon
+Open URL (waits for load), then snapshot
 
 ```bash
-open URL [--status]
+open URL
 ```
-
-**Options:**
-- `--status`: Show loading info after page loads
 
 ### wait
 Wait for DOM/element (10s timeout)
 
 ```bash
-wait [selector] [--gone]
+wait [selector] [--gone] [--network]
 ```
 
 **Behavior:**
-- No selector: Wait for `readyState=complete` + DOM stable
+- No selector: Wait for `readyState=complete` + DOM stable (1.2s)
 - With selector: Wait for CSS selector to appear
 - `--gone`: Wait for element to disappear
+- `--network`: Wait for network idle (no active requests)
 
 **Examples:**
 ```bash
 wait                          # readyState + DOM stable
+wait --network                # Also wait for network idle
 wait '[role=dialog]'          # wait for modal
 wait '[data-testid="x"]'      # wait for element
 wait '[role=dialog]' --gone   # wait for modal to close
@@ -133,10 +87,10 @@ click '[aria-label="Search"]'
 click 'button.primary'
 ```
 
-**Chain with wait/recon:**
+**Chain with wait/snapshot:**
 ```bash
-click '...' + wait + recon
-click '...' + wait '[role=dialog]' + recon
+click '...' + wait + snapshot --diff
+click '...' + wait '[role=dialog]' + snapshot
 ```
 
 ### input
@@ -153,9 +107,9 @@ input '#email' 'test@example.com'
 input '[name="search"]' 'query'
 ```
 
-**Chain with wait/recon:**
+**Chain with wait/snapshot:**
 ```bash
-input '...' 'value' + wait + recon
+input '...' 'value' + wait + snapshot --diff
 ```
 
 ### esc
@@ -167,46 +121,24 @@ esc
 
 **Chain with +:**
 ```bash
-esc + wait dialog --gone + recon
+esc + wait dialog --gone + snapshot
 ```
-
-## Element Formats
-
-Universal across recon/click/input:
-
-**Actionable elements:**
-```
-[text@aria](#id|#testid|.selector|/path)
-```
-
-Examples:
-- `[@Search](#btn)`
-- `[Submit](#submit-btn)`
-- `[Next](/path)`
-
-Usage: `click "[@Search](#btn)"`
-
-**Input fields:**
-```
-Input: aria="label" (type)
-```
-
-Examples:
-- `Input: aria="Where" (search)`
-- `Input: aria="Email" (email)`
-
-Usage: `input "@Where=Paris"` or `input "@Email=test@example.com"`
-
-**Tip:** Copy formats directly from recon output for best results
 
 ## Chaining Commands
 
 Chain multiple commands with `+`:
 
 ```bash
-click "[@Submit](#btn)" + wait + recon
-click "[@Close](#btn)" + wait "[role=dialog]" --gone + recon
-input "@Search=tokyo" + wait "[role=listbox]" + recon
+# Typical workflow with diff tracking
+input '#search' 'Paris' + wait + snapshot --diff
+click '[data-testid="option-0"]' + wait + snapshot --diff
+click '[data-testid="date-15"]' + wait + snapshot --diff
+
+# Wait for network idle before snapshot
+open "https://example.com" + wait --network + snapshot
+
+# Complex chains
+click "[@Close](#btn)" + wait "[role=dialog]" --gone + snapshot
 ```
 
 ## Key Principles
@@ -218,18 +150,65 @@ input "@Search=tokyo" + wait "[role=listbox]" + recon
 
 2. **Use chrome tool commands** - Avoid `chrome-cli execute` unless truly needed
 
-3. **Recon first** - Understand page before interacting
-
-4. **Chain with +** - Combine action + wait + recon in one call
-
-5. **Wait for specific element** - Not just any DOM change
-
-6. **Use --gone** - When expecting element to disappear
-
-7. **Filter recon with grep/awk** - Extract specific sections
+3. **Snapshot first** - Understand page before interacting
    ```bash
-   recon | awk '/^## Main($|:)/,/^## [^M]/'
+   open "https://example.com" + wait + snapshot
    ```
+
+4. **Track changes with --diff** - See what changed after interactions
+   ```bash
+   click '[...]' + wait + snapshot --diff
+   ```
+
+5. **Chain with +** - Combine action + wait + snapshot in one call
+
+6. **Wait for specific element** - Not just any DOM change
+   ```bash
+   click '[...]' + wait '[role=dialog]' + snapshot
+   ```
+
+7. **Use --gone** - When expecting element to disappear
+   ```bash
+   esc + wait '[role=dialog]' --gone + snapshot
+   ```
+
+8. **Use --network for lazy content** - Wait for footer/ads to load
+   ```bash
+   open "https://example.com" + wait --network + snapshot
+   ```
+
+## Typical Workflows
+
+### Exploring a New Page
+```bash
+# First snapshot with network wait
+open "https://example.com" + wait --network + snapshot
+
+# Interact and track changes
+input '#search' 'query' + wait + snapshot --diff
+click '[data-testid="btn"]' + wait + snapshot --diff
+```
+
+### Form Filling
+```bash
+# Each step shows only what changed
+open "https://form.com" + wait + snapshot
+input '#name' 'John' + wait + snapshot --diff
+input '#email' 'john@example.com' + wait + snapshot --diff
+click '#submit' + wait + snapshot --diff
+```
+
+### Modal Interactions
+```bash
+# Open modal
+click '[data-testid="open-modal"]' + wait '[role=dialog]' + snapshot
+
+# Interact within modal (compares dialog state to dialog state)
+input '#modal-input' 'value' + wait + snapshot --diff
+
+# Close and verify
+esc + wait '[role=dialog]' --gone + snapshot --diff
+```
 
 ## Raw chrome-cli Commands
 
