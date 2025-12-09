@@ -38,39 +38,52 @@ get_snapshot_prefix() {
   echo "$url" | tr -d '"' | tr '/:?&=' '-' | tr -s '-' | sed 's/-$//'
 }
 
+# Detect page state for snapshot comparison
+get_page_state() {
+  chrome-cli execute "$(cat "$SCRIPT_DIR/js/detect-page-state.js")" | tr -d '"'
+}
+
 # ============================================================================
 # Command: recon
 # ============================================================================
 cmd_recon() {
   local STATUS=""
   local FULL_MODE=""
+  local SMART_MODE=""
   local DIFF_MODE=""
 
   while [ $# -gt 0 ]; do
     case "$1" in
       --status) STATUS="true"; shift ;;
       --full) FULL_MODE="true"; shift ;;
+      --smart) SMART_MODE="true"; shift ;;
       --diff) DIFF_MODE="true"; shift ;;
       -*) echo "Unknown option: $1" >&2; return 1 ;;
       *) shift ;;
     esac
   done
 
+  # Default to full mode for diff, unless --smart is specified
+  if [ "$DIFF_MODE" = "true" ] && [ "$SMART_MODE" != "true" ] && [ "$FULL_MODE" != "true" ]; then
+    FULL_MODE="true"
+  fi
+
   if [ "$STATUS" = "true" ]; then
     chrome-cli execute "$(cat "$SCRIPT_DIR/js/page-status.js")"
   fi
 
-  # Get URL prefix for snapshot files
+  # Get URL prefix and page state for snapshot files
   local prefix=$(get_snapshot_prefix)
+  local state=$(get_page_state)
   local timestamp=$(date +%s)
-  local snapshot_file="$SNAPSHOT_DIR/${prefix}-${timestamp}.md"
+  local snapshot_file="$SNAPSHOT_DIR/${prefix}-${state}-${timestamp}.md"
 
-  # Diff mode: compare against previous snapshot
+  # Diff mode: compare against previous snapshot with same state
   if [ "$DIFF_MODE" = "true" ]; then
-    # Find most recent snapshot for this URL
-    local latest=$(ls -t "$SNAPSHOT_DIR/${prefix}"-*.md 2>/dev/null | head -1)
+    # Find most recent snapshot for this URL + state
+    local latest=$(ls -t "$SNAPSHOT_DIR/${prefix}-${state}"-*.md 2>/dev/null | head -1)
     if [ -z "$latest" ]; then
-      echo "No previous snapshot for this URL. Run recon first."
+      echo "No previous snapshot for this URL state ($state). Run recon first."
       return 1
     fi
 
@@ -120,11 +133,13 @@ cmd_wait() {
   local timeout=${CHROME_WAIT_TIMEOUT}
   local SELECTOR=""
   local GONE=false
+  local NETWORK=false
 
   # Parse arguments
   while [ $# -gt 0 ]; do
     case "$1" in
       --gone) GONE=true; shift ;;
+      --network) NETWORK=true; shift ;;
       -*) echo "Unknown option: $1" >&2; return 1 ;;
       *) SELECTOR="$1"; shift ;;
     esac
@@ -186,9 +201,24 @@ cmd_wait() {
       return 1
     fi
 
-    # Then wait for DOM to stabilize (no changes for 1s)
+    # Wait for network idle if --network flag is set
+    if [ "$NETWORK" = true ]; then
+      while (( $(echo "$elapsed < $timeout" | bc -l) )); do
+        # Check for active network requests
+        active=$(chrome-cli execute "performance.getEntriesByType('resource').filter(r => !r.responseEnd).length")
+        if [ "$active" = "0" ]; then
+          echo "OK: Network idle"
+          break
+        fi
+        sleep $interval
+        elapsed=$(echo "$elapsed + $interval" | bc)
+      done
+    fi
+
+    # Then wait for DOM to stabilize (no changes for 1.2-1.5s for lazy content)
     SNAPSHOT=$(chrome-cli execute "document.body.innerHTML.length + '|' + document.querySelectorAll('*').length")
     stable_count=0
+    required_stable=4  # 4 checks * 0.3s = 1.2s stability required
 
     while (( $(echo "$elapsed < $timeout" | bc -l) )); do
       sleep $interval
@@ -197,8 +227,8 @@ cmd_wait() {
       CURRENT=$(chrome-cli execute "document.body.innerHTML.length + '|' + document.querySelectorAll('*').length")
       if [ "$CURRENT" = "$SNAPSHOT" ]; then
         stable_count=$((stable_count + 1))
-        # Stable for 2 checks (1 second) = done
-        if [ $stable_count -ge 2 ]; then
+        # Stable for required checks = done
+        if [ $stable_count -ge $required_stable ]; then
           echo "OK: DOM stable"
           return 0
         fi
@@ -279,11 +309,18 @@ cmd_help() {
   echo "Usage: $TOOL_NAME <command> [args...] [+ command [args...]]..."
   echo ""
   echo "Commands:"
-  echo "  recon [--full] [--status] [--diff]  Get page structure as markdown"
-  echo "  open URL [--status]      Open URL (waits for load), then recon"
-  echo "  wait [sel] [--gone]  Wait for DOM/element (10s timeout)"
-  echo "  click SELECTOR          Click element by CSS selector"
-  echo "  input SELECTOR VALUE    Set input value by CSS selector"
+  echo "  recon [--diff] [--smart] [--full] [--status]"
+  echo "                              Get page structure as markdown"
+  echo "                              --diff: Show changes (defaults to --full)"
+  echo "                              --smart: Use smart mode (collapsed sections)"
+  echo "                              --full: Show all content (default for --diff)"
+  echo "  open URL [--status]         Open URL (waits for load), then recon"
+  echo "  wait [sel] [--gone] [--network]"
+  echo "                              Wait for DOM/element (10s timeout)"
+  echo "                              --gone: Wait for element to disappear"
+  echo "                              --network: Wait for network idle"
+  echo "  click SELECTOR              Click element by CSS selector"
+  echo "  input SELECTOR VALUE        Set input value by CSS selector"
   echo "  esc                         Send ESC key (close dialogs/modals)"
   echo "  help                        Show this help message"
   echo ""
