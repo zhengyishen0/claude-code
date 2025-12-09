@@ -281,6 +281,17 @@ cmd_esc() {
 }
 
 # ============================================================================
+# Command: inspect
+# ============================================================================
+cmd_inspect() {
+  # Execute the inspection
+  local result=$(chrome-cli execute "$(cat "$SCRIPT_DIR/js/inspect.js")")
+
+  # Pretty print for human reading
+  echo "$result" | python3 "$SCRIPT_DIR/py/format-inspect.py"
+}
+
+# ============================================================================
 # Command: help
 # ============================================================================
 cmd_help() {
@@ -291,6 +302,7 @@ cmd_help() {
   echo "Commands:"
   echo "  snapshot [--diff]           Capture page state (always saves full content)"
   echo "                              --diff: Show changes vs previous snapshot"
+  echo "  inspect                     Discover URL parameters from links and forms"
   echo "  open URL                    Open URL (waits for load), then snapshot"
   echo "  wait [sel] [--gone] [--network]"
   echo "                              Wait for DOM/element (10s timeout)"
@@ -303,6 +315,7 @@ cmd_help() {
   echo ""
   echo "Quick Examples:"
   echo "  $TOOL_NAME open \"https://example.com\""
+  echo "  $TOOL_NAME inspect"
   echo "  $TOOL_NAME snapshot"
   echo "  $TOOL_NAME snapshot --diff"
   echo "  $TOOL_NAME click '[data-testid=\"btn\"]' + wait + snapshot --diff"
@@ -322,6 +335,7 @@ execute_single() {
   case "$cmd" in
     snapshot)   cmd_snapshot "$@" ;;
     recon)      cmd_recon "$@" ;;  # backward compatibility
+    inspect)    cmd_inspect "$@" ;;
     open)       cmd_open "$@" ;;
     wait)       cmd_wait "$@" ;;
     click)      cmd_click "$@" ;;
@@ -392,6 +406,11 @@ case "$1" in
   recon)
     shift
     cmd_recon "$@"
+    ;;
+
+  inspect)
+    shift
+    cmd_inspect "$@"
     ;;
 
   open)

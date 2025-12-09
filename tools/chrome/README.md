@@ -43,6 +43,60 @@ Example filenames:
 
 **Note:** `recon` is aliased to `snapshot` for backward compatibility
 
+### inspect
+Discover URL parameters from links and forms on the current page
+
+```bash
+inspect
+```
+
+**Behavior:**
+- Extracts URL parameters from all links on the page (Tier 1)
+- Inspects form fields and their names (Tier 2)
+- Generates URL pattern with meaningful placeholders
+- Shows examples of parameter values found
+
+**Output:**
+- Summary of discovered parameters
+- List of all parameters with examples
+- Form details if any
+- Suggested URL pattern for direct navigation
+
+**Examples:**
+```bash
+# Chain with + for single invocation
+open "https://www.airbnb.com" + wait + inspect
+
+# Or run separately
+open "https://www.airbnb.com"
+inspect
+```
+
+**Use Case:**
+Use inspect to understand a site's URL structure before automating. This helps you construct direct URLs with the right parameters instead of clicking through UI.
+
+**Example Output:**
+```
+URL Parameter Discovery
+============================================================
+
+Summary:
+  Parameters from links: 20
+  Parameters from forms: 1
+  Total forms found: 1
+
+Discovered Parameters:
+------------------------------------------------------------
+  check_in             [links] '2025-12-15'
+  check_out            [links] '2025-12-22'
+  adults               [links] '5'
+  query                [ form]
+
+URL Pattern:
+------------------------------------------------------------
+  https://example.com?check_in=<check_in>&check_out=<check_out>&adults=<adults>&query=<query>
+```
+
 ### open
 Open URL (waits for load), then snapshot
 

@@ -120,7 +120,7 @@ Browser automation with React/SPA support
 
 Run `tools/chrome/run.sh` for full help.
 
-**Commands:** snapshot, open, wait, click, input, esc
+**Commands:** snapshot, inspect, open, wait, click, input, esc
 
 **Key Principles:**
 1. **URL params first** - Always prefer direct URLs over clicking
