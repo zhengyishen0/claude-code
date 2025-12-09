@@ -26,3 +26,8 @@ Run `tools/worktree/run.sh` or `tools/worktree/run.sh help` for complete documen
 3. Automatically closes the current session
 
 This allows you to work on features in isolation without permission issues, while maintaining conversation continuity.
+
+## Prerequisites
+
+- git (required): Pre-installed on macOS
+- claude (required): brew install anthropics/claude/claude

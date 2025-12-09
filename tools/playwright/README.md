@@ -273,6 +273,10 @@ This tool follows the design principles outlined in `/CLAUDE.md`:
 3. **JavaScript in js/** - Separate JS from shell scripts
 4. **Standard structure** - Matches other tools in `tools/`
 
+## Prerequisites
+
+- node (required): brew install node
+
 ## License
 
 MIT

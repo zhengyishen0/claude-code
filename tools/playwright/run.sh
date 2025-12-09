@@ -110,40 +110,6 @@ cmd_help() {
 }
 
 # ============================================================================
-# Command: prereq
-# ============================================================================
-cmd_prereq() {
-  echo "Prerequisites:"
-
-  # Check Node.js
-  if command -v node > /dev/null; then
-    node_version=$(node --version)
-    echo "  ✓ Node.js installed ($node_version)"
-  else
-    echo "  ✗ Node.js not found"
-    echo "    Install from: https://nodejs.org/"
-    return 1
-  fi
-
-  # Check if playwright is installed
-  if [ -d "$SCRIPT_DIR/node_modules/playwright" ]; then
-    echo "  ✓ Playwright installed"
-  else
-    echo "  ✗ Playwright not installed"
-    echo "    Run: cd $SCRIPT_DIR && npm install"
-    return 1
-  fi
-
-  # Check if browsers are installed
-  if [ -d "$HOME/Library/Caches/ms-playwright" ] || [ -d "$HOME/.cache/ms-playwright" ]; then
-    echo "  ✓ Playwright browsers installed"
-  else
-    echo "  ⚠ Playwright browsers might not be installed"
-    echo "    Run: cd $SCRIPT_DIR && npx playwright install chromium"
-  fi
-}
-
-# ============================================================================
 # Execute single command
 # ============================================================================
 execute_single() {
@@ -248,8 +214,6 @@ case "$1" in
 
   "")
     cmd_help
-    echo ""
-    cmd_prereq
     ;;
 
   *)

@@ -1,5 +1,26 @@
 # Claude Code Project
 
+## Project Setup
+
+**First-time setup**: Run `tools/run.sh init` to check and install all prerequisites.
+
+```bash
+tools/run.sh init
+```
+
+This command:
+- Scans all tool READMEs for prerequisites
+- Checks which tools are installed
+- Automatically installs missing required tools
+- Shows optional tools that could improve performance
+
+**What it checks:**
+- System tools: git, node, npm
+- Browser automation: chrome-cli, Google Chrome
+- Tool-specific: playwright browsers, claude CLI
+
+**After running init**, use `tools/run.sh sync` to update CLAUDE.md with tool documentation.
+
 ## Development Workflow
 
 **Default**: Use git worktrees for all code changes to maintain branch isolation.
@@ -43,10 +64,35 @@ tools/worktree/run.sh remove feature-name
 
 When creating tools:
 1. **Self-documenting** - Tools document themselves via `help` command
-2. **Help as default** - Running with no args shows help + prereq check
-3. **No separate doc files** - Brief description in CLAUDE.md, full docs in tool's help
-4. **Prereq check on first use** - Tools check/install dependencies when run without args
+2. **Help as default** - Running with no args shows help
+3. **README-based docs** - Full documentation in README.md (used by `tools/run.sh sync`)
+4. **Prerequisites in README** - Add `## Prerequisites` section for `tools/run.sh init`
 5. **Standard entry point** - Each tool uses `run.sh`, name derived from folder
+
+**README Structure** (required for sync):
+```markdown
+# Tool Name
+
+Brief one-line description
+
+## Commands
+
+### command1
+Description
+
+### command2
+Description
+
+## Key Principles (optional)
+
+1. Principle one
+2. Principle two
+
+## Prerequisites
+
+- tool (required): brew install tool
+- optional-tool (optional): npm install -g optional-tool
+```
 
 ## Command Execution Guidelines
 
@@ -74,38 +120,28 @@ Browser automation with React/SPA support
 
 Run `tools/chrome/run.sh` for full help.
 
-**Commands:** snapshot, open, wait, click, input, esc, help
+**Commands:** snapshot, open, wait, click, input, esc
 
 **Key Principles:**
-1. URL params first - always prefer direct URLs over clicking
-2. Snapshot first - understand page before interacting
-3. Track changes with --diff - see what changed after interactions
-   - `snapshot` - capture current state (always saves full content)
-   - `snapshot --diff` - show changes vs previous
-4. Chain with + - action + wait + snapshot --diff in one call
-5. State-based snapshots - auto-detects base/dropdown/overlay/dialog
-6. Wait for specific element - not just any DOM change
-7. Use --gone when expecting element to disappear
-8. Use --network for lazy content - wait for footer/ads to load
+1. **URL params first** - Always prefer direct URLs over clicking
+2. **Use chrome tool commands** - Avoid `chrome-cli execute` unless truly needed
+3. **Snapshot first** - Understand page before interacting
+4. **Track changes with --diff** - See what changed after interactions
+5. **Chain with +** - Combine action + wait + snapshot in one call
+6. **Wait for specific element** - Not just any DOM change
+7. **Use --gone** - When expecting element to disappear
+8. **Use --network for lazy content** - Wait for footer/ads to load
 
-**Typical workflow:**
-```bash
-open "https://example.com" + wait + snapshot
-input '#search' 'query' + wait + snapshot --diff
-click '[data-testid="btn"]' + wait + snapshot --diff
-```
+### playwright
+Cross-platform browser automation with Playwright, wrapped in a shell-friendly CLI similar to the chrome tool.
+
+Run `tools/playwright/run.sh` for full help.
+
+**Commands:** open, recon, click, input, wait, close
 
 ### worktree
-Git worktree management for isolated feature development
+Git worktree management with automatic Claude session launching.
 
 Run `tools/worktree/run.sh` for full help.
-
-**Commands:** create, rename, list, remove, help
-
-**Key Usage:**
-- Create worktree: `tools/worktree/run.sh create feature-name`
-- Use absolute paths when working in worktrees
-- Grant permission when prompted (one-time per session)
-- Rename temp worktrees: `tools/worktree/run.sh rename new-name`
 
 <!-- TOOLS:END -->

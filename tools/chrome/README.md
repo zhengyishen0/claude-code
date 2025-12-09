@@ -225,9 +225,4 @@ chrome-cli execute JS             # Execute JavaScript
 
 ## Prerequisites
 
-- `chrome-cli` must be installed
-- Google Chrome must be running
-- Run without args to check prerequisites:
-  ```bash
-  tools/chrome/run.sh
-  ```
+- chrome-cli (required): brew install chrome-cli

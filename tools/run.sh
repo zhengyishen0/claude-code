@@ -12,6 +12,7 @@ show_help() {
   echo "  tools/run.sh <tool> [command] [args...]"
   echo ""
   echo "Commands:"
+  echo "  init                        Check and install all prerequisites"
   echo "  sync                        Update CLAUDE.md/AGENT.md tools section"
   echo "  help, --help                Show this help message"
   echo ""
@@ -101,6 +102,7 @@ list_tools() {
 }
 
 # Sync tools info to markdown file
+# Reads from each tool's README.md instead of help output
 sync_md() {
   local start_marker="<!-- TOOLS:AUTO-GENERATED -->"
   local end_marker="<!-- TOOLS:END -->"
@@ -125,19 +127,45 @@ sync_md() {
   content+="Universal entry: \`tools/run.sh <tool> [command] [args...]\`\n\n"
 
   for dir in "$TOOLS_DIR"/*/; do
-    [[ ! -x "$dir/run.sh" ]] && continue
+    [[ ! -d "$dir" ]] && continue
 
     local name=$(basename "$dir")
-    local help_output=$("$dir/run.sh" help 2>/dev/null)
+    local readme="$dir/README.md"
 
-    # Extract description (first line, after " - ")
-    local description=$(echo "$help_output" | head -1 | sed 's/^[^ ]* - //')
+    # Skip if README doesn't exist
+    if [[ ! -f "$readme" ]]; then
+      echo "⚠ $name: No README.md found, skipping"
+      continue
+    fi
 
-    # Extract commands (line after "Commands:" until empty line)
-    local commands=$(echo "$help_output" | awk '/^Commands:/{flag=1; next} /^$/{flag=0} flag' | grep -oE '^  [a-z]+' | tr -d ' ' | tr '\n' ',' | sed 's/,/, /g' | sed 's/, $//')
+    # Extract description (first non-empty line after first # heading)
+    local description=$(awk '/^# /{flag=1; next} flag && NF>0 {print; exit}' "$readme")
 
-    # Extract key principles (from "Key Principles:" to next section or end)
-    local principles=$(echo "$help_output" | awk '/^Key Principles:/{flag=1; next} /^[A-Z]/{flag=0} flag' | grep -E '^  [0-9]+\.' | sed 's/^  //')
+    # Extract commands from ## Commands section
+    # Look for lines starting with ### (command names)
+    local commands=$(awk '
+      /^## Commands/ {flag=1; next}
+      /^## / && flag {flag=0}
+      flag && /^### / {
+        gsub(/^### /, "")
+        gsub(/:.*/, "")
+        commands = commands (commands ? ", " : "") $0
+      }
+      END {print commands}
+    ' "$readme")
+
+    # Extract key principles from ## Key Principles section
+    local principles=$(awk '
+      /^## Key Principles/ {flag=1; next}
+      /^## / && flag {flag=0}
+      flag && /^[0-9]+\./ {print}
+    ' "$readme")
+
+    # Validation
+    if [[ -z "$description" ]]; then
+      echo "⚠ $name: No description found (add line after # heading)"
+      description="No description"
+    fi
 
     content+="### $name\n"
     content+="$description\n\n"
@@ -155,7 +183,7 @@ sync_md() {
       content+="\n"
     fi
 
-    echo "Synced: $name"
+    echo "✓ Synced: $name"
   done
 
   content+="$end_marker"
@@ -167,12 +195,146 @@ sync_md() {
     !skip { print }
   ' "$md_file" > "$md_file.tmp" && mv "$md_file.tmp" "$md_file"
 
-  echo "Updated $(basename "$md_file")"
+  echo ""
+  echo "✓ Updated $(basename "$md_file")"
+}
+
+# Initialize project - check and install prerequisites
+init_project() {
+  echo "Claude Code - Prerequisites Check"
+  echo "=================================="
+  echo ""
+
+  # Temporary file for storing prerequisites data
+  local tmpfile="/tmp/claude-code-prereqs-$$"
+  : > "$tmpfile"
+
+  # Collect all prerequisites from tool READMEs
+  for dir in "$TOOLS_DIR"/*/; do
+    [ ! -d "$dir" ] && continue
+    local readme="$dir/README.md"
+    [ ! -f "$readme" ] && continue
+
+    # Extract prerequisites and save to temp file
+    # Format: tool|type|cmd
+    awk '/^## Prerequisites/{flag=1; next} flag && /^## /{flag=0} flag && /^- /{print}' "$readme" | while IFS= read -r line; do
+      # Parse: - tool (required|optional): install command
+      echo "$line" | sed -E 's/^- (.+) \((required|optional)\): (.+)$/\1|\2|\3/' >> "$tmpfile"
+    done
+  done
+
+  # Check status and display
+  local installed=""
+  local missing_req=""
+  local missing_opt=""
+
+  while IFS='|' read -r tool type cmd; do
+    if command -v "$tool" >/dev/null 2>&1; then
+      installed="$installed $tool"
+    else
+      if [ "$type" = "required" ]; then
+        missing_req="$missing_req $tool|$cmd"
+      else
+        missing_opt="$missing_opt $tool|$cmd"
+      fi
+    fi
+  done < "$tmpfile"
+
+  # Display installed
+  if [ -n "$installed" ]; then
+    echo "✓ Installed:"
+    for tool in $(echo "$installed" | tr ' ' '\n' | grep -v '^$' | sort); do
+      echo "  ✓ $tool"
+    done
+    echo ""
+  fi
+
+  # Display missing required
+  if [ -n "$missing_req" ]; then
+    echo "✗ Missing (required):"
+    for entry in $(echo "$missing_req" | tr ' ' '\n' | grep -v '^$' | sort); do
+      local tool=$(echo "$entry" | cut -d'|' -f1)
+      local cmd=$(echo "$entry" | cut -d'|' -f2-)
+      echo "  ✗ $tool - $cmd"
+    done
+    echo ""
+  fi
+
+  # Display missing optional
+  if [ -n "$missing_opt" ]; then
+    echo "⚠ Missing (optional):"
+    for entry in $(echo "$missing_opt" | tr ' ' '\n' | grep -v '^$' | sort); do
+      local tool=$(echo "$entry" | cut -d'|' -f1)
+      local cmd=$(echo "$entry" | cut -d'|' -f2-)
+      echo "  ⚠ $tool - $cmd"
+    done
+    echo ""
+  fi
+
+  # Auto-install missing required tools
+  if [ -n "$missing_req" ]; then
+    echo "Installing missing required tools..."
+    echo ""
+
+    for entry in $(echo "$missing_req" | tr ' ' '\n' | grep -v '^$' | sort); do
+      local tool=$(echo "$entry" | cut -d'|' -f1)
+      local cmd=$(echo "$entry" | cut -d'|' -f2-)
+
+      # Skip pre-installed or download-only tools
+      if echo "$cmd" | grep -q "Pre-installed on macOS\|Download from"; then
+        echo "⚠ $tool: $cmd"
+        continue
+      fi
+
+      echo "→ Installing $tool..."
+      echo "  Running: $cmd"
+
+      # Execute installation command
+      if eval "$cmd" >/dev/null 2>&1; then
+        echo "  ✓ $tool installed successfully"
+      else
+        echo "  ✗ $tool installation failed"
+      fi
+      echo ""
+    done
+
+    # Re-check
+    echo "Re-checking prerequisites..."
+    echo ""
+
+    local all_ok=true
+    while IFS='|' read -r tool type cmd; do
+      [ "$type" != "required" ] && continue
+      if command -v "$tool" >/dev/null 2>&1; then
+        echo "  ✓ $tool"
+      else
+        echo "  ✗ $tool (still missing)"
+        all_ok=false
+      fi
+    done < "$tmpfile"
+    echo ""
+
+    rm -f "$tmpfile"
+
+    if [ "$all_ok" = "true" ]; then
+      echo "✓ All required tools installed!"
+    else
+      echo "⚠ Some tools still missing. Please install manually."
+      return 1
+    fi
+  else
+    echo "✓ All required tools are installed!"
+    rm -f "$tmpfile"
+  fi
 }
 
 case "$1" in
   --help|-h|help)
     show_help
+    ;;
+
+  init)
+    init_project
     ;;
 
   sync)
