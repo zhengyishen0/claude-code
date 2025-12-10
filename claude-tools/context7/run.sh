@@ -10,16 +10,17 @@ TOOL_NAME="$(basename "$SCRIPT_DIR")"
 # ============================================================================
 
 API_BASE="https://context7.com/api"
-API_KEY="${CONTEXT7_API_KEY:-}"
 
 # Check for API key
 check_api_key() {
-  if [ -z "$API_KEY" ]; then
-    echo "Error: CONTEXT7_API_KEY environment variable not set" >&2
+  if [ -z "$CONTEXT7_API_KEY" ]; then
+    echo "Error: No API key set" >&2
     echo "" >&2
     echo "Get your API key at: https://context7.com/dashboard" >&2
-    echo "Then set it:" >&2
-    echo "  export CONTEXT7_API_KEY='your-key-here'" >&2
+    echo "" >&2
+    echo "Then use one of these methods:" >&2
+    echo "  1. Flag:    $TOOL_NAME --api-key 'your-key' search react" >&2
+    echo "  2. Export:  export CONTEXT7_API_KEY='your-key'" >&2
     return 1
   fi
 }
@@ -44,7 +45,7 @@ cmd_search() {
 
   # Make API request
   response=$(curl -s "${API_BASE}/v2/search?query=${QUERY_ENCODED}" \
-    -H "Authorization: Bearer ${API_KEY}")
+    -H "Authorization: Bearer ${CONTEXT7_API_KEY}")
 
   # Check for errors
   if echo "$response" | jq -e '.error' > /dev/null 2>&1; then
@@ -141,7 +142,7 @@ cmd_docs() {
   url="${url}?${query_params}"
 
   # Make API request
-  response=$(curl -s "$url" -H "Authorization: Bearer ${API_KEY}")
+  response=$(curl -s "$url" -H "Authorization: Bearer ${CONTEXT7_API_KEY}")
 
   # Check for errors
   if echo "$response" | jq -e '.error' > /dev/null 2>&1; then
@@ -186,10 +187,12 @@ cmd_help() {
   echo "  --version <version>  Get specific version docs"
   echo "  --format txt|json    Output format (default: txt for readable, json for parsing)"
   echo ""
-  echo "Setup:"
-  echo "  1. Get API key at: https://context7.com/dashboard"
-  echo "  2. Set environment variable:"
-  echo "     export CONTEXT7_API_KEY='your-api-key'"
+  echo "Global Options:"
+  echo "  --api-key <key>      Set API key for this command"
+  echo ""
+  echo "Setup (get API key at https://context7.com/dashboard):"
+  echo "  1. Flag:    $TOOL_NAME --api-key 'your-key' search react"
+  echo "  2. Export:  export CONTEXT7_API_KEY='your-key'"
   echo ""
   echo "For detailed documentation, see: $SCRIPT_DIR/README.md"
 }
@@ -197,6 +200,19 @@ cmd_help() {
 # ============================================================================
 # Main execution
 # ============================================================================
+
+# Parse global flags
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --api-key)
+      export CONTEXT7_API_KEY="$2"
+      shift 2
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
 
 case "$1" in
   search)

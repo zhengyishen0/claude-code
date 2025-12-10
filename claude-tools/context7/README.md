@@ -4,14 +4,15 @@ Fetch up-to-date library documentation via Context7 API
 
 ## Quick Start
 
+Get your API key at: https://context7.com/dashboard
+
 ```bash
-# Set your API key (get one at https://context7.com/dashboard)
-export CONTEXT7_API_KEY='your-api-key'
+# Option 1: Use --api-key flag
+claude-tools context7 --api-key 'your-key' search "next.js"
 
-# Search for a library
+# Option 2: Export and reuse
+export CONTEXT7_API_KEY='your-key'
 claude-tools context7 search "next.js"
-
-# Get documentation
 claude-tools context7 docs vercel/next.js --topic routing
 ```
 
@@ -85,18 +86,21 @@ Returns structured data with:
 
 ## Setup
 
-### 1. Get API Key
-Visit https://context7.com/dashboard to get your free API key.
+**Get your free API key:** https://context7.com/dashboard
 
-### 2. Set Environment Variable
+**Option 1: Use --api-key flag**
 ```bash
-# Add to your ~/.zshrc or ~/.bashrc
-export CONTEXT7_API_KEY='ctx7sk-your-key-here'
+claude-tools context7 --api-key 'your-key' search react
 ```
 
-### 3. Verify Setup
+**Option 2: Export for persistent use**
 ```bash
-claude-tools context7 search react
+# Set for current session
+export CONTEXT7_API_KEY='your-key'
+
+# Or add to ~/.zshrc or ~/.bashrc for permanent use
+echo "export CONTEXT7_API_KEY='your-key'" >> ~/.zshrc
+source ~/.zshrc
 ```
 
 ## Use Cases
@@ -216,11 +220,13 @@ Claude can automatically use this tool to fetch current documentation when helpi
 
 ## Troubleshooting
 
-**"API key not set" error:**
+**"No API key set" error:**
 ```bash
-export CONTEXT7_API_KEY='your-key-here'
-# Verify:
-echo $CONTEXT7_API_KEY
+# Option 1: Use flag
+claude-tools context7 --api-key 'your-key' search react
+
+# Option 2: Export
+export CONTEXT7_API_KEY='your-key'
 ```
 
 **No results for search:**
@@ -231,7 +237,6 @@ echo $CONTEXT7_API_KEY
 **Rate limit errors:**
 - Free tier has limits
 - Upgrade at https://context7.com/dashboard
-- Or space out requests
 
 ## Resources
 
