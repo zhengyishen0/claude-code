@@ -51,39 +51,16 @@ diagnose() {
 
     # Check requirements
     has_run=false
-    has_help=false
-    has_prereq=false
-    help_format_ok=false
-    cmds_have_help=true
-    missing_help_cmds=""
+    has_readme=false
+    help_works=false
 
     [[ -x "$dir/run.sh" ]] && has_run=true
-    [[ -x "$dir/commands/help.sh" ]] && has_help=true
-    [[ -x "$dir/commands/prereq.sh" ]] && has_prereq=true
+    [[ -f "$dir/README.md" ]] && has_readme=true
 
-    # Check help format if run.sh exists
+    # Check if help command works
     if $has_run; then
-      help_line1=$("$dir/run.sh" help 2>/dev/null | head -1)
-      # Check format: "<name> - <description>"
-      if [[ "$help_line1" =~ ^[a-zA-Z0-9_-]+\ -\  ]]; then
-        help_format_ok=true
-      fi
-
-      # Check each command in commands/ has --help
-      if [[ -d "$dir/commands" ]]; then
-        for cmd in "$dir/commands"/*.sh; do
-          [[ ! -x "$cmd" ]] && continue
-          cmd_name=$(basename "$cmd" .sh)
-          [[ "$cmd_name" == "help" || "$cmd_name" == "prereq" ]] && continue
-          cmd_help_output=$("$cmd" --help 2>/dev/null)
-          cmd_noarg_output=$("$cmd" 2>/dev/null)
-          # Check --help produces output AND differs from no-arg output
-          if [[ -z "$cmd_help_output" ]] || [[ "$cmd_help_output" == "$cmd_noarg_output" ]]; then
-            cmds_have_help=false
-            missing_help_cmds+=" $cmd_name"
-          fi
-        done
-      fi
+      help_output=$("$dir/run.sh" help 2>/dev/null)
+      [[ -n "$help_output" ]] && help_works=true
     fi
 
     # Build status
@@ -92,10 +69,8 @@ diagnose() {
       echo "  ✗ $name (missing run.sh)"
       continue
     fi
-    if ! $has_help; then issues+="help.sh, "; fi
-    if ! $has_prereq; then issues+="prereq.sh, "; fi
-    if ! $help_format_ok; then issues+="help format, "; fi
-    if ! $cmds_have_help; then issues+="--help:$missing_help_cmds, "; fi
+    if ! $has_readme; then issues+="README.md, "; fi
+    if ! $help_works; then issues+="help command, "; fi
 
     if [[ -z "$issues" ]]; then
       echo "  ✓ $name"
