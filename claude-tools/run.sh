@@ -253,10 +253,10 @@ init_project() {
       show_versions
 
       # Remind about lockfile
-      if [ -f "$TOOLS_DIR/../Brewfile.lock.json" ]; then
+      if [ -f "$TOOLS_DIR/Brewfile.lock.json" ]; then
         echo ""
         echo "💡 Brewfile.lock.json was updated. Consider committing it:"
-        echo "   git add Brewfile.lock.json"
+        echo "   git add claude-tools/Brewfile.lock.json"
       fi
     else
       echo ""
