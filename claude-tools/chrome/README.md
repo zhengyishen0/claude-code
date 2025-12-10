@@ -5,7 +5,7 @@ Browser automation with React/SPA support
 ## Usage
 
 ```bash
-tools/chrome/run.sh <command> [args...] [+ command [args...]]...
+claude-tools chrome <command> [args...] [+ command [args...]]...
 ```
 
 ## Commands

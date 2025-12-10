@@ -14,7 +14,7 @@ if [ "$CURRENT_BRANCH" = "main" ]; then
 ⚠️  Currently on main branch
 
 For code changes, consider creating a worktree:
-  tools/worktree/run.sh create feature-name
+  claude-tools worktree create feature-name
 
 This will create the worktree and launch a new Claude session automatically.
 

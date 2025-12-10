@@ -1,11 +1,11 @@
-# Tools
+# claude-tools
 
-Collection of utilities for development workflows.
+Collection of CLI utilities for development workflows.
 
 ## Universal Entry Point
 
 ```bash
-tools/run.sh <tool> [command] [args...]
+claude-tools <tool> [command] [args...]
 ```
 
 ## Available Tools
@@ -16,9 +16,9 @@ Browser automation with React/SPA support
 
 **Quick Start:**
 ```bash
-tools/chrome/run.sh open "https://example.com"
-tools/chrome/run.sh recon
-tools/chrome/run.sh click '[data-testid="btn"]' + wait + recon
+claude-tools chrome open "https://example.com"
+claude-tools chrome recon
+claude-tools chrome click '[data-testid="btn"]' + wait + recon
 ```
 
 **Key Commands:** `recon`, `open`, `wait`, `click`, `input`, `esc`
@@ -31,9 +31,9 @@ Git worktree management for isolated feature development
 
 **Quick Start:**
 ```bash
-tools/worktree/run.sh create feature-name  # Create worktree + launch Claude
-tools/worktree/run.sh list                 # List all worktrees
-tools/worktree/run.sh remove feature-name  # Remove worktree
+claude-tools worktree create feature-name  # Create worktree + launch Claude
+claude-tools worktree list                 # List all worktrees
+claude-tools worktree remove feature-name  # Remove worktree
 ```
 
 **Key Commands:** `create`, `rename`, `list`, `remove`
@@ -53,7 +53,7 @@ tools/worktree/run.sh remove feature-name  # Remove worktree
 Run any tool without arguments or with `help`:
 
 ```bash
-tools/chrome/run.sh          # Show help + check prerequisites
-tools/chrome/run.sh help     # Show help
-tools/worktree/run.sh help   # Show help
+claude-tools chrome          # Show help + check prerequisites
+claude-tools chrome help     # Show help
+claude-tools worktree help   # Show help
 ```

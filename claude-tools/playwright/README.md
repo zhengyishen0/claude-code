@@ -14,7 +14,7 @@ Cross-platform browser automation with Playwright, wrapped in a shell-friendly C
 ## Installation
 
 ```bash
-cd tools/playwright
+cd claude-tools/playwright
 npm install
 npx playwright install chromium
 ```
@@ -109,7 +109,7 @@ Use in shell scripts:
 
 ```bash
 #!/bin/bash
-TOOL="./tools/playwright/run.sh"
+TOOL="./claude-tools/playwright/run.sh"
 
 $TOOL open "https://example.com"
 $TOOL wait "h1"
@@ -161,7 +161,7 @@ The tool uses Playwright's persistent context to maintain browser state:
 ### File Structure
 
 ```
-tools/playwright/
+claude-tools/playwright/
 ├── run.sh              # Main entry point
 ├── package.json        # Dependencies
 ├── js/
@@ -271,7 +271,7 @@ This tool follows the design principles outlined in `/CLAUDE.md`:
 1. **Self-documenting** - `run.sh` with no args shows help
 2. **Single entry point** - All commands via `run.sh`
 3. **JavaScript in js/** - Separate JS from shell scripts
-4. **Standard structure** - Matches other tools in `tools/`
+4. **Standard structure** - Matches other tools in `claude-tools/`
 
 ## License
 
