@@ -10,31 +10,14 @@ TOOL_NAME="$(basename "$SCRIPT_DIR")"
 # ============================================================================
 
 API_BASE="https://context7.com/api"
-CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/claude-tools/context7"
-
-# Load API key from config file
-load_api_key() {
-  if [ -f "$CONFIG_FILE" ]; then
-    CONTEXT7_API_KEY=$(cat "$CONFIG_FILE")
-    export CONTEXT7_API_KEY
-  fi
-}
 
 # Check for API key
 check_api_key() {
-  # Load from config if not in environment
-  if [ -z "$CONTEXT7_API_KEY" ]; then
-    load_api_key
-  fi
-
   if [ -z "$CONTEXT7_API_KEY" ]; then
     echo "Error: No API key set" >&2
     echo "" >&2
     echo "Set your API key (get one at https://context7.com/dashboard):" >&2
     echo "  $TOOL_NAME api-key 'your-key'" >&2
-    echo "" >&2
-    echo "Or export it temporarily:" >&2
-    echo "  export CONTEXT7_API_KEY='your-key'" >&2
     return 1
   fi
 }
@@ -47,11 +30,8 @@ cmd_api_key() {
 
   if [ -z "$key" ]; then
     # Show current status
-    if [ -f "$CONFIG_FILE" ]; then
-      echo "API key is set (stored in $CONFIG_FILE)"
-      echo ""
-      echo "To update: $TOOL_NAME api-key 'new-key'"
-      echo "To remove: rm $CONFIG_FILE"
+    if [ -n "$CONTEXT7_API_KEY" ]; then
+      echo "API key is set"
     else
       echo "No API key set" >&2
       echo "" >&2
@@ -64,13 +44,41 @@ cmd_api_key() {
     return 0
   fi
 
-  # Save the key
-  local config_dir=$(dirname "$CONFIG_FILE")
-  mkdir -p "$config_dir"
-  echo "$key" > "$CONFIG_FILE"
-  chmod 600 "$CONFIG_FILE"
+  # Detect shell profile
+  local shell_profile=""
+  if [ -n "$ZSH_VERSION" ] || [ -f "$HOME/.zshrc" ]; then
+    shell_profile="$HOME/.zshrc"
+  elif [ -n "$BASH_VERSION" ] || [ -f "$HOME/.bashrc" ]; then
+    shell_profile="$HOME/.bashrc"
+  else
+    shell_profile="$HOME/.zshrc"  # default to zsh
+  fi
 
-  echo "✓ API key saved to: $CONFIG_FILE"
+  local export_line="export CONTEXT7_API_KEY='$key'"
+
+  # Check if already exists
+  if grep -q "^export CONTEXT7_API_KEY=" "$shell_profile" 2>/dev/null; then
+    # Update existing line
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+      sed -i '' "s|^export CONTEXT7_API_KEY=.*|$export_line|" "$shell_profile"
+    else
+      sed -i "s|^export CONTEXT7_API_KEY=.*|$export_line|" "$shell_profile"
+    fi
+    echo "✓ Updated CONTEXT7_API_KEY in $shell_profile"
+  else
+    # Add new line
+    echo "" >> "$shell_profile"
+    echo "# Context7 API key" >> "$shell_profile"
+    echo "$export_line" >> "$shell_profile"
+    echo "✓ Added CONTEXT7_API_KEY to $shell_profile"
+  fi
+
+  # Export for current session
+  export CONTEXT7_API_KEY="$key"
+
+  echo ""
+  echo "API key set for current session."
+  echo "Restart your terminal or run: source $shell_profile"
   echo ""
   echo "You can now use context7 commands:"
   echo "  $TOOL_NAME search react"
@@ -266,11 +274,7 @@ case "$1" in
     ;;
 
   "")
-    # No command given - check if API key is set first
-    if [ -z "$CONTEXT7_API_KEY" ]; then
-      load_api_key
-    fi
-
+    # No command given - check if API key is set
     if [ -z "$CONTEXT7_API_KEY" ]; then
       # No API key - show error
       echo "Error: No API key set" >&2
