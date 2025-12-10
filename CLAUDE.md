@@ -131,6 +131,20 @@ chrome-cli execute 'document.querySelector("button").click()'
 
 Universal entry: `claude-tools <tool> [command] [args...]`
 
+### cheat.sh
+Get concise CLI command examples via cheat.sh API (no wrapper needed - use curl directly)
+
+Run `claude-tools cheat.sh` for full help.
+
+**Key Principles:**
+1. **No wrapper needed** - Direct curl access is simple and sufficient
+2. **Always use ?T flag** - Text-only output is easier to parse
+3. **No authentication** - Completely open API
+4. **Includes tldr content** - Aggregates tldr-pages plus additional sources
+5. **14,664 topics** - Covers CLI commands + programming languages
+6. **Token efficient** - ~95% reduction vs man pages (~2,000 vs ~45,000 tokens)
+7. **For AI agents** - Provides concise, curated examples for context windows
+
 ### chrome
 Browser automation with React/SPA support
 
@@ -153,7 +167,7 @@ Fetch up-to-date library documentation via Context7 API
 
 Run `claude-tools context7` for full help.
 
-**Commands:** search, docs
+**Commands:** api-key, search, docs
 
 **Key Principles:**
 1. **Topic-Based Filtering** - Get only relevant snippets, not entire docs
