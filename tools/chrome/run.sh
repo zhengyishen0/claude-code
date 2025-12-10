@@ -100,7 +100,10 @@ cmd_open() {
 
   chrome-cli open "$URL" > /dev/null
 
-  # Wait for page to fully load
+  # Restore focus immediately using cmd+tab (no delay needed)
+  osascript -e 'tell application "System Events" to keystroke tab using command down' 2>/dev/null || true
+
+  # Wait for page to fully load (happens in background)
   cmd_wait > /dev/null 2>&1
 
   cmd_snapshot
