@@ -148,6 +148,20 @@ Run `claude-tools chrome` for full help.
 7. **Use --gone** - When expecting element to disappear
 8. **Use --network for lazy content** - Wait for footer/ads to load
 
+### context7
+Fetch up-to-date library documentation via Context7 API
+
+Run `claude-tools context7` for full help.
+
+**Commands:** search, docs
+
+**Key Principles:**
+1. **Topic-Based Filtering** - Get only relevant snippets, not entire docs
+2. **Version-Specific** - Fetch documentation for exact library versions
+3. **AI-Optimized** - Structured code snippets with context, not raw HTML
+4. **Curated Examples** - Working code patterns, not just API references
+5. **Current Data** - Regularly updated from source repositories
+
 ### playwright
 Cross-platform browser automation with Playwright, wrapped in a shell-friendly CLI similar to the chrome tool.
 
