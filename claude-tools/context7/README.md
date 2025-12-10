@@ -4,19 +4,43 @@ Fetch up-to-date library documentation via Context7 API
 
 ## Quick Start
 
-Get your API key at: https://context7.com/dashboard
-
 ```bash
-# Option 1: Use --api-key flag
-claude-tools context7 --api-key 'your-key' search "next.js"
+# 1. Get your API key at https://context7.com/dashboard
 
-# Option 2: Export and reuse
-export CONTEXT7_API_KEY='your-key'
+# 2. Set it once
+claude-tools context7 api-key 'your-key'
+
+# 3. Use anywhere
 claude-tools context7 search "next.js"
 claude-tools context7 docs vercel/next.js --topic routing
 ```
 
 ## Commands
+
+### api-key
+Set your Context7 API key (persists to config file)
+
+```bash
+api-key <key>
+```
+
+**Examples:**
+```bash
+# Set API key
+claude-tools context7 api-key 'ctx7sk-your-key-here'
+
+# Check if key is set
+claude-tools context7 api-key
+```
+
+**Where it's stored:**
+- Config file: `~/.config/claude-tools/context7`
+- Permissions: `600` (readable only by you)
+
+**To remove:**
+```bash
+rm ~/.config/claude-tools/context7
+```
 
 ### search
 Search for libraries in the Context7 database
@@ -86,21 +110,23 @@ Returns structured data with:
 
 ## Setup
 
-**Get your free API key:** https://context7.com/dashboard
+**One-time setup:**
 
-**Option 1: Use --api-key flag**
 ```bash
-claude-tools context7 --api-key 'your-key' search react
+# 1. Get your free API key
+# Visit: https://context7.com/dashboard
+
+# 2. Set it once (persists automatically)
+claude-tools context7 api-key 'your-key'
+
+# 3. Done! Now use anywhere
+claude-tools context7 search react
 ```
 
-**Option 2: Export for persistent use**
+**Alternative: Environment variable (temporary)**
 ```bash
-# Set for current session
 export CONTEXT7_API_KEY='your-key'
-
-# Or add to ~/.zshrc or ~/.bashrc for permanent use
-echo "export CONTEXT7_API_KEY='your-key'" >> ~/.zshrc
-source ~/.zshrc
+claude-tools context7 search react
 ```
 
 ## Use Cases
@@ -222,11 +248,11 @@ Claude can automatically use this tool to fetch current documentation when helpi
 
 **"No API key set" error:**
 ```bash
-# Option 1: Use flag
-claude-tools context7 --api-key 'your-key' search react
+# Set your API key
+claude-tools context7 api-key 'your-key'
 
-# Option 2: Export
-export CONTEXT7_API_KEY='your-key'
+# Or check if it's already set
+claude-tools context7 api-key
 ```
 
 **No results for search:**

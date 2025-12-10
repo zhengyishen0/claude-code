@@ -10,19 +10,71 @@ TOOL_NAME="$(basename "$SCRIPT_DIR")"
 # ============================================================================
 
 API_BASE="https://context7.com/api"
+CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/claude-tools/context7"
+
+# Load API key from config file
+load_api_key() {
+  if [ -f "$CONFIG_FILE" ]; then
+    CONTEXT7_API_KEY=$(cat "$CONFIG_FILE")
+    export CONTEXT7_API_KEY
+  fi
+}
 
 # Check for API key
 check_api_key() {
+  # Load from config if not in environment
+  if [ -z "$CONTEXT7_API_KEY" ]; then
+    load_api_key
+  fi
+
   if [ -z "$CONTEXT7_API_KEY" ]; then
     echo "Error: No API key set" >&2
     echo "" >&2
-    echo "Get your API key at: https://context7.com/dashboard" >&2
+    echo "Set your API key (get one at https://context7.com/dashboard):" >&2
+    echo "  $TOOL_NAME api-key 'your-key'" >&2
     echo "" >&2
-    echo "Then use one of these methods:" >&2
-    echo "  1. Flag:    $TOOL_NAME --api-key 'your-key' search react" >&2
-    echo "  2. Export:  export CONTEXT7_API_KEY='your-key'" >&2
+    echo "Or export it temporarily:" >&2
+    echo "  export CONTEXT7_API_KEY='your-key'" >&2
     return 1
   fi
+}
+
+# ============================================================================
+# Command: api-key
+# ============================================================================
+cmd_api_key() {
+  local key="$1"
+
+  if [ -z "$key" ]; then
+    # Show current status
+    if [ -f "$CONFIG_FILE" ]; then
+      echo "API key is set (stored in $CONFIG_FILE)"
+      echo ""
+      echo "To update: $TOOL_NAME api-key 'new-key'"
+      echo "To remove: rm $CONFIG_FILE"
+    else
+      echo "No API key set" >&2
+      echo "" >&2
+      echo "Get your free API key at: https://context7.com/dashboard" >&2
+      echo "" >&2
+      echo "Then set it:" >&2
+      echo "  $TOOL_NAME api-key 'your-key'" >&2
+      return 1
+    fi
+    return 0
+  fi
+
+  # Save the key
+  local config_dir=$(dirname "$CONFIG_FILE")
+  mkdir -p "$config_dir"
+  echo "$key" > "$CONFIG_FILE"
+  chmod 600 "$CONFIG_FILE"
+
+  echo "✓ API key saved to: $CONFIG_FILE"
+  echo ""
+  echo "You can now use context7 commands:"
+  echo "  $TOOL_NAME search react"
+  echo "  $TOOL_NAME docs vercel/next.js --topic routing"
 }
 
 # ============================================================================
@@ -169,6 +221,7 @@ cmd_help() {
   echo "Usage: $TOOL_NAME <command> [args...]"
   echo ""
   echo "Commands:"
+  echo "  api-key <key>            Set API key (persists to config file)"
   echo "  search <query>           Search for libraries in Context7"
   echo "  docs <library-id> [opts] Get documentation for a library"
   echo "  help                     Show this help message"
@@ -187,12 +240,12 @@ cmd_help() {
   echo "  --version <version>  Get specific version docs"
   echo "  --format txt|json    Output format (default: txt for readable, json for parsing)"
   echo ""
-  echo "Global Options:"
-  echo "  --api-key <key>      Set API key for this command"
-  echo ""
-  echo "Setup (get API key at https://context7.com/dashboard):"
-  echo "  1. Flag:    $TOOL_NAME --api-key 'your-key' search react"
-  echo "  2. Export:  export CONTEXT7_API_KEY='your-key'"
+  echo "Setup:"
+  echo "  1. Get API key at: https://context7.com/dashboard"
+  echo "  2. Set it once:"
+  echo "     $TOOL_NAME api-key 'your-key'"
+  echo "  3. Use anywhere:"
+  echo "     $TOOL_NAME search react"
   echo ""
   echo "For detailed documentation, see: $SCRIPT_DIR/README.md"
 }
@@ -201,20 +254,12 @@ cmd_help() {
 # Main execution
 # ============================================================================
 
-# Parse global flags
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --api-key)
-      export CONTEXT7_API_KEY="$2"
-      shift 2
-      ;;
-    *)
-      break
-      ;;
-  esac
-done
-
 case "$1" in
+  api-key)
+    shift
+    cmd_api_key "$@"
+    ;;
+
   search)
     shift
     cmd_search "$@"
