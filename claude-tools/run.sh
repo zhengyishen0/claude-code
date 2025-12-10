@@ -206,7 +206,7 @@ sync_md() {
 
 # Initialize project - check and install prerequisites using Brewfile
 init_project() {
-  local brewfile="$TOOLS_DIR/../Brewfile"
+  local brewfile="$TOOLS_DIR/Brewfile"
 
   echo "Claude Code - Prerequisites Check"
   echo "=================================="
