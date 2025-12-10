@@ -18,7 +18,7 @@ claude-tools context7 docs vercel/next.js --topic routing
 ## Commands
 
 ### api-key
-Set your Context7 API key (persists to config file)
+Set your Context7 API key (adds export to shell profile)
 
 ```bash
 api-key <key>
@@ -29,18 +29,17 @@ api-key <key>
 # Set API key
 claude-tools context7 api-key 'ctx7sk-your-key-here'
 
+# Then reload your shell
+source ~/.zshrc  # or ~/.bashrc
+
 # Check if key is set
 claude-tools context7 api-key
 ```
 
-**Where it's stored:**
-- Config file: `~/.config/claude-tools/context7`
-- Permissions: `600` (readable only by you)
-
-**To remove:**
-```bash
-rm ~/.config/claude-tools/context7
-```
+**What it does:**
+- Adds `export CONTEXT7_API_KEY='your-key'` to `~/.zshrc` (or `~/.bashrc`)
+- Updates the line if it already exists
+- You need to restart terminal or run `source ~/.zshrc`
 
 ### search
 Search for libraries in the Context7 database
@@ -116,16 +115,13 @@ Returns structured data with:
 # 1. Get your free API key
 # Visit: https://context7.com/dashboard
 
-# 2. Set it once (persists automatically)
+# 2. Set it once (adds export to ~/.zshrc)
 claude-tools context7 api-key 'your-key'
 
-# 3. Done! Now use anywhere
-claude-tools context7 search react
-```
+# 3. Reload your shell
+source ~/.zshrc  # or restart terminal
 
-**Alternative: Environment variable (temporary)**
-```bash
-export CONTEXT7_API_KEY='your-key'
+# 4. Done! Now use anywhere
 claude-tools context7 search react
 ```
 
