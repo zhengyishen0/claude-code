@@ -2,5 +2,5 @@
 - [ ] Chrome Control
   - [ ] Playwright support
 - [ ] Screenshot
-- [ ] Feed Recommendation 
+- [ ] Feed Recommendation
 - [ ] Context Management

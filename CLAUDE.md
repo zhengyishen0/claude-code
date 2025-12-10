@@ -2,10 +2,10 @@
 
 ## Project Setup
 
-**First-time setup**: Run `tools/run.sh init` to install all prerequisites via Brewfile.
+**First-time setup**: Run `claude-tools init` to install all prerequisites via Brewfile.
 
 ```bash
-tools/run.sh init
+claude-tools init
 ```
 
 This command:
@@ -32,7 +32,7 @@ brew bundle install            # Install missing dependencies
 brew bundle install --upgrade  # Update all dependencies & lockfile
 ```
 
-**After running init**, use `tools/run.sh sync` to update CLAUDE.md with tool documentation.
+**After running init**, use `claude-tools sync` to update CLAUDE.md with tool documentation.
 
 ## Development Workflow
 
@@ -40,13 +40,13 @@ brew bundle install --upgrade  # Update all dependencies & lockfile
 
 Before making edits:
 1. **Check current branch**: `git branch --show-current`
-2. **If on `main`**: Run `tools/worktree/run.sh create feature-name`
+2. **If on `main`**: Run `claude-tools worktree create feature-name`
 3. **Work in worktree**: Use absolute paths to make changes
 4. **Merge when done**: Merge back to main and remove worktree
 
 **Creating a worktree with Claude**:
 ```bash
-tools/worktree/run.sh create feature-name
+claude-tools worktree create feature-name
 # Creates worktree at ../claude-code-feature-name
 # Prints absolute path for use in current session
 # Grant permission when prompted to access the worktree
@@ -66,19 +66,19 @@ cd ../claude-code-feature-name && edit src/file.js
 ```bash
 cd ../claude-code
 git merge feature-name
-tools/worktree/run.sh remove feature-name
+claude-tools worktree remove feature-name
 ```
 
 **Exception**: Skip worktrees for trivial changes (typos, docs, single-line fixes).
 
-**Automatic Triggering**: When a user requests feature work and you're on main branch, proactively suggest and run `tools/worktree/run.sh create <feature-name>`.
+**Automatic Triggering**: When a user requests feature work and you're on main branch, proactively suggest and run `claude-tools worktree create <feature-name>`.
 
 ## Tool Design Principles
 
 When creating tools:
 1. **Self-documenting** - Tools document themselves via `help` command
 2. **Help as default** - Running with no args shows help
-3. **README-based docs** - Full documentation in README.md (used by `tools/run.sh sync`)
+3. **README-based docs** - Full documentation in README.md (used by `claude-tools sync`)
 4. **Standard entry point** - Each tool uses `run.sh`, name derived from folder
 5. **Add to Brewfile** - If tool needs system dependencies, add to Brewfile
 
@@ -116,12 +116,12 @@ Avoid wrapping tool commands in bash variables - use direct tool entry points in
 
 **Bad** (triggers permission prompts):
 ```bash
-JS_CODE=$(cat tools/chrome/js/click-element.js) && chrome-cli execute '...'
+JS_CODE=$(cat claude-tools/chrome/js/click-element.js) && chrome-cli execute '...'
 ```
 
 **Good** (pre-approved):
 ```bash
-tools/chrome/run.sh click "[Homes]"
+claude-tools chrome click "[Homes]"
 chrome-cli execute 'document.querySelector("button").click()'
 ```
 
@@ -129,12 +129,12 @@ chrome-cli execute 'document.querySelector("button").click()'
 
 <!-- TOOLS:AUTO-GENERATED -->
 
-Universal entry: `tools/run.sh <tool> [command] [args...]`
+Universal entry: `claude-tools <tool> [command] [args...]`
 
 ### chrome
 Browser automation with React/SPA support
 
-Run `tools/chrome/run.sh` for full help.
+Run `claude-tools chrome` for full help.
 
 **Commands:** snapshot, inspect, open, wait, click, input, esc
 
@@ -151,13 +151,13 @@ Run `tools/chrome/run.sh` for full help.
 ### playwright
 Cross-platform browser automation with Playwright, wrapped in a shell-friendly CLI similar to the chrome tool.
 
-Run `tools/playwright/run.sh` for full help.
+Run `claude-tools playwright` for full help.
 
 **Commands:** open, recon, click, input, wait, close
 
 ### worktree
 Git worktree management with automatic Claude session launching.
 
-Run `tools/worktree/run.sh` for full help.
+Run `claude-tools worktree` for full help.
 
 <!-- TOOLS:END -->

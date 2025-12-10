@@ -6,18 +6,18 @@ Git worktree management with automatic Claude session launching.
 
 ```bash
 # Create worktree and launch new Claude session
-tools/worktree/run.sh create feature-name
+claude-tools worktree create feature-name
 
 # List all worktrees
-tools/worktree/run.sh list
+claude-tools worktree list
 
 # Remove a worktree
-tools/worktree/run.sh remove feature-name
+claude-tools worktree remove feature-name
 ```
 
 ## Full Documentation
 
-Run `tools/worktree/run.sh` or `tools/worktree/run.sh help` for complete documentation.
+Run `claude-tools worktree` or `claude-tools worktree help` for complete documentation.
 
 ## How It Works
 

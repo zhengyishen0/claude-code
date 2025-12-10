@@ -95,7 +95,7 @@ Git Worktree Tool for Claude Code
 Manage git worktrees with automatic permissions and temp worktree support.
 
 USAGE:
-  tools/worktree/run.sh <command> [args...]
+  claude-tools worktree <command> [args...]
 
 COMMANDS:
   create <branch-name>  Create worktree and grant permissions
@@ -123,17 +123,17 @@ EOF
     cat <<EOF
 
 EXAMPLES:
-  tools/worktree/run.sh create feature-auth
-  tools/worktree/run.sh rename my-feature
-  tools/worktree/run.sh list
-  tools/worktree/run.sh remove feature-auth
+  claude-tools worktree create feature-auth
+  claude-tools worktree rename my-feature
+  claude-tools worktree list
+  claude-tools worktree remove feature-auth
 
 WORKFLOW:
-  1. Create worktree: tools/worktree/run.sh create my-feature
+  1. Create worktree: claude-tools worktree create my-feature
   2. Use absolute paths: /path/to/claude-code-my-feature/file.js
   3. Complete feature, commit changes
   4. Merge to main: git merge my-feature
-  5. Remove worktree: tools/worktree/run.sh remove my-feature
+  5. Remove worktree: claude-tools worktree remove my-feature
 EOF
 }
 
@@ -160,7 +160,7 @@ main() {
             ;;
         *)
             echo "Unknown command: $command"
-            echo "Run 'tools/worktree/run.sh help' for usage"
+            echo "Run 'claude-tools worktree help' for usage"
             exit 1
             ;;
     esac
