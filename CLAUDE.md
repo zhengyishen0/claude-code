@@ -183,6 +183,20 @@ Run `claude-tools playwright` for full help.
 
 **Commands:** open, recon, click, input, wait, close
 
+### screenshot
+Background window capture for macOS with automatic dual-version output
+
+Run `claude-tools screenshot` for full help.
+
+**Commands:** `<app_name|window_id> [output_path]`, `--list`
+
+**Key Principles:**
+1. **No activation required** - Captures windows in the background using macOS CGWindowID
+2. **Dual-output always** - Always saves both downscaled (AI-optimized) and full-res versions
+3. **AI-first workflow** - Downscaled version is default for analysis, full version available when needed
+4. **No decisions needed** - Simple interface with no flags or options
+5. **Project-local storage** - Screenshots saved to `./tmp/` by default
+
 ### worktree
 Git worktree management with automatic Claude session launching.
 
