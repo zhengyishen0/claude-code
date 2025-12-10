@@ -73,14 +73,11 @@ cmd_api_key() {
     echo "✓ Added CONTEXT7_API_KEY to $shell_profile"
   fi
 
-  # Export for current session
-  export CONTEXT7_API_KEY="$key"
-
   echo ""
-  echo "API key set for current session."
-  echo "Restart your terminal or run: source $shell_profile"
+  echo "To use the API key, restart your terminal or run:"
+  echo "  source $shell_profile"
   echo ""
-  echo "You can now use context7 commands:"
+  echo "Then you can use context7 commands:"
   echo "  $TOOL_NAME search react"
   echo "  $TOOL_NAME docs vercel/next.js --topic routing"
 }
