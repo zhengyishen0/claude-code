@@ -239,15 +239,6 @@ cmd_help() {
   echo "  --topic <topic>      Filter by topic (e.g., 'routing', 'hooks', 'middleware')"
   echo "  --version <version>  Get specific version docs"
   echo "  --format txt|json    Output format (default: txt for readable, json for parsing)"
-  echo ""
-  echo "Setup:"
-  echo "  1. Get API key at: https://context7.com/dashboard"
-  echo "  2. Set it once:"
-  echo "     $TOOL_NAME api-key 'your-key'"
-  echo "  3. Use anywhere:"
-  echo "     $TOOL_NAME search react"
-  echo ""
-  echo "For detailed documentation, see: $SCRIPT_DIR/README.md"
 }
 
 # ============================================================================
@@ -275,7 +266,23 @@ case "$1" in
     ;;
 
   "")
-    cmd_help
+    # No command given - check if API key is set first
+    if [ -z "$CONTEXT7_API_KEY" ]; then
+      load_api_key
+    fi
+
+    if [ -z "$CONTEXT7_API_KEY" ]; then
+      # No API key - show error
+      echo "Error: No API key set" >&2
+      echo "" >&2
+      echo "Get your API key at: https://context7.com/dashboard" >&2
+      echo "Then set it:" >&2
+      echo "  $TOOL_NAME api-key 'your-key'" >&2
+      exit 1
+    else
+      # API key is set - show help
+      cmd_help
+    fi
     ;;
 
   *)
