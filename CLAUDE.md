@@ -154,13 +154,10 @@ Run `claude-tools chrome` for full help.
 
 **Key Principles:**
 1. **URL params first** - Always prefer direct URLs over clicking
-2. **Use chrome tool commands** - Avoid `chrome-cli execute` unless truly needed
-3. **Snapshot first** - Understand page before interacting
-4. **Track changes with --diff** - See what changed after interactions
-5. **Chain with +** - Combine action + wait + snapshot in one call
-6. **Wait for specific element** - Not just any DOM change
-7. **Use --gone** - When expecting element to disappear
-8. **Use --network for lazy content** - Wait for footer/ads to load
+2. **Auto-feedback shows results** - `click` and `input` automatically show feedback
+3. **Trust the tool** - Commands wait for stability before showing results
+4. **Use chrome tool commands** - Avoid `chrome-cli execute` unless truly needed
+5. **Manual chaining for advanced cases** - Override auto-behavior when needed
 
 ### context7
 Fetch up-to-date library documentation via Context7 API
@@ -175,6 +172,20 @@ Run `claude-tools context7` for full help.
 3. **AI-Optimized** - Structured code snippets with context, not raw HTML
 4. **Curated Examples** - Working code patterns, not just API references
 5. **Current Data** - Regularly updated from source repositories
+
+### documentation
+Get external documentation for libraries, commands, and APIs
+
+Run `claude-tools documentation` for full help.
+
+**Commands:** library, command, api, config
+
+**Key Principles:**
+1. **Unified interface** - One tool for all external documentation needs
+2. **Source-appropriate** - Uses the best service for each type (Context7 for libraries, cheat.sh for commands, APIs.guru for REST APIs)
+3. **AI-optimized** - Token-efficient responses suitable for context windows
+4. **No auth needed** - Only Context7 (library docs) requires API key, command and api work without authentication
+5. **Topic filtering** - Get only relevant snippets, not entire documentation dumps
 
 ### playwright
 Cross-platform browser automation with Playwright, wrapped in a shell-friendly CLI similar to the chrome tool.
