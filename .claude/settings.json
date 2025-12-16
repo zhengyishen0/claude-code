@@ -1,14 +1,2 @@
 {
-  "hooks": {
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": ".claude/hooks/check-worktree.sh"
-          }
-        ]
-      }
-    ]
-  }
 }

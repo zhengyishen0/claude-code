@@ -69,9 +69,9 @@ git merge feature-name
 claude-tools worktree remove feature-name
 ```
 
-**Exception**: Skip worktrees for trivial changes (typos, docs, single-line fixes).
+**MANDATORY**: Every Claude session MUST create a dedicated worktree before making ANY changes, no matter how small. No exceptions for typos, docs, or single-line fixes.
 
-**Automatic Triggering**: When a user requests feature work and you're on main branch, proactively suggest and run `claude-tools worktree create <feature-name>`.
+**Automatic Triggering**: When on main branch and ANY edit is needed, immediately run `claude-tools worktree create <feature-name>` before making changes.
 
 ## Tool Design Principles
 
