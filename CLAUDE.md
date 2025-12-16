@@ -173,6 +173,20 @@ Run `claude-tools context7` for full help.
 4. **Curated Examples** - Working code patterns, not just API references
 5. **Current Data** - Regularly updated from source repositories
 
+### documentation
+Get external documentation for libraries, commands, and APIs
+
+Run `claude-tools documentation` for full help.
+
+**Commands:** library, command, api, config
+
+**Key Principles:**
+1. **Unified interface** - One tool for all external documentation needs
+2. **Source-appropriate** - Uses the best service for each type (Context7 for libraries, cheat.sh for commands, APIs.guru for REST APIs)
+3. **AI-optimized** - Token-efficient responses suitable for context windows
+4. **No auth needed** - Only Context7 (library docs) requires API key, command and api work without authentication
+5. **Topic filtering** - Get only relevant snippets, not entire documentation dumps
+
 ### playwright
 Cross-platform browser automation with Playwright, wrapped in a shell-friendly CLI similar to the chrome tool.
 
