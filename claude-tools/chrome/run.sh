@@ -374,11 +374,10 @@ cmd_inspect() {
 # Command: profile
 # ============================================================================
 cmd_profile() {
-  local profile_name="$1"
-  local url="$2"
+  local subcommand="$1"
 
-  # No profile name → list all profiles
-  if [ -z "$profile_name" ]; then
+  # No args → list all profiles
+  if [ -z "$subcommand" ]; then
     echo "Available profiles:"
     if [ -d "$HOME/.claude/profiles" ]; then
       for dir in "$HOME/.claude/profiles"/*; do
@@ -391,6 +390,40 @@ cmd_profile() {
     fi
     return 0
   fi
+
+  # Subcommand: rename
+  if [ "$subcommand" = "rename" ]; then
+    local old_name="$2"
+    local new_name="$3"
+
+    if [ -z "$old_name" ] || [ -z "$new_name" ]; then
+      echo "Usage: profile rename OLD_NAME NEW_NAME" >&2
+      return 1
+    fi
+
+    local old_normalized=$(normalize_profile_name "$old_name")
+    local new_normalized=$(normalize_profile_name "$new_name")
+    local old_path="$HOME/.claude/profiles/$old_normalized"
+    local new_path="$HOME/.claude/profiles/$new_normalized"
+
+    if [ ! -d "$old_path" ]; then
+      echo "Error: Profile '$old_normalized' does not exist" >&2
+      return 1
+    fi
+
+    if [ -d "$new_path" ]; then
+      echo "Error: Profile '$new_normalized' already exists" >&2
+      return 1
+    fi
+
+    mv "$old_path" "$new_path"
+    echo "Profile renamed: $old_normalized → $new_normalized"
+    return 0
+  fi
+
+  # Default: open profile for login
+  local profile_name="$subcommand"
+  local url="$2"
 
   # Normalize and expand profile path
   local normalized=$(normalize_profile_name "$profile_name")
@@ -432,8 +465,8 @@ cmd_help() {
   echo "Commands:"
   echo "  profile [NAME] [URL]        Manage profiles for credential persistence"
   echo "                              No args: List all profiles"
-  echo "                              With NAME: Open headed browser for login"
-  echo "                              With URL: Open headed browser at URL"
+  echo "                              NAME [URL]: Open headed browser for login"
+  echo "                              rename OLD NEW: Rename a profile"
   echo "  snapshot [--diff]           Capture page state (always saves full content)"
   echo "                              --diff: Show changes vs previous snapshot"
   echo "  inspect                     Discover URL parameters from links and forms"
@@ -447,26 +480,36 @@ cmd_help() {
   echo "  esc                         Send ESC key (close dialogs/modals)"
   echo "  help                        Show this help message"
   echo ""
-  echo "Profile Examples:"
-  echo "  # Setup: Open headed browser for user to login"
-  echo "  $TOOL_NAME profile gmail \"https://mail.google.com\""
+  echo "Profile Model:"
+  echo "  Profiles act as contexts (like browser profiles), each holding multiple"
+  echo "  account logins. Common use: 'personal' and 'work' profiles."
   echo ""
-  echo "  # AI automation: Use saved credentials (headless)"
-  echo "  $TOOL_NAME --profile gmail snapshot"
-  echo "  $TOOL_NAME --profile gmail click '[aria-label=\"Compose\"]' + wait + snapshot"
+  echo "  Setup workflow:"
+  echo "    1. $TOOL_NAME profile personal \"https://mail.google.com\""
+  echo "       → Opens headed browser, you login to Gmail, Twitter, etc."
+  echo "       → Press Ctrl+C when done, credentials saved"
   echo ""
-  echo "  # List all profiles"
-  echo "  $TOOL_NAME profile"
+  echo "    2. $TOOL_NAME profile work \"https://mail.google.com\""
+  echo "       → Opens headed browser, you login to work accounts"
+  echo "       → Separate context from personal"
+  echo ""
+  echo "  AI automation (headless):"
+  echo "    $TOOL_NAME --profile personal open \"https://mail.google.com\""
+  echo "    $TOOL_NAME --profile work open \"https://slack.com\""
+  echo ""
+  echo "  Management:"
+  echo "    $TOOL_NAME profile                    # List all profiles"
+  echo "    $TOOL_NAME profile rename old new     # Rename profile"
+  echo ""
+  echo "Profile Naming:"
+  echo "  - Auto-normalized: lowercase, underscores, alphanumeric"
+  echo "  - Examples: personal, work, testing"
+  echo "  - Stored in: ~/.claude/profiles/<name>/"
   echo ""
   echo "Basic Examples (no profile):"
   echo "  $TOOL_NAME open \"https://example.com\""
   echo "  $TOOL_NAME snapshot --diff"
   echo "  $TOOL_NAME click '[data-testid=\"btn\"]' + wait + snapshot --diff"
-  echo ""
-  echo "Profile Naming:"
-  echo "  - Auto-normalized: lowercase, underscores, alphanumeric"
-  echo "  - Examples: gmail, work_email, twitter_bot"
-  echo "  - Stored in: ~/.claude/profiles/<name>/"
   echo ""
   echo "Note: 'recon' is aliased to 'snapshot' for backward compatibility"
   echo ""
