@@ -154,13 +154,10 @@ Run `claude-tools chrome` for full help.
 
 **Key Principles:**
 1. **URL params first** - Always prefer direct URLs over clicking
-2. **Use chrome tool commands** - Avoid `chrome-cli execute` unless truly needed
-3. **Snapshot first** - Understand page before interacting
-4. **Track changes with --diff** - See what changed after interactions
-5. **Chain with +** - Combine action + wait + snapshot in one call
-6. **Wait for specific element** - Not just any DOM change
-7. **Use --gone** - When expecting element to disappear
-8. **Use --network for lazy content** - Wait for footer/ads to load
+2. **Auto-feedback shows results** - `click` and `input` automatically show feedback
+3. **Trust the tool** - Commands wait for stability before showing results
+4. **Use chrome tool commands** - Avoid `chrome-cli execute` unless truly needed
+5. **Manual chaining for advanced cases** - Override auto-behavior when needed
 
 ### context7
 Fetch up-to-date library documentation via Context7 API
