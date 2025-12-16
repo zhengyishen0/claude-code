@@ -98,10 +98,28 @@ URL Pattern:
 ```
 
 ### open
-Open URL (waits for load), then snapshot
+Open URL, discover URL structure, show page content
 
 ```bash
 open URL
+```
+
+**Auto-feedback behavior:**
+1. Opens the URL
+2. Waits for page to load
+3. Runs `inspect` to show URL parameters/structure
+4. Takes `snapshot` to show page content
+
+**Why inspect is included:**
+Understanding the URL structure helps build direct URLs instead of clicking through the UI (follows "URL params first" principle).
+
+**Example output:**
+```
+URL Parameter Discovery
+[URL parameters and forms discovered]
+
+# Page Title
+[Page snapshot]
 ```
 
 ### wait
@@ -127,42 +145,56 @@ wait '[role=dialog]' --gone   # wait for modal to close
 ```
 
 ### click
-Click element by CSS selector
+Click element and show immediate feedback
 
 ```bash
 click SELECTOR
 ```
 
+**Auto-feedback behavior:**
+1. Clicks the element
+2. Waits for page to react (DOM stable)
+3. Shows snapshot diff (or full snapshot if state changed)
+
+**Why auto-feedback:**
+- See results immediately (modal opened, page navigated, etc.)
+- No need to manually chain `+ wait + snapshot`
+- Catch failures instantly (nothing changed = likely error)
+
 **Examples:**
 ```bash
-click '[data-testid="search-button"]'
-click '#submit-btn'
-click '[aria-label="Search"]'
-click 'button.primary'
-```
+click '[data-testid="search-button"]'   # Shows search results
+click '#filter-btn'                     # Shows filter panel
+click '[aria-label="Close"]'            # Shows modal closed
 
-**Chain with wait/snapshot:**
-```bash
-click '...' + wait + snapshot --diff
+# Advanced: wait for specific element before snapshot
 click '...' + wait '[role=dialog]' + snapshot
 ```
 
 ### input
-Set input value by CSS selector
+Set input value and show immediate feedback
 
 ```bash
 input SELECTOR VALUE
 ```
 
+**Auto-feedback behavior:**
+1. Sets the input value
+2. Waits for page to react (autocomplete, validation, etc.)
+3. Shows snapshot diff (or full snapshot if state changed)
+
+**Why auto-feedback:**
+- See autocomplete suggestions immediately
+- Catch validation errors instantly
+- Know if input triggered page changes
+
 **Examples:**
 ```bash
-input '[aria-label="Where"]' 'Paris'
-input '#email' 'test@example.com'
-input '[name="search"]' 'query'
-```
+input '#search' 'Tokyo'              # Shows autocomplete dropdown
+input '#email' 'invalid'             # Shows validation error
+input '[aria-label="Where"]' 'Paris' # Shows location suggestions
 
-**Chain with wait/snapshot:**
-```bash
+# Advanced: manual control if needed
 input '...' 'value' + wait + snapshot --diff
 ```
 
@@ -180,20 +212,23 @@ esc + wait dialog --gone + snapshot
 
 ## Chaining Commands
 
-Chain multiple commands with `+`:
+Commands can still be chained with `+` for advanced control:
 
 ```bash
-# Typical workflow with diff tracking
-input '#search' 'Paris' + wait + snapshot --diff
-click '[data-testid="option-0"]' + wait + snapshot --diff
-click '[data-testid="date-15"]' + wait + snapshot --diff
+# Auto-feedback is built-in (no chaining needed)
+click '[data-testid="btn"]'                    # Auto waits + snapshots
+input '#search' 'Paris'                        # Auto waits + snapshots
 
-# Wait for network idle before snapshot
-open "https://example.com" + wait --network + snapshot
-
-# Complex chains
-click "[@Close](#btn)" + wait "[role=dialog]" --gone + snapshot
+# Manual chaining for advanced cases
+esc + wait '[role=dialog]' --gone + snapshot   # Wait for specific condition
+open "https://example.com" + wait --network    # Custom wait before snapshot
+click '[btn]' + wait '[role=dialog]'           # Wait for specific element
 ```
+
+**Note:** With auto-feedback, manual chaining is rarely needed. Use it only for:
+- Waiting for specific elements/conditions
+- Custom timing requirements
+- Suppressing auto-snapshot (advanced)
 
 ## Key Principles
 
@@ -201,67 +236,58 @@ click "[@Close](#btn)" + wait "[role=dialog]" --gone + snapshot
    ```bash
    open "https://airbnb.com/s/Paris?checkin=2025-12-20&checkout=2025-12-27"
    ```
+   The `open` command shows URL structure via `inspect`, making it easy to build direct URLs.
 
-2. **Use chrome tool commands** - Avoid `chrome-cli execute` unless truly needed
-
-3. **Snapshot first** - Understand page before interacting
+2. **Auto-feedback shows results** - `click` and `input` automatically show feedback
    ```bash
-   open "https://example.com" + wait + snapshot
+   click '[data-testid="btn"]'   # Automatically waits and snapshots
+   input '#search' 'query'        # Shows autocomplete automatically
    ```
 
-4. **Track changes with --diff** - See what changed after interactions
-   ```bash
-   click '[...]' + wait + snapshot --diff
-   ```
+3. **Trust the tool** - Commands wait for stability before showing results
+   - No need to manually chain `+ wait + snapshot`
+   - Automatic diff when page state stays the same
+   - Fallback to full snapshot when state changes (modals, navigation)
 
-5. **Chain with +** - Combine action + wait + snapshot in one call
+4. **Use chrome tool commands** - Avoid `chrome-cli execute` unless truly needed
 
-6. **Wait for specific element** - Not just any DOM change
+5. **Manual chaining for advanced cases** - Override auto-behavior when needed
    ```bash
-   click '[...]' + wait '[role=dialog]' + snapshot
-   ```
-
-7. **Use --gone** - When expecting element to disappear
-   ```bash
-   esc + wait '[role=dialog]' --gone + snapshot
-   ```
-
-8. **Use --network for lazy content** - Wait for footer/ads to load
-   ```bash
-   open "https://example.com" + wait --network + snapshot
+   click '[btn]' + wait '[role=dialog]'         # Wait for specific element
+   esc + wait '[role=dialog]' --gone + snapshot # Custom wait condition
    ```
 
 ## Typical Workflows
 
 ### Exploring a New Page
 ```bash
-# First snapshot with network wait
-open "https://example.com" + wait --network + snapshot
+# Open shows URL structure + page content automatically
+open "https://example.com"
 
-# Interact and track changes
-input '#search' 'query' + wait + snapshot --diff
-click '[data-testid="btn"]' + wait + snapshot --diff
+# Interactions provide immediate feedback
+input '#search' 'query'        # Shows autocomplete
+click '[data-testid="btn"]'    # Shows results
 ```
 
 ### Form Filling
 ```bash
-# Each step shows only what changed
-open "https://form.com" + wait + snapshot
-input '#name' 'John' + wait + snapshot --diff
-input '#email' 'john@example.com' + wait + snapshot --diff
-click '#submit' + wait + snapshot --diff
+# Each command shows feedback automatically
+open "https://form.com"
+input '#name' 'John'                      # Shows name filled
+input '#email' 'john@example.com'         # Shows email filled + validation
+click '#submit'                           # Shows success/error message
 ```
 
 ### Modal Interactions
 ```bash
-# Open modal
-click '[data-testid="open-modal"]' + wait '[role=dialog]' + snapshot
+# Open modal (shows modal content automatically)
+click '[data-testid="open-modal"]'
 
-# Interact within modal (compares dialog state to dialog state)
-input '#modal-input' 'value' + wait + snapshot --diff
+# Interact within modal (auto-feedback shows changes)
+input '#modal-input' 'value'
 
-# Close and verify
-esc + wait '[role=dialog]' --gone + snapshot --diff
+# Close modal (auto-feedback confirms it closed)
+esc + wait '[role=dialog]' --gone + snapshot
 ```
 
 ## Raw chrome-cli Commands

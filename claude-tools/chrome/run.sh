@@ -106,6 +106,10 @@ cmd_open() {
   # Wait for page to fully load (happens in background)
   cmd_wait > /dev/null 2>&1
 
+  # Show URL structure (helps Claude build better URLs)
+  cmd_inspect
+
+  # Show page content
   cmd_snapshot
 }
 
@@ -247,6 +251,12 @@ cmd_click() {
   if [[ "$result" == FAIL* ]]; then
     return 1
   fi
+
+  # Auto-wait for page to react to click
+  cmd_wait > /dev/null 2>&1
+
+  # Show what changed after click (try diff, fallback to full snapshot)
+  cmd_snapshot --diff 2>/dev/null || cmd_snapshot
 }
 
 # ============================================================================
@@ -273,6 +283,12 @@ cmd_input() {
   if [[ "$result" == FAIL* ]]; then
     return 1
   fi
+
+  # Auto-wait for page to react to input (autocomplete, validation, etc.)
+  cmd_wait > /dev/null 2>&1
+
+  # Show what changed after input (try diff, fallback to full snapshot)
+  cmd_snapshot --diff 2>/dev/null || cmd_snapshot
 }
 
 # ============================================================================
