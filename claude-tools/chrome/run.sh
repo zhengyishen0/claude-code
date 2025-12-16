@@ -1,10 +1,47 @@
 #!/bin/bash
 # chrome - Browser automation with React/SPA support
-# Usage: chrome <command> [args...]
+# Usage: chrome [--headless] [--profile PATH] <command> [args...]
 # Chain commands with +: chrome click "[@X](#btn)" + wait + recon
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TOOL_NAME="$(basename "$SCRIPT_DIR")"
+
+# Add bin directory to PATH for playwright-cli
+export PATH="$SCRIPT_DIR/bin:$PATH"
+
+# ============================================================================
+# Parse global flags (--headless, --profile)
+# ============================================================================
+HEADLESS=false
+PROFILE=""
+
+# Extract global flags before command
+while [[ "$1" == --* ]]; do
+  case "$1" in
+    --headless)
+      HEADLESS=true
+      shift
+      ;;
+    --profile)
+      PROFILE="$2"
+      shift 2
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+# Set Chrome CLI based on mode
+if [ "$HEADLESS" = "true" ]; then
+  CHROME="playwright-cli"
+  export PLAYWRIGHT_HEADLESS="true"
+  if [ -n "$PROFILE" ]; then
+    export PLAYWRIGHT_PROFILE="$PROFILE"
+  fi
+else
+  CHROME="chrome-cli"
+fi
 
 # ============================================================================
 # Configuration
@@ -33,14 +70,14 @@ mkdir -p "$SNAPSHOT_DIR" 2>/dev/null
 
 # Get sanitized URL for snapshot filename
 get_snapshot_prefix() {
-  local url=$(chrome-cli execute "location.hostname + location.pathname")
+  local url=$($CHROME execute "location.hostname + location.pathname")
   # Remove quotes, sanitize for filename
   echo "$url" | tr -d '"' | tr '/:?&=' '-' | tr -s '-' | sed 's/-$//'
 }
 
 # Detect page state for snapshot comparison
 get_page_state() {
-  chrome-cli execute "$(cat "$SCRIPT_DIR/js/detect-page-state.js")" | tr -d '"'
+  $CHROME execute "$(cat "$SCRIPT_DIR/js/detect-page-state.js")" | tr -d '"'
 }
 
 # ============================================================================
@@ -64,7 +101,7 @@ cmd_snapshot() {
   local snapshot_file="$SNAPSHOT_DIR/${prefix}-${state}-${timestamp}.md"
 
   # Always capture full content
-  local content=$(chrome-cli execute "window.__RECON_FULL__ = true; $(cat "$SCRIPT_DIR/js/html2md.js")")
+  local content=$($CHROME execute "window.__RECON_FULL__ = true; $(cat "$SCRIPT_DIR/js/html2md.js")")
 
   # Diff mode: compare against previous snapshot with same state
   if [ "$DIFF_MODE" = "true" ]; then
@@ -98,7 +135,7 @@ cmd_open() {
     return 1
   fi
 
-  chrome-cli open "$URL" > /dev/null
+  $chrome open "$URL" > /dev/null
 
   # Restore focus immediately using cmd+tab (no delay needed)
   osascript -e 'tell application "System Events" to keystroke tab using command down' 2>/dev/null || true
@@ -139,13 +176,13 @@ cmd_wait() {
     # Wait for specific CSS selector to appear/disappear
     while (( $(echo "$elapsed < $timeout" | bc -l) )); do
       if [ "$GONE" = true ]; then
-        result=$(chrome-cli execute "document.querySelector('$SELECTOR') ? 'exists' : 'gone'")
+        result=$($CHROME execute "document.querySelector('$SELECTOR') ? 'exists' : 'gone'")
         if [ "$result" = "gone" ]; then
           echo "OK: $SELECTOR disappeared"
           return 0
         fi
       else
-        result=$(chrome-cli execute "document.querySelector('$SELECTOR') ? 'found' : 'waiting'")
+        result=$($CHROME execute "document.querySelector('$SELECTOR') ? 'found' : 'waiting'")
         if [ "$result" = "found" ]; then
           echo "OK: $SELECTOR found"
           return 0
@@ -161,10 +198,10 @@ cmd_wait() {
     # No selector: wait for page to fully load
 
     # First, wait for URL to change from about:blank (if just opened)
-    current_url=$(chrome-cli execute "location.href")
+    current_url=$($CHROME execute "location.href")
     if [ "$current_url" = "about:blank" ]; then
       while (( $(echo "$elapsed < $timeout" | bc -l) )); do
-        current_url=$(chrome-cli execute "location.href")
+        current_url=$($CHROME execute "location.href")
         if [ "$current_url" != "about:blank" ]; then
           break
         fi
@@ -175,7 +212,7 @@ cmd_wait() {
 
     # Then, wait for readyState=complete
     while (( $(echo "$elapsed < $timeout" | bc -l) )); do
-      state=$(chrome-cli execute "document.readyState")
+      state=$($CHROME execute "document.readyState")
       if [ "$state" = "complete" ]; then
         break
       fi
@@ -192,7 +229,7 @@ cmd_wait() {
     if [ "$NETWORK" = true ]; then
       while (( $(echo "$elapsed < $timeout" | bc -l) )); do
         # Check for active network requests
-        active=$(chrome-cli execute "performance.getEntriesByType('resource').filter(r => !r.responseEnd).length")
+        active=$($CHROME execute "performance.getEntriesByType('resource').filter(r => !r.responseEnd).length")
         if [ "$active" = "0" ]; then
           echo "OK: Network idle"
           break
@@ -203,7 +240,7 @@ cmd_wait() {
     fi
 
     # Then wait for DOM to stabilize (no changes for 1.2-1.5s for lazy content)
-    SNAPSHOT=$(chrome-cli execute "document.body.innerHTML.length + '|' + document.querySelectorAll('*').length")
+    SNAPSHOT=$($CHROME execute "document.body.innerHTML.length + '|' + document.querySelectorAll('*').length")
     stable_count=0
     required_stable=4  # 4 checks * 0.3s = 1.2s stability required
 
@@ -211,7 +248,7 @@ cmd_wait() {
       sleep $interval
       elapsed=$(echo "$elapsed + $interval" | bc)
 
-      CURRENT=$(chrome-cli execute "document.body.innerHTML.length + '|' + document.querySelectorAll('*').length")
+      CURRENT=$($CHROME execute "document.body.innerHTML.length + '|' + document.querySelectorAll('*').length")
       if [ "$CURRENT" = "$SNAPSHOT" ]; then
         stable_count=$((stable_count + 1))
         # Stable for required checks = done
@@ -244,7 +281,7 @@ cmd_click() {
   SELECTOR_ESC=$(printf '%s' "$SELECTOR" | sed "s/'/\\\\'/g")
 
   # Click the element
-  result=$(chrome-cli execute "var SELECTOR='$SELECTOR_ESC'; $(cat "$SCRIPT_DIR/js/click-element.js")")
+  result=$($CHROME execute "var SELECTOR='$SELECTOR_ESC'; $(cat "$SCRIPT_DIR/js/click-element.js")")
 
   echo "$result"
 
@@ -276,7 +313,7 @@ cmd_input() {
   VALUE_ESC=$(printf '%s' "$VALUE" | sed "s/'/\\\\'/g")
 
   # Set input value (React-safe)
-  result=$(chrome-cli execute "var SELECTOR='$SELECTOR_ESC'; var VALUE='$VALUE_ESC'; $(cat "$SCRIPT_DIR/js/set-input.js")")
+  result=$($CHROME execute "var SELECTOR='$SELECTOR_ESC'; var VALUE='$VALUE_ESC'; $(cat "$SCRIPT_DIR/js/set-input.js")")
 
   echo "$result"
 
@@ -296,7 +333,7 @@ cmd_input() {
 # ============================================================================
 cmd_esc() {
   JS_CODE=$(cat "$SCRIPT_DIR/js/send-esc.js")
-  chrome-cli execute "$JS_CODE"
+  $CHROME execute "$JS_CODE"
 }
 
 # ============================================================================
@@ -304,7 +341,7 @@ cmd_esc() {
 # ============================================================================
 cmd_inspect() {
   # Execute the inspection
-  local result=$(chrome-cli execute "$(cat "$SCRIPT_DIR/js/inspect.js")")
+  local result=$($CHROME execute "$(cat "$SCRIPT_DIR/js/inspect.js")")
 
   # Pretty print for human reading
   echo "$result" | python3 "$SCRIPT_DIR/py/format-inspect.py"
