@@ -1,6 +1,6 @@
 #!/bin/bash
 # chrome - Browser automation with React/SPA support
-# Usage: chrome [--headless] [--profile PATH] <command> [args...]
+# Usage: chrome [--profile NAME] <command> [args...]
 # Chain commands with +: chrome click "[@X](#btn)" + wait + recon
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -10,20 +10,38 @@ TOOL_NAME="$(basename "$SCRIPT_DIR")"
 export PATH="$SCRIPT_DIR/bin:$PATH"
 
 # ============================================================================
-# Parse global flags (--headless, --profile)
+# Profile utilities
 # ============================================================================
-HEADLESS=false
+
+# Normalize profile name: lowercase, underscores, alphanumeric only
+normalize_profile_name() {
+  echo "$1" | tr '[:upper:]' '[:lower:]' | tr -s ' -.' '_' | sed 's/[^a-z0-9_]//g'
+}
+
+# Expand profile name to full path
+# If starts with / or ~, use as-is. Otherwise expand to ~/.claude/profiles/<name>
+expand_profile_path() {
+  local profile="$1"
+  if [[ "$profile" == /* ]] || [[ "$profile" == ~* ]]; then
+    echo "$profile"
+  else
+    local normalized=$(normalize_profile_name "$profile")
+    echo "$HOME/.claude/profiles/$normalized"
+  fi
+}
+
+# ============================================================================
+# Parse global flags (--profile)
+# ============================================================================
 PROFILE=""
+PROFILE_PATH=""
 
 # Extract global flags before command
 while [[ "$1" == --* ]]; do
   case "$1" in
-    --headless)
-      HEADLESS=true
-      shift
-      ;;
     --profile)
       PROFILE="$2"
+      PROFILE_PATH=$(expand_profile_path "$PROFILE")
       shift 2
       ;;
     *)
@@ -33,13 +51,13 @@ while [[ "$1" == --* ]]; do
 done
 
 # Set Chrome CLI based on mode
-if [ "$HEADLESS" = "true" ]; then
+if [ -n "$PROFILE" ]; then
+  # Profile specified → use playwright (headless by default)
   CHROME="playwright-cli"
   export PLAYWRIGHT_HEADLESS="true"
-  if [ -n "$PROFILE" ]; then
-    export PLAYWRIGHT_PROFILE="$PROFILE"
-  fi
+  export PLAYWRIGHT_PROFILE="$PROFILE_PATH"
 else
+  # No profile → use chrome-cli (system Chrome.app)
   CHROME="chrome-cli"
 fi
 
@@ -135,10 +153,15 @@ cmd_open() {
     return 1
   fi
 
-  $chrome open "$URL" > /dev/null
+  $CHROME open "$URL" > /dev/null
 
-  # Restore focus immediately using cmd+tab (no delay needed)
-  osascript -e 'tell application "System Events" to keystroke tab using command down' 2>/dev/null || true
+  # In playwright mode, set URL for subsequent commands
+  if [ -n "$PROFILE" ]; then
+    export PLAYWRIGHT_CURRENT_URL="$URL"
+  else
+    # Restore focus immediately using cmd+tab (no delay needed)
+    osascript -e 'tell application "System Events" to keystroke tab using command down' 2>/dev/null || true
+  fi
 
   # Wait for page to fully load (happens in background)
   cmd_wait > /dev/null 2>&1
@@ -348,14 +371,69 @@ cmd_inspect() {
 }
 
 # ============================================================================
+# Command: profile
+# ============================================================================
+cmd_profile() {
+  local profile_name="$1"
+  local url="$2"
+
+  # No profile name → list all profiles
+  if [ -z "$profile_name" ]; then
+    echo "Available profiles:"
+    if [ -d "$HOME/.claude/profiles" ]; then
+      for dir in "$HOME/.claude/profiles"/*; do
+        if [ -d "$dir" ]; then
+          echo "  $(basename "$dir")"
+        fi
+      done
+    else
+      echo "  (none)"
+    fi
+    return 0
+  fi
+
+  # Normalize and expand profile path
+  local normalized=$(normalize_profile_name "$profile_name")
+  local profile_path=$(expand_profile_path "$profile_name")
+
+  # Create profile directory if it doesn't exist
+  mkdir -p "$profile_path"
+
+  # Set environment for headed mode
+  export PLAYWRIGHT_HEADLESS="false"
+  export PLAYWRIGHT_PROFILE="$profile_path"
+
+  # Open headed browser for user to login
+  if [ -n "$url" ]; then
+    echo "Opening profile '$normalized' at $url"
+    echo "Please login and interact as needed."
+    echo "Press Ctrl+C when done to save the profile."
+    playwright-cli open "$url"
+  else
+    echo "Opening profile '$normalized'"
+    echo "Please navigate and login as needed."
+    echo "Press Ctrl+C when done to save the profile."
+    playwright-cli open "about:blank"
+  fi
+}
+
+# ============================================================================
 # Command: help
 # ============================================================================
 cmd_help() {
   echo "$TOOL_NAME - Browser automation with React/SPA support"
   echo ""
-  echo "Usage: $TOOL_NAME <command> [args...] [+ command [args...]]..."
+  echo "Usage: $TOOL_NAME [--profile NAME] <command> [args...] [+ command [args...]]..."
+  echo ""
+  echo "Modes:"
+  echo "  Default (no --profile)      Uses chrome-cli (system Chrome.app, visible)"
+  echo "  --profile NAME              Uses Playwright (headless, with saved credentials)"
   echo ""
   echo "Commands:"
+  echo "  profile [NAME] [URL]        Manage profiles for credential persistence"
+  echo "                              No args: List all profiles"
+  echo "                              With NAME: Open headed browser for login"
+  echo "                              With URL: Open headed browser at URL"
   echo "  snapshot [--diff]           Capture page state (always saves full content)"
   echo "                              --diff: Show changes vs previous snapshot"
   echo "  inspect                     Discover URL parameters from links and forms"
@@ -369,13 +447,26 @@ cmd_help() {
   echo "  esc                         Send ESC key (close dialogs/modals)"
   echo "  help                        Show this help message"
   echo ""
-  echo "Quick Examples:"
+  echo "Profile Examples:"
+  echo "  # Setup: Open headed browser for user to login"
+  echo "  $TOOL_NAME profile gmail \"https://mail.google.com\""
+  echo ""
+  echo "  # AI automation: Use saved credentials (headless)"
+  echo "  $TOOL_NAME --profile gmail snapshot"
+  echo "  $TOOL_NAME --profile gmail click '[aria-label=\"Compose\"]' + wait + snapshot"
+  echo ""
+  echo "  # List all profiles"
+  echo "  $TOOL_NAME profile"
+  echo ""
+  echo "Basic Examples (no profile):"
   echo "  $TOOL_NAME open \"https://example.com\""
-  echo "  $TOOL_NAME inspect"
-  echo "  $TOOL_NAME snapshot"
   echo "  $TOOL_NAME snapshot --diff"
   echo "  $TOOL_NAME click '[data-testid=\"btn\"]' + wait + snapshot --diff"
-  echo "  $TOOL_NAME input '#email' 'test@example.com' + wait + snapshot --diff"
+  echo ""
+  echo "Profile Naming:"
+  echo "  - Auto-normalized: lowercase, underscores, alphanumeric"
+  echo "  - Examples: gmail, work_email, twitter_bot"
+  echo "  - Stored in: ~/.claude/profiles/<name>/"
   echo ""
   echo "Note: 'recon' is aliased to 'snapshot' for backward compatibility"
   echo ""
@@ -397,6 +488,7 @@ execute_single() {
     click)      cmd_click "$@" ;;
     input)      cmd_input "$@" ;;
     esc)        cmd_esc "$@" ;;
+    profile)    cmd_profile "$@" ;;
     help|--help|-h) cmd_help ;;
     *)
       echo "Unknown command: $cmd" >&2
@@ -491,6 +583,11 @@ case "$1" in
 
   esc)
     cmd_esc
+    ;;
+
+  profile)
+    shift
+    cmd_profile "$@"
     ;;
 
   help|--help|-h)

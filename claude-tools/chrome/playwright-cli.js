@@ -33,14 +33,21 @@ async function cmdExecute(args) {
   }
 
   const { browser, context } = await getBrowser();
+  let page;
+
+  // Check if we should use existing page from profile or create new one
   const pages = context.pages();
+  if (pages.length > 0) {
+    page = pages[0];
+  } else {
+    page = await context.newPage();
 
-  if (pages.length === 0) {
-    const page = await context.newPage();
-    pages.push(page);
+    // If PLAYWRIGHT_CURRENT_URL is set, navigate to it first
+    const currentUrl = process.env.PLAYWRIGHT_CURRENT_URL;
+    if (currentUrl && currentUrl !== 'about:blank') {
+      await page.goto(currentUrl, { waitUntil: 'domcontentloaded' });
+    }
   }
-
-  const page = pages[pages.length - 1];
 
   try {
     const result = await page.evaluate((code) => eval(code), jsCode);
