@@ -6,8 +6,8 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TOOL_NAME="$(basename "$SCRIPT_DIR")"
 
-# Add bin directory to PATH for playwright-cli
-export PATH="$SCRIPT_DIR/bin:$PATH"
+# CDP configuration
+CDP_CLI="node $SCRIPT_DIR/cdp-cli.js"
 
 # ============================================================================
 # Profile utilities
@@ -51,11 +51,40 @@ while [[ "$1" == --* ]]; do
 done
 
 # Set Chrome CLI based on mode
+CHROME_PID=""
 if [ -n "$PROFILE" ]; then
-  # Profile specified → use playwright (headless by default)
-  CHROME="playwright-cli"
-  export PLAYWRIGHT_HEADLESS="true"
-  export PLAYWRIGHT_PROFILE="$PROFILE_PATH"
+  # Profile specified → use CDP (headless by default)
+  CHROME="$CDP_CLI"
+
+  # Launch headless Chrome with profile
+  CHROME_APP="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+  CDP_PORT=9222
+
+  # Export CDP port for cdp-cli.js
+  export CDP_PORT
+
+  # Launch Chrome in headless mode with profile
+  "$CHROME_APP" \
+    --headless=new \
+    --remote-debugging-port=$CDP_PORT \
+    --user-data-dir="$PROFILE_PATH" \
+    --disable-gpu \
+    --no-first-run \
+    --no-default-browser-check \
+    > /dev/null 2>&1 &
+
+  CHROME_PID=$!
+
+  # Trap to cleanup Chrome on exit
+  trap "kill $CHROME_PID 2>/dev/null" EXIT INT TERM
+
+  # Wait for Chrome to be ready (CDP endpoint available)
+  for i in {1..30}; do
+    if curl -s "http://localhost:$CDP_PORT/json/version" > /dev/null 2>&1; then
+      break
+    fi
+    sleep 0.1
+  done
 else
   # No profile → use chrome-cli (system Chrome.app)
   CHROME="chrome-cli"
@@ -155,11 +184,8 @@ cmd_open() {
 
   $CHROME open "$URL" > /dev/null
 
-  # In playwright mode, set URL for subsequent commands
-  if [ -n "$PROFILE" ]; then
-    export PLAYWRIGHT_CURRENT_URL="$URL"
-  else
-    # Restore focus immediately using cmd+tab (no delay needed)
+  # Restore focus immediately using cmd+tab (no delay needed) - only for chrome-cli mode
+  if [ -z "$PROFILE" ]; then
     osascript -e 'tell application "System Events" to keystroke tab using command down' 2>/dev/null || true
   fi
 
@@ -432,21 +458,50 @@ cmd_profile() {
   # Create profile directory if it doesn't exist
   mkdir -p "$profile_path"
 
-  # Set environment for headed mode
-  export PLAYWRIGHT_HEADLESS="false"
-  export PLAYWRIGHT_PROFILE="$profile_path"
+  # Check if this is a new profile or updating existing
+  local is_new_profile=false
+  if [ ! -d "$profile_path/Default" ]; then
+    is_new_profile=true
+  fi
 
-  # Open headed browser for user to login
+  # Open headed browser for user to login (runs in background)
+  local chrome_app="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
   if [ -n "$url" ]; then
     echo "Opening profile '$normalized' at $url"
-    echo "Please login and interact as needed."
-    echo "Press Ctrl+C when done to save the profile."
-    playwright-cli open "$url"
+    echo "Login as needed. Your session will be saved when you close the browser."
+    "$chrome_app" --remote-debugging-port=9222 --user-data-dir="$profile_path" "$url" &
+    BROWSER_PID=$!
   else
     echo "Opening profile '$normalized'"
-    echo "Please navigate and login as needed."
-    echo "Press Ctrl+C when done to save the profile."
-    playwright-cli open "about:blank"
+    echo "Navigate and login as needed. Your session will be saved when you close the browser."
+    "$chrome_app" --remote-debugging-port=9222 --user-data-dir="$profile_path" &
+    BROWSER_PID=$!
+  fi
+
+  # For new profiles: wait for initial save, validate, and auto-close
+  if [ "$is_new_profile" = true ]; then
+    echo ""
+    echo "Waiting for you to login..."
+    while [ ! -d "$profile_path/Default" ]; do
+      sleep 2
+    done
+
+    echo "Profile detected! Validating..."
+    sleep 3  # Give time for more cookies to be saved
+
+    # TODO: Test the profile in headless mode with CDP
+    echo "Profile created! You can close the browser window now."
+    echo "  (Browser will auto-close in 10 seconds if you don't)"
+
+    # Auto-close after 10 seconds
+    (sleep 10 && kill $BROWSER_PID 2>/dev/null) &
+
+    wait $BROWSER_PID 2>/dev/null
+  else
+    # Existing profile: just wait for user to close browser
+    echo ""
+    echo "Updating existing profile. Close the browser window when done."
+    wait $BROWSER_PID 2>/dev/null
   fi
 }
 
@@ -460,7 +515,7 @@ cmd_help() {
   echo ""
   echo "Modes:"
   echo "  Default (no --profile)      Uses chrome-cli (system Chrome.app, visible)"
-  echo "  --profile NAME              Uses Playwright (headless, with saved credentials)"
+  echo "  --profile NAME              Uses CDP (headless Chrome with saved credentials)"
   echo ""
   echo "Commands:"
   echo "  profile [NAME] [URL]        Manage profiles for credential persistence"

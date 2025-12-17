@@ -1,7 +1,7 @@
 {
   "name": "chrome",
   "version": "1.0.0",
-  "description": "Browser automation with React/SPA support",
+  "description": "Browser automation with CDP",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -11,6 +11,6 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "playwright": "^1.57.0"
+    "chrome-remote-interface": "^0.33.3"
   }
 }
