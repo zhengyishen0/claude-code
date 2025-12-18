@@ -159,6 +159,35 @@ Run `claude-tools documentation` for full help.
 4. **No auth needed** - Only Context7 (library docs) requires API key, command and api work without authentication
 5. **Topic filtering** - Get only relevant snippets, not entire documentation dumps
 
+### environment
+Event log for persistent AI collaboration - track tasks, events, and notes with marker-based reading.
+
+Run `claude-tools environment` for full help.
+
+**Commands:** check, event
+
+**Key Principles:**
+1. **Marker-based reading** - Only returns unread events, tracks "read up to here"
+2. **Append-only log** - Events never deleted, accumulate over time
+3. **Simple text format** - Human-readable, grep-able, version-controllable
+4. **Two patterns** - Work items (with task-id:status) and events/notes (just description)
+5. **Self-contained** - Log file lives in tool directory
+
+### memory
+Cross-session knowledge sharing for Claude Code - search and consult previous sessions like a hive mind.
+
+Run `claude-tools memory` for full help.
+
+**Commands:** search, recall, clear
+
+**Key Principles:**
+1. **No Memos** - Search JSONL session files directly with ripgrep (no duplication, no token waste)
+2. **Boolean Search** - Powerful query logic (AND/OR/NOT) for precise filtering
+3. **Stateless Consultation** - Uses `--fork-session` to avoid contaminating expert sessions
+4. **Conversation Tracking** - Follow-up questions reuse same fork for context
+5. **Read-Only by Default** - Recall uses `--allowedTools "Read Grep Glob"` for safety
+6. **AI-First Design** - Output format optimized for AI decision-making
+
 ### playwright
 Cross-platform browser automation with Playwright, wrapped in a shell-friendly CLI similar to the chrome tool.
 
