@@ -77,7 +77,6 @@ recall_session() {
   local session_id="$1"
   local question="$2"
   local force_new="${3:-false}"
-  local model="${4:-haiku}"
 
   # Find the session file
   local session_file=$(find_session_file "$session_id")
@@ -95,7 +94,6 @@ recall_session() {
 
   echo "Session: $session_id"
   echo "Project: $project_dir"
-  echo "Model: $model"
   echo "Question: $question"
 
   # Check for existing fork (unless --new)
@@ -107,13 +105,13 @@ recall_session() {
   if [ -n "$fork_id" ]; then
     echo "Reusing fork: $fork_id"
     echo ""
-    (cd "$project_dir" && claude --resume "$fork_id" -p "$question" --model "$model" --allowedTools "Read,Grep,Glob" --dangerously-skip-permissions)
+    (cd "$project_dir" && claude --resume "$fork_id" -p "$question" --allowedTools "Read,Grep,Glob" --dangerously-skip-permissions)
   else
     echo "Creating new fork..."
     echo ""
 
-    # Create fork and run claude directly (don't capture - let it stream output)
-    (cd "$project_dir" && claude --resume "$session_id" --fork-session -p "$question" --model "$model" --allowedTools "Read,Grep,Glob" --dangerously-skip-permissions)
+    # Create fork and run claude directly (stream output)
+    (cd "$project_dir" && claude --resume "$session_id" --fork-session -p "$question" --allowedTools "Read,Grep,Glob" --dangerously-skip-permissions)
 
     # Try to find the new fork session ID
     sleep 1  # Give filesystem time to sync
@@ -130,7 +128,6 @@ recall_session() {
 # Batch recall with parallel execution
 batch_recall() {
   local force_new="false"
-  local model="haiku"
   local queries=()
 
   # Parse args
@@ -138,9 +135,6 @@ batch_recall() {
     case "$arg" in
       --new|-n)
         force_new="true"
-        ;;
-      --model=*)
-        model="${arg#--model=}"
         ;;
       *)
         queries+=("$arg")
@@ -160,7 +154,7 @@ batch_recall() {
     local query="${queries[0]}"
     local session_id="${query%%:*}"
     local question="${query#*:}"
-    recall_session "$session_id" "$question" "$force_new" "$model"
+    recall_session "$session_id" "$question" "$force_new"
   else
     # Multiple queries - run in parallel
     echo "=== Batch Recall: $total sessions (parallel) ==="
@@ -181,7 +175,7 @@ batch_recall() {
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "[$index/$total] Session: $session_id"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        recall_session "$session_id" "$question" "$force_new" "$model" 2>&1
+        recall_session "$session_id" "$question" "$force_new" 2>&1
       ) > "$temp_file" 2>&1 &
 
       pids+=($!)
@@ -203,47 +197,14 @@ batch_recall() {
   fi
 }
 
-# Show help
-show_help() {
-  cat << 'EOF'
-recall - Consult past sessions by forking and asking questions
-
-USAGE
-  recall [OPTIONS] "<session-id>:<question>" [...]
-
-OPTIONS
-  --new, -n           Force new fork (ignore existing)
-  --model=MODEL       Model to use (default: haiku)
-                      Options: haiku, sonnet, opus
-
-EXAMPLES
-  # Single query (uses haiku by default)
-  recall "abc-123:How did you handle errors?"
-
-  # Force new fork
-  recall --new "abc-123:Start fresh question"
-
-  # Use a different model
-  recall --model=sonnet "abc-123:Complex reasoning question"
-
-  # Multiple queries (parallel)
-  recall "session1:question1" "session2:question2"
-
-NOTES
-  - First query to a session creates a fork
-  - Follow-up questions reuse the same fork
-  - Use --new to start fresh
-  - Haiku is recommended for most recall tasks (faster, cheaper)
-EOF
-}
-
 # Main
 case "${1:-}" in
   --help|-h|help)
-    show_help
+    echo "Usage: memory recall [--new] \"<session-id>:<question>\" [...]"
+    echo "Run 'memory --help' for full documentation"
     ;;
   *)
-    [ $# -eq 0 ] && { show_help; exit 1; }
+    [ $# -eq 0 ] && { echo "Usage: memory recall \"<session-id>:<question>\"" >&2; echo "Run 'memory --help' for full documentation" >&2; exit 1; }
     batch_recall "$@"
     ;;
 esac

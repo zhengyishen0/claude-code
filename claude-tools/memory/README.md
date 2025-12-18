@@ -10,8 +10,11 @@ Search all sessions for matching content with boolean logic.
 
 **Syntax:**
 ```bash
-claude-tools memory search "<query>"
+claude-tools memory search [--limit N] "<query>"
 ```
+
+**Flags:**
+- `--limit N` - Messages per session (default: 5)
 
 **Query syntax:**
 - `term1|term2` - OR (first term, rg pattern)
@@ -34,7 +37,12 @@ claude-tools memory search "error -test"
 
 # Combined: OR, AND, NOT
 claude-tools memory search "chrome|playwright click -test"
+
+# Control messages per session
+claude-tools memory search --limit 20 "error handling"
 ```
+
+**Auto-summarize:** When >20 sessions match, automatically summarizes results with haiku model. Output includes: main topic, key files/functions, specific solutions.
 
 **Output format:**
 ```
@@ -86,6 +94,8 @@ claude-tools memory recall "session1:question1" "session2:question2"
 3. **Grouped Results** - Messages grouped by session, sorted by recency
 4. **Fork Tracking** - Follow-up questions reuse same fork for context
 5. **Parallel Recall** - Multiple sessions can be consulted in parallel
+6. **Cross-Project Recall** - Sessions from any project can be recalled; resolves original project directory automatically
+7. **Auto-Summarize** - Large result sets (>20 sessions) are summarized by haiku for efficient context usage
 
 ## Technical Details
 
@@ -105,6 +115,14 @@ claude-tools memory recall "session1:question1" "session2:question2"
 # Becomes:
 rg -i '(chrome|playwright)' index.tsv | rg -i 'click' | grep -iv 'test'
 ```
+
+## Cross-Project Session Resolution
+
+When recalling a session from a different project, the tool:
+1. Searches all projects in `~/.claude/projects/` for the session ID
+2. Extracts the project path from the directory name (e.g., `-Users-foo-bar` -> `/Users/foo/bar`)
+3. Handles directory names with dashes by testing each segment against the filesystem
+4. Runs `claude --resume` from the original project directory so file references work correctly
 
 ## Requirements
 

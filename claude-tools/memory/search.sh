@@ -7,35 +7,26 @@ SESSION_DIR="$HOME/.claude/projects"
 INDEX_FILE="$HOME/.claude/memory-index.tsv"
 
 # Parse args
-SHOW_ALL=false
+LIMIT=5  # Default: 5 messages per session
 QUERY=""
+AUTO_SUMMARIZE_THRESHOLD=20  # Auto-summarize if more than N sessions
 
-for arg in "$@"; do
-  case "$arg" in
-    --all|-a)
-      SHOW_ALL=true
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --limit)
+      LIMIT="$2"
+      shift 2
       ;;
     *)
-      QUERY="$arg"
+      QUERY="$1"
+      shift
       ;;
   esac
 done
 
 [ -z "$QUERY" ] && {
-  echo "Usage: memory search [--all] \"pattern\"" >&2
-  echo "" >&2
-  echo "Flags:" >&2
-  echo "  --all, -a      Show all matches (no truncation)" >&2
-  echo "" >&2
-  echo "Syntax:" >&2
-  echo "  term1|term2    OR  (first term, rg pattern)" >&2
-  echo "  term           AND (space-separated)" >&2
-  echo "  -term          NOT (dash prefix)" >&2
-  echo "" >&2
-  echo "Examples:" >&2
-  echo "  memory search \"error\"" >&2
-  echo "  memory search \"chrome|playwright\"" >&2
-  echo "  memory search --all \"chrome|playwright click -test\"" >&2
+  echo "Usage: memory search [--limit N] \"pattern\"" >&2
+  echo "Run 'memory --help' for full documentation" >&2
   exit 1
 }
 
@@ -57,7 +48,7 @@ build_full_index() {
       ) as $text |
       select($text | length > 10) |
       select($text | test("<ide_|\\[Request interrupted|New environment|API Error|Limit reached|Caveat:|<bash-") | not) |
-      [.sessionId // .agentId // "unknown", .timestamp, .type, ($text | .[0:200])] | @tsv
+      [.sessionId // .agentId // "unknown", .timestamp, .type, $text] | @tsv
     ' 2>/dev/null > "$INDEX_FILE"
   echo "Index built: $(wc -l < "$INDEX_FILE" | tr -d ' ') messages" >&2
 }
@@ -80,7 +71,7 @@ update_index() {
       ) as $text |
       select($text | length > 10) |
       select($text | test("<ide_|\\[Request interrupted|New environment|API Error|Limit reached|Caveat:|<bash-") | not) |
-      [.sessionId // .agentId // "unknown", .timestamp, .type, ($text | .[0:200])] | @tsv
+      [.sessionId // .agentId // "unknown", .timestamp, .type, $text] | @tsv
     ' 2>/dev/null >> "$INDEX_FILE" || true
 }
 
@@ -118,8 +109,8 @@ if [ -z "$RESULTS" ]; then
 fi
 
 # Group by session, sort by latest timestamp
-# Pass SHOW_ALL as awk variable
-echo "$RESULTS" | awk -F'\t' -v show_all="$SHOW_ALL" '
+# Pass LIMIT as awk variable
+RAW_OUTPUT=$(echo "$RESULTS" | awk -F'\t' -v limit="$LIMIT" '
 {
   session = $1
   timestamp = $2
@@ -132,8 +123,7 @@ echo "$RESULTS" | awk -F'\t' -v show_all="$SHOW_ALL" '
   # Track latest timestamp per session
   if (timestamp > latest[session]) latest[session] = timestamp
 
-  # Store messages (up to limit per session unless show_all)
-  limit = (show_all == "true") ? 999999 : 10
+  # Store messages (up to limit per session)
   if (count[session] <= limit) {
     messages[session] = messages[session] type "\t" text "\n"
   }
@@ -156,9 +146,11 @@ END {
     }
   }
 
+  # Print session count first (for auto-summarize check)
+  print "SESSION_COUNT:" n
+
   # Print grouped results
   total_matches = 0
-  limit = (show_all == "true") ? 999999 : 10
   for (i = 0; i < n; i++) {
     split(sessions[i], parts, "\t")
     s = parts[2]
@@ -174,10 +166,7 @@ END {
       if (lines[j] != "") {
         split(lines[j], msg, "\t")
         role = (msg[1] == "user") ? "[user]" : "[asst]"
-        # Truncate text (80 chars default, 200 if show_all)
         txt = msg[2]
-        max_len = (show_all == "true") ? 200 : 80
-        if (length(txt) > max_len) txt = substr(txt, 1, max_len - 3) "..."
         print role " " txt
       }
     }
@@ -191,4 +180,28 @@ END {
   }
 
   print "Found " total_matches " matches across " n " sessions"
-}'
+}')
+
+# Extract session count and check for auto-summarize
+SESSION_COUNT=$(echo "$RAW_OUTPUT" | head -1 | cut -d: -f2)
+OUTPUT=$(echo "$RAW_OUTPUT" | tail -n +2)
+
+if [ "$SESSION_COUNT" -gt "$AUTO_SUMMARIZE_THRESHOLD" ] && command -v claude &>/dev/null; then
+  echo "Found $SESSION_COUNT sessions (>${AUTO_SUMMARIZE_THRESHOLD}). Auto-summarizing with haiku..." >&2
+
+  # Truncate to top 15 sessions worth of output for summarization
+  SUMMARY_INPUT=$(echo "$OUTPUT" | head -150)
+
+  SUMMARY=$(echo "$SUMMARY_INPUT" | claude --model haiku -p "Summarize each session. Include: main topic, key files/functions mentioned, specific solutions or fixes. Format: SESSION_ID: [topic] - [key details]. One line per session. Output ONLY summaries." --max-turns 1 --dangerously-skip-permissions 2>&1)
+
+  # Check if summary succeeded (look for session ID pattern with or without brackets)
+  if echo "$SUMMARY" | grep -qE "^[a-f0-9-]{8,}"; then
+    echo "$SUMMARY"
+  else
+    # Fallback to raw output
+    echo "(Summarization failed, showing raw results)" >&2
+    echo "$OUTPUT"
+  fi
+else
+  echo "$OUTPUT"
+fi
