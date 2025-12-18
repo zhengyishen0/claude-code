@@ -4,53 +4,13 @@ set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MEMORY_STATE_DIR="$HOME/.claude/memory-state"
+INDEX_FILE="$HOME/.claude/memory-index.tsv"
 
-# Find session file across all projects
-find_session_file() {
+# Get project directory from index (5th column)
+# Index format: session_id \t timestamp \t type \t text \t project_path
+get_project_from_index() {
   local session_id="$1"
-  find "$HOME/.claude/projects" -name "$session_id.jsonl" -type f 2>/dev/null | head -1
-}
-
-# Get project directory from session file path
-# ~/.claude/projects/-Users-foo-bar/session.jsonl -> /Users/foo/bar
-# Strategy: try combining remaining segments when slash doesn't work
-get_project_dir() {
-  local session_file="$1"
-  local project_dir=$(dirname "$session_file")
-  local project_name=$(basename "$project_dir")
-  local cleaned=$(echo "$project_name" | sed 's/^-//')
-
-  IFS="-" read -ra parts <<< "$cleaned"
-  local n=${#parts[@]}
-  local current="/${parts[0]}"
-
-  for ((i=1; i<n; i++)); do
-    local with_slash="$current/${parts[i]}"
-
-    if [ -d "$with_slash" ]; then
-      current="$with_slash"
-    else
-      # Try combining remaining parts as a single directory name
-      local combined=""
-      for ((j=i; j<n; j++)); do
-        if [ -z "$combined" ]; then
-          combined="${parts[j]}"
-        else
-          combined="$combined-${parts[j]}"
-        fi
-      done
-      local try_combined="$current/$combined"
-      if [ -d "$try_combined" ]; then
-        current="$try_combined"
-        break
-      else
-        # No luck - just use slash and continue
-        current="$with_slash"
-      fi
-    fi
-  done
-
-  echo "$current"
+  grep "^$session_id" "$INDEX_FILE" 2>/dev/null | head -1 | cut -f5
 }
 
 # Get fork session ID for a session
@@ -78,18 +38,12 @@ recall_session() {
   local question="$2"
   local force_new="${3:-false}"
 
-  # Find the session file
-  local session_file=$(find_session_file "$session_id")
-  if [ -z "$session_file" ]; then
-    echo "Error: Session not found: $session_id" >&2
+  # Get project directory from index
+  local project_dir=$(get_project_from_index "$session_id")
+  if [ -z "$project_dir" ] || [ ! -d "$project_dir" ]; then
+    echo "Error: Session not found in index or project missing: $session_id" >&2
+    echo "Run 'memory search' first to build/update the index" >&2
     return 1
-  fi
-
-  # Get project directory to run claude from correct location
-  local project_dir=$(get_project_dir "$session_file")
-  if [ ! -d "$project_dir" ]; then
-    echo "Warning: Project directory not found: $project_dir" >&2
-    project_dir="$HOME"  # Fallback to home
   fi
 
   echo "Session: $session_id"

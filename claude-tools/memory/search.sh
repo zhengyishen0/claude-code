@@ -33,6 +33,7 @@ done
 [ ! -d "$SESSION_DIR" ] && { echo "Error: No Claude sessions found" >&2; exit 1; }
 
 # Build full index with jq
+# Index format: session_id \t timestamp \t type \t text \t project_path
 build_full_index() {
   echo "Building index..." >&2
   rg -N '"type":"(user|assistant)"' -g '*.jsonl' "$SESSION_DIR" 2>/dev/null | \
@@ -48,7 +49,7 @@ build_full_index() {
       ) as $text |
       select($text | length > 10) |
       select($text | test("<ide_|\\[Request interrupted|New environment|API Error|Limit reached|Caveat:|<bash-") | not) |
-      [.sessionId // .agentId // "unknown", .timestamp, .type, $text] | @tsv
+      [.sessionId // .agentId // "unknown", .timestamp, .type, $text, .cwd // "unknown"] | @tsv
     ' 2>/dev/null > "$INDEX_FILE"
   echo "Index built: $(wc -l < "$INDEX_FILE" | tr -d ' ') messages" >&2
 }
@@ -71,7 +72,7 @@ update_index() {
       ) as $text |
       select($text | length > 10) |
       select($text | test("<ide_|\\[Request interrupted|New environment|API Error|Limit reached|Caveat:|<bash-") | not) |
-      [.sessionId // .agentId // "unknown", .timestamp, .type, $text] | @tsv
+      [.sessionId // .agentId // "unknown", .timestamp, .type, $text, .cwd // "unknown"] | @tsv
     ' 2>/dev/null >> "$INDEX_FILE" || true
 }
 
@@ -116,12 +117,16 @@ RAW_OUTPUT=$(echo "$RESULTS" | awk -F'\t' -v limit="$LIMIT" '
   timestamp = $2
   type = $3
   text = $4
+  project = $5
 
   # Track count per session
   count[session]++
 
   # Track latest timestamp per session
   if (timestamp > latest[session]) latest[session] = timestamp
+
+  # Track project per session (first seen)
+  if (!(session in projects)) projects[session] = project
 
   # Store messages (up to limit per session)
   if (count[session] <= limit) {
@@ -156,7 +161,7 @@ END {
     s = parts[2]
 
     print "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    print "Session: " s
+    print "Session: " s " | Project: " projects[s]
     print "Matches: " count[s] " | Latest: " latest[s]
     print "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
