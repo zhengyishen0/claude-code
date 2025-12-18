@@ -110,8 +110,8 @@ if [ -z "$RESULTS" ]; then
 fi
 
 # Group by session, sort by latest timestamp
-# Pass LIMIT as awk variable
-RAW_OUTPUT=$(echo "$RESULTS" | awk -F'\t' -v limit="$LIMIT" '
+# Pass LIMIT and QUERY as awk variables
+RAW_OUTPUT=$(echo "$RESULTS" | awk -F'\t' -v limit="$LIMIT" -v query="$QUERY" '
 {
   session = $1
   timestamp = $2
@@ -128,9 +128,32 @@ RAW_OUTPUT=$(echo "$RESULTS" | awk -F'\t' -v limit="$LIMIT" '
   # Track project per session (first seen)
   if (!(session in projects)) projects[session] = project
 
-  # Store messages (up to limit per session)
+  # Store messages (up to limit per session) with snippet extraction
   if (count[session] <= limit) {
-    messages[session] = messages[session] type "\t" text "\n"
+    snippet = text
+
+    # Extract snippet if text is long (short: 200 before + 200 after)
+    if (length(text) > 400) {
+      # Find query position (case-insensitive)
+      lower_text = tolower(text)
+      lower_query = tolower(query)
+      pos = index(lower_text, lower_query)
+
+      if (pos > 0) {
+        # Extract 200 chars before + 200 after match
+        start = (pos > 200) ? pos - 200 : 1
+        snippet = substr(text, start, 400)
+
+        # Add ellipsis for truncation
+        if (start > 1) snippet = "..." snippet
+        if (start + 400 < length(text)) snippet = snippet "..."
+      } else {
+        # No direct match, show beginning
+        snippet = substr(text, 1, 400) "..."
+      }
+    }
+
+    messages[session] = messages[session] type "\t" snippet "\n"
   }
 }
 END {
