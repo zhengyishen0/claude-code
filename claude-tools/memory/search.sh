@@ -3,12 +3,29 @@
 # Syntax: "term1|term2 and_term -not_term"
 set -e
 
-QUERY="${1:-}"
 SESSION_DIR="$HOME/.claude/projects"
 INDEX_FILE="$HOME/.claude/memory-index.tsv"
 
+# Parse args
+SHOW_ALL=false
+QUERY=""
+
+for arg in "$@"; do
+  case "$arg" in
+    --all|-a)
+      SHOW_ALL=true
+      ;;
+    *)
+      QUERY="$arg"
+      ;;
+  esac
+done
+
 [ -z "$QUERY" ] && {
-  echo "Usage: memory search \"pattern\"" >&2
+  echo "Usage: memory search [--all] \"pattern\"" >&2
+  echo "" >&2
+  echo "Flags:" >&2
+  echo "  --all, -a      Show all matches (no truncation)" >&2
   echo "" >&2
   echo "Syntax:" >&2
   echo "  term1|term2    OR  (first term, rg pattern)" >&2
@@ -18,7 +35,7 @@ INDEX_FILE="$HOME/.claude/memory-index.tsv"
   echo "Examples:" >&2
   echo "  memory search \"error\"" >&2
   echo "  memory search \"chrome|playwright\"" >&2
-  echo "  memory search \"chrome|playwright click -test\"" >&2
+  echo "  memory search --all \"chrome|playwright click -test\"" >&2
   exit 1
 }
 
@@ -100,8 +117,9 @@ if [ -z "$RESULTS" ]; then
   exit 0
 fi
 
-# Group by session, sort by latest timestamp, show top 10 per session
-echo "$RESULTS" | awk -F'\t' '
+# Group by session, sort by latest timestamp
+# Pass SHOW_ALL as awk variable
+echo "$RESULTS" | awk -F'\t' -v show_all="$SHOW_ALL" '
 {
   session = $1
   timestamp = $2
@@ -114,8 +132,9 @@ echo "$RESULTS" | awk -F'\t' '
   # Track latest timestamp per session
   if (timestamp > latest[session]) latest[session] = timestamp
 
-  # Store messages (up to 10 per session)
-  if (count[session] <= 10) {
+  # Store messages (up to limit per session unless show_all)
+  limit = (show_all == "true") ? 999999 : 10
+  if (count[session] <= limit) {
     messages[session] = messages[session] type "\t" text "\n"
   }
 }
@@ -139,6 +158,7 @@ END {
 
   # Print grouped results
   total_matches = 0
+  limit = (show_all == "true") ? 999999 : 10
   for (i = 0; i < n; i++) {
     split(sessions[i], parts, "\t")
     s = parts[2]
@@ -154,15 +174,16 @@ END {
       if (lines[j] != "") {
         split(lines[j], msg, "\t")
         role = (msg[1] == "user") ? "[user]" : "[asst]"
-        # Truncate text to 80 chars
+        # Truncate text (80 chars default, 200 if show_all)
         txt = msg[2]
-        if (length(txt) > 80) txt = substr(txt, 1, 77) "..."
+        max_len = (show_all == "true") ? 200 : 80
+        if (length(txt) > max_len) txt = substr(txt, 1, max_len - 3) "..."
         print role " " txt
       }
     }
 
-    if (count[s] > 10) {
-      print "... and " (count[s] - 10) " more"
+    if (count[s] > limit) {
+      print "... and " (count[s] - limit) " more"
     }
     print ""
 
