@@ -159,12 +159,35 @@ Run `claude-tools documentation` for full help.
 4. **No auth needed** - Only Context7 (library docs) requires API key, command and api work without authentication
 5. **Topic filtering** - Get only relevant snippets, not entire documentation dumps
 
-### playwright
-Cross-platform browser automation with Playwright, wrapped in a shell-friendly CLI similar to the chrome tool.
+### memory
+Cross-session knowledge sharing for Claude Code - search and consult previous sessions like a hive mind.
 
-Run `claude-tools playwright` for full help.
+Run `claude-tools memory` for full help.
 
-**Commands:** open, recon, click, input, wait, close
+**Commands:** search, recall
+
+**Query syntax (search):**
+- `term1|term2` - OR (first term, rg pattern)
+- `term` - AND (space-separated)
+- `-term` - NOT (dash prefix)
+
+**Examples:**
+```bash
+# Search
+claude-tools memory search "chrome|playwright click -test"
+
+# Recall (consult a session)
+claude-tools memory recall "session-id:How did you handle this?"
+
+# Recall with fresh fork
+claude-tools memory recall --new "session-id:Different question"
+```
+
+**Key Principles:**
+1. **Incremental Indexing** - Full index on first run (~12s), incremental updates after (~0.5s)
+2. **Clean Output** - Filters noise (tool results, IDE events, system messages)
+3. **Grouped Results** - Messages grouped by session, sorted by recency
+4. **Fork Tracking** - Follow-up questions reuse same fork for context
 
 ### screenshot
 Background window capture for macOS with automatic dual-version output
