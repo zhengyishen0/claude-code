@@ -10,11 +10,12 @@ Search all sessions for matching content with boolean logic.
 
 **Syntax:**
 ```bash
-claude-tools memory search [--limit N] "<query>"
+claude-tools memory search [--limit N] [--raw] "<query>"
 ```
 
 **Flags:**
-- `--limit N` - Messages per session (default: 5)
+- `--limit N` - Messages per session (default: 15)
+- `--raw` - Skip summarization, show raw output
 
 **Query syntax:**
 - `term1|term2` - OR (first term, rg pattern)
@@ -42,9 +43,20 @@ claude-tools memory search "chrome|playwright click -test"
 claude-tools memory search --limit 20 "error handling"
 ```
 
-**Auto-summarize:** When >20 sessions match, automatically summarizes results with haiku model. Output includes: main topic, key files/functions, specific solutions.
+**Summarization:** Results are summarized by default using haiku model (~90s). Output includes: main topic, key files/functions, specific solutions. Use `--raw` for instant results.
 
-**Output format:**
+**Query Efficiency:** Prefer one complex query over multiple simple searches. Summarization takes ~90s per search, so:
+```bash
+# GOOD: One complex query (90s total)
+memory search "chrome|playwright click -test"
+
+# BAD: Multiple simple queries (270s total)
+memory search "chrome click"
+memory search "playwright click"
+memory search "browser automation"
+```
+
+**Raw output format (with --raw):**
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Session: 5a4020c4-ab2c-42b6-931e-0105c2060de8
@@ -95,7 +107,8 @@ claude-tools memory recall "session1:question1" "session2:question2"
 4. **Fork Tracking** - Follow-up questions reuse same fork for context
 5. **Parallel Recall** - Multiple sessions can be consulted in parallel
 6. **Cross-Project Recall** - Sessions from any project can be recalled; resolves original project directory automatically
-7. **Auto-Summarize** - Large result sets (>20 sessions) are summarized by haiku for efficient context usage
+7. **Summarize by Default** - Results are summarized by haiku for efficient context (~90s); use `--raw` for instant results
+8. **One Complex Query** - Prefer `"chrome|playwright click -test"` over multiple simple searches; each search incurs ~90s summarization cost
 
 ## Technical Details
 

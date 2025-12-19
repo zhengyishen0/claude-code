@@ -3,19 +3,24 @@
 # Syntax: "term1|term2 and_term -not_term"
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SESSION_DIR="$HOME/.claude/projects"
 INDEX_FILE="$HOME/.claude/memory-index.tsv"
 
 # Parse args
-LIMIT=5  # Default: 5 messages per session
+LIMIT=15  # Default: 15 messages per session
 QUERY=""
-AUTO_SUMMARIZE_THRESHOLD=20  # Auto-summarize if more than N sessions
+RAW_MODE=false  # Default: summarize output
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --limit)
       LIMIT="$2"
       shift 2
+      ;;
+    --raw)
+      RAW_MODE=true
+      shift
       ;;
     *)
       QUERY="$1"
@@ -25,7 +30,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 [ -z "$QUERY" ] && {
-  echo "Usage: memory search [--limit N] \"pattern\"" >&2
+  echo "Usage: memory search [--limit N] [--raw] \"pattern\"" >&2
   echo "Run 'memory --help' for full documentation" >&2
   exit 1
 }
@@ -111,6 +116,7 @@ fi
 
 # Group by session, sort by latest timestamp
 # Pass LIMIT and QUERY as awk variables
+# Snippet context: 400 chars before + 400 chars after = 800 total
 RAW_OUTPUT=$(echo "$RESULTS" | awk -F'\t' -v limit="$LIMIT" -v query="$QUERY" '
 {
   session = $1
@@ -132,24 +138,24 @@ RAW_OUTPUT=$(echo "$RESULTS" | awk -F'\t' -v limit="$LIMIT" -v query="$QUERY" '
   if (count[session] <= limit) {
     snippet = text
 
-    # Extract snippet if text is long (short: 200 before + 200 after)
-    if (length(text) > 400) {
+    # Extract snippet if text is long (medium: 400 before + 400 after)
+    if (length(text) > 800) {
       # Find query position (case-insensitive)
       lower_text = tolower(text)
       lower_query = tolower(query)
       pos = index(lower_text, lower_query)
 
       if (pos > 0) {
-        # Extract 200 chars before + 200 after match
-        start = (pos > 200) ? pos - 200 : 1
-        snippet = substr(text, start, 400)
+        # Extract 400 chars before + 400 after match
+        start = (pos > 400) ? pos - 400 : 1
+        snippet = substr(text, start, 800)
 
         # Add ellipsis for truncation
         if (start > 1) snippet = "..." snippet
-        if (start + 400 < length(text)) snippet = snippet "..."
+        if (start + 800 < length(text)) snippet = snippet "..."
       } else {
         # No direct match, show beginning
-        snippet = substr(text, 1, 400) "..."
+        snippet = substr(text, 1, 800) "..."
       }
     }
 
@@ -174,7 +180,7 @@ END {
     }
   }
 
-  # Print session count first (for auto-summarize check)
+  # Print session count first (for info)
   print "SESSION_COUNT:" n
 
   # Print grouped results
@@ -210,26 +216,18 @@ END {
   print "Found " total_matches " matches across " n " sessions"
 }')
 
-# Extract session count and check for auto-summarize
+# Extract session count and output
 SESSION_COUNT=$(echo "$RAW_OUTPUT" | head -1 | cut -d: -f2)
 OUTPUT=$(echo "$RAW_OUTPUT" | tail -n +2)
 
-if [ "$SESSION_COUNT" -gt "$AUTO_SUMMARIZE_THRESHOLD" ] && command -v claude &>/dev/null; then
-  echo "Found $SESSION_COUNT sessions (>${AUTO_SUMMARIZE_THRESHOLD}). Auto-summarizing with haiku..." >&2
-
-  # Truncate to top 15 sessions worth of output for summarization
-  SUMMARY_INPUT=$(echo "$OUTPUT" | head -150)
-
-  SUMMARY=$(echo "$SUMMARY_INPUT" | claude --model haiku -p "Summarize each session. Include: main topic, key files/functions mentioned, specific solutions or fixes. Format: SESSION_ID: [topic] - [key details]. One line per session. Output ONLY summaries." --max-turns 1 --dangerously-skip-permissions 2>&1)
-
-  # Check if summary succeeded (look for session ID pattern with or without brackets)
-  if echo "$SUMMARY" | grep -qE "^[a-f0-9-]{8,}"; then
-    echo "$SUMMARY"
-  else
-    # Fallback to raw output
-    echo "(Summarization failed, showing raw results)" >&2
-    echo "$OUTPUT"
-  fi
-else
+# Default: summarize; --raw skips summarization
+if [ "$RAW_MODE" = "true" ]; then
   echo "$OUTPUT"
+else
+  echo "Summarizing $SESSION_COUNT sessions..." >&2
+  # Pipe output through summarize.sh
+  # Note: set +e temporarily to avoid SIGPIPE exit
+  set +e
+  echo "$OUTPUT" | "$SCRIPT_DIR/summarize.sh"
+  set -e
 fi

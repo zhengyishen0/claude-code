@@ -10,28 +10,29 @@ show_help() {
 memory - Cross-session knowledge sharing for Claude Code
 
 USAGE
-  memory search [--limit N] "<query>"
+  memory search [--limit N] [--raw] "<query>"
   memory recall [--new] "<session-id>:<question>" [...]
 
 COMMANDS
-  search [--limit N] "<query>"
+  search [--limit N] [--raw] "<query>"
       Search all sessions with boolean logic.
 
       Flags:
-        --limit N    Messages per session (default: 5)
+        --limit N    Messages per session (default: 15)
+        --raw        Skip summarization, show raw output
 
       Query syntax:
         term1|term2    OR  (first term, rg pattern)
         term           AND (space-separated)
         -term          NOT (dash prefix)
 
-      Auto-summarize:
-        When >20 sessions match, automatically summarizes with haiku.
+      Summarization:
+        Results are summarized by default with haiku. Use --raw to skip.
 
       Examples:
         memory search "error"
         memory search "chrome|playwright"
-        memory search --limit 20 "chrome|playwright click -test"
+        memory search --raw "chrome|playwright click -test"
 
   recall [--new] "<session-id>:<question>" [...]
       Consult a session by forking it and asking a question.
