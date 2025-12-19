@@ -146,15 +146,19 @@ When recalling a session from a different project, the tool:
 ## Workflow
 
 ```bash
-# 1. Search for relevant sessions
-claude-tools memory search "authentication"
+# 1. ONE complex search (not multiple simple searches)
+claude-tools memory search 'chrome|playwright click -test'
 
-# 2. Pick a session and ask questions
-claude-tools memory recall "abc-123:How did you implement JWT?"
+# 2. PARALLEL recall on multiple promising sessions
+claude-tools memory recall "abc:How was it fixed?" "def:What was the approach?" "ghi:Any caveats?"
 
-# 3. Follow-up (reuses same fork)
-claude-tools memory recall "abc-123:What about refresh tokens?"
+# 3. Follow-up on specific session (reuses same fork)
+claude-tools memory recall "abc:What about edge cases?"
 
 # 4. Start fresh when needed
-claude-tools memory recall --new "abc-123:Different topic"
+claude-tools memory recall --new "abc:Different topic"
 ```
+
+**Performance tips:**
+- Search: ONE complex query (90s) beats multiple simple queries (90s each)
+- Recall: PARALLEL recalls (90s total) beats sequential recalls (90s each)
