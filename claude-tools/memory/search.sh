@@ -1,6 +1,10 @@
 #!/bin/bash
 # Search Claude sessions with incremental indexing
-# Syntax: "term1|term2 and_term -not_term"
+# Syntax: "term1 term2 phrase_here +and_term -not_term"
+# - space = OR (finds any term)
+# - underscore = PHRASE (joins words, e.g. reset_windows)
+# - + prefix = AND (must include)
+# - - prefix = NOT (must exclude)
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -8,9 +12,9 @@ SESSION_DIR="$HOME/.claude/projects"
 INDEX_FILE="$HOME/.claude/memory-index.tsv"
 
 # Parse args
-LIMIT=15  # Default: 15 messages per session
+LIMIT=5  # Default: 5 messages per session (compact for raw mode)
 QUERY=""
-RAW_MODE=false  # Default: summarize output
+SUMMARIZE=false  # Default: raw output (fast)
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -18,8 +22,8 @@ while [[ $# -gt 0 ]]; do
       LIMIT="$2"
       shift 2
       ;;
-    --raw)
-      RAW_MODE=true
+    --summary|-s)
+      SUMMARIZE=true
       shift
       ;;
     *)
@@ -30,7 +34,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 [ -z "$QUERY" ] && {
-  echo "Usage: memory search [--limit N] [--raw] \"pattern\"" >&2
+  echo "Usage: memory search [--limit N] [--summary] \"pattern\"" >&2
   echo "Run 'memory --help' for full documentation" >&2
   exit 1
 }
@@ -64,7 +68,7 @@ update_index() {
   local new_files="$1"
   local count=$(echo "$new_files" | wc -l | tr -d ' ')
   echo "Updating index ($count files)..." >&2
-  echo "$new_files" | xargs -I{} rg -N '"type":"(user|assistant)"' {} 2>/dev/null | \
+  echo "$new_files" | xargs -I{} rg -N -H '"type":"(user|assistant)"' {} 2>/dev/null | \
     cut -d: -f2- | \
     jq -rs '
       .[] |
@@ -91,19 +95,44 @@ else
   fi
 fi
 
-# Parse query into terms
-read -ra TERMS <<< "$QUERY"
-FIRST="${TERMS[0]}"
-[[ "$FIRST" == *"|"* ]] && FIRST="($FIRST)"
+# Convert underscore phrases to regex: "Tesla_Model_3" -> "Tesla.Model.3"
+# This matches the phrase with any separator (space, dash, etc.)
+to_pattern() {
+  echo "$1" | sed 's/_/./g'
+}
 
-# Build search pipeline
-CMD="rg -i '$FIRST' '$INDEX_FILE'"
-for term in "${TERMS[@]:1}"; do
-  if [[ "$term" == -* ]]; then
-    CMD="$CMD | grep -iv '${term:1}'"
+# Parse query into OR terms, AND terms (+prefix), and NOT terms (-prefix)
+read -ra TERMS <<< "$QUERY"
+OR_TERMS=()
+AND_TERMS=()
+NOT_TERMS=()
+
+for term in "${TERMS[@]}"; do
+  if [[ "$term" == +* ]]; then
+    AND_TERMS+=("$(to_pattern "${term:1}")")  # Remove + prefix, convert phrase
+  elif [[ "$term" == -* ]]; then
+    NOT_TERMS+=("$(to_pattern "${term:1}")")  # Remove - prefix, convert phrase
   else
-    CMD="$CMD | rg -i '$term'"
+    OR_TERMS+=("$(to_pattern "$term")")  # Convert phrase
   fi
+done
+
+# Build OR pattern (space-separated terms become OR)
+if [ ${#OR_TERMS[@]} -eq 0 ]; then
+  echo "Error: At least one search term required (not just +/- modifiers)" >&2
+  exit 1
+fi
+
+OR_PATTERN=$(IFS='|'; echo "${OR_TERMS[*]}")
+[[ "$OR_PATTERN" == *"|"* ]] && OR_PATTERN="($OR_PATTERN)"
+
+# Build search pipeline: OR first, then AND filters, then NOT filters
+CMD="rg -i '$OR_PATTERN' '$INDEX_FILE'"
+for term in "${AND_TERMS[@]}"; do
+  CMD="$CMD | rg -i '$term'"
+done
+for term in "${NOT_TERMS[@]}"; do
+  CMD="$CMD | grep -iv '$term'"
 done
 
 # Search, dedup, group by session
@@ -111,12 +140,20 @@ RESULTS=$(eval "$CMD" 2>/dev/null | sort -u || true)
 
 if [ -z "$RESULTS" ]; then
   echo "No matches found for: $QUERY"
+  echo ""
+  echo "Syntax:"
+  echo "  • Space = OR: \"chrome playwright\" finds either"
+  echo "  • Underscore = PHRASE: \"reset_windows\" finds exact phrase"
+  echo "  • + = AND: \"chrome +click\" must include 'click'"
+  echo "  • - = NOT: \"error -test\" excludes 'test'"
+  echo ""
+  echo "Try 'memory recall <session-id>:question' to ask a session directly."
   exit 0
 fi
 
 # Group by session, sort by latest timestamp
 # Pass LIMIT and QUERY as awk variables
-# Snippet context: 400 chars before + 400 chars after = 800 total
+# Snippet context: 100 chars before + 100 chars after = 200 total (compact for raw mode)
 RAW_OUTPUT=$(echo "$RESULTS" | awk -F'\t' -v limit="$LIMIT" -v query="$QUERY" '
 {
   session = $1
@@ -138,24 +175,24 @@ RAW_OUTPUT=$(echo "$RESULTS" | awk -F'\t' -v limit="$LIMIT" -v query="$QUERY" '
   if (count[session] <= limit) {
     snippet = text
 
-    # Extract snippet if text is long (medium: 400 before + 400 after)
-    if (length(text) > 800) {
+    # Extract snippet if text is long (compact: 100 before + 100 after)
+    if (length(text) > 200) {
       # Find query position (case-insensitive)
       lower_text = tolower(text)
       lower_query = tolower(query)
       pos = index(lower_text, lower_query)
 
       if (pos > 0) {
-        # Extract 400 chars before + 400 after match
-        start = (pos > 400) ? pos - 400 : 1
-        snippet = substr(text, start, 800)
+        # Extract 100 chars before + 100 after match
+        start = (pos > 100) ? pos - 100 : 1
+        snippet = substr(text, start, 200)
 
         # Add ellipsis for truncation
         if (start > 1) snippet = "..." snippet
-        if (start + 800 < length(text)) snippet = snippet "..."
+        if (start + 200 < length(text)) snippet = snippet "..."
       } else {
         # No direct match, show beginning
-        snippet = substr(text, 1, 800) "..."
+        snippet = substr(text, 1, 200) "..."
       }
     }
 
@@ -220,14 +257,14 @@ END {
 SESSION_COUNT=$(echo "$RAW_OUTPUT" | head -1 | cut -d: -f2)
 OUTPUT=$(echo "$RAW_OUTPUT" | tail -n +2)
 
-# Default: summarize; --raw skips summarization
-if [ "$RAW_MODE" = "true" ]; then
-  echo "$OUTPUT"
-else
+# Default: raw output; --summary enables summarization
+if [ "$SUMMARIZE" = "true" ]; then
   echo "Summarizing $SESSION_COUNT sessions..." >&2
   # Pipe output through summarize.sh
   # Note: set +e temporarily to avoid SIGPIPE exit
   set +e
   echo "$OUTPUT" | "$SCRIPT_DIR/summarize.sh"
   set -e
+else
+  echo "$OUTPUT"
 fi

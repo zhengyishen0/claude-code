@@ -173,12 +173,8 @@ Run `claude-tools memory` for full help.
 4. **Fork Tracking** - Follow-up questions reuse same fork for context
 5. **Parallel Recall** - Multiple sessions can be consulted in parallel
 6. **Cross-Project Recall** - Sessions from any project can be recalled; resolves original project directory automatically
-7. **Summarize by Default** - Results are summarized by haiku (~90s); use `--raw` for instant results
-8. **One Complex Query** - Prefer `"chrome|playwright click -test"` over multiple simple searches; each search incurs ~90s summarization cost
-
-**Efficiency Tips:**
-- **Search**: ONE complex query (90s) beats multiple simple queries (90s each)
-- **Recall**: PARALLEL recalls (90s total) beats sequential recalls (90s each)
+7. **Fast by Default** - Raw results returned instantly; use `--summary` for AI-condensed output (~90s)
+8. **Simple Query Syntax** - Space = OR, underscore = PHRASE, + = AND, - = NOT
 
 ### playwright
 Cross-platform browser automation with Playwright, wrapped in a shell-friendly CLI similar to the chrome tool.

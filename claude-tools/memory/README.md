@@ -10,53 +10,47 @@ Search all sessions for matching content with boolean logic.
 
 **Syntax:**
 ```bash
-claude-tools memory search [--limit N] [--raw] "<query>"
+claude-tools memory search [--limit N] [--summary] "<query>"
 ```
 
 **Flags:**
-- `--limit N` - Messages per session (default: 15)
-- `--raw` - Skip summarization, show raw output
+- `--limit N` - Messages per session (default: 5)
+- `--summary`, `-s` - Summarize results with haiku (~90s)
 
 **Query syntax:**
-- `term1|term2` - OR (first term, rg pattern)
-- `term` - AND (space-separated)
-- `-term` - NOT (dash prefix)
+- `term1 term2` - OR (space-separated, finds either term)
+- `word_word` - PHRASE (underscore joins words, matches exact phrase)
+- `+term` - AND (must include this term)
+- `-term` - NOT (must exclude this term)
 
 **Examples:**
 ```bash
 # Simple keyword search
 claude-tools memory search "authentication"
 
-# OR search
-claude-tools memory search "chrome|playwright"
+# OR search (finds 'chrome' OR 'playwright')
+claude-tools memory search "chrome playwright"
 
-# AND search (space-separated)
-claude-tools memory search "chrome click"
+# PHRASE search (finds 'reset windows' as exact phrase)
+claude-tools memory search "reset_windows"
 
-# NOT search (dash prefix)
+# AND search (finds 'chrome' AND 'click')
+claude-tools memory search "chrome +click"
+
+# NOT search (finds 'error' but NOT 'test')
 claude-tools memory search "error -test"
 
-# Combined: OR, AND, NOT
-claude-tools memory search "chrome|playwright click -test"
+# Combined: PHRASE + AND
+claude-tools memory search "Tesla_Model_3 +price"
 
-# Control messages per session
-claude-tools memory search --limit 20 "error handling"
+# Combined: OR + AND + NOT
+claude-tools memory search "chrome playwright +click -test"
+
+# With summarization (slower but condensed)
+claude-tools memory search --summary "error_handling"
 ```
 
-**Summarization:** Results are summarized by default using haiku model (~90s). Output includes: main topic, key files/functions, specific solutions. Use `--raw` for instant results.
-
-**Query Efficiency:** Prefer one complex query over multiple simple searches. Summarization takes ~90s per search, so:
-```bash
-# GOOD: One complex query (90s total)
-memory search "chrome|playwright click -test"
-
-# BAD: Multiple simple queries (270s total)
-memory search "chrome click"
-memory search "playwright click"
-memory search "browser automation"
-```
-
-**Raw output format (with --raw):**
+**Output format:**
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Session: 5a4020c4-ab2c-42b6-931e-0105c2060de8
@@ -107,8 +101,8 @@ claude-tools memory recall "session1:question1" "session2:question2"
 4. **Fork Tracking** - Follow-up questions reuse same fork for context
 5. **Parallel Recall** - Multiple sessions can be consulted in parallel
 6. **Cross-Project Recall** - Sessions from any project can be recalled; resolves original project directory automatically
-7. **Summarize by Default** - Results are summarized by haiku for efficient context (~90s); use `--raw` for instant results
-8. **One Complex Query** - Prefer `"chrome|playwright click -test"` over multiple simple searches; each search incurs ~90s summarization cost
+7. **Fast by Default** - Raw results returned instantly; use `--summary` for AI-condensed output (~90s)
+8. **Simple Query Syntax** - Space = OR, underscore = PHRASE, + = AND, - = NOT
 
 ## Technical Details
 
@@ -124,9 +118,12 @@ claude-tools memory recall "session1:question1" "session2:question2"
 
 **Search pipeline:**
 ```bash
-# Query: "chrome|playwright click -test"
+# Query: "chrome playwright +click -test"
+# Parsed as: OR(chrome, playwright) AND(click) NOT(test)
 # Becomes:
 rg -i '(chrome|playwright)' index.tsv | rg -i 'click' | grep -iv 'test'
+
+# Phrase: "reset_windows" -> "reset.windows" (regex matches any separator)
 ```
 
 ## Cross-Project Session Resolution
@@ -145,20 +142,32 @@ When recalling a session from a different project, the tool:
 
 ## Workflow
 
+**Typical search→recall flow:**
 ```bash
-# 1. ONE complex search (not multiple simple searches)
-claude-tools memory search 'chrome|playwright click -test'
+# 1. Search broadly with OR (fast, instant results)
+claude-tools memory search "asus laptop specs"
+# Returns: Session abc-123, Session def-456, ...
 
-# 2. PARALLEL recall on multiple promising sessions
-claude-tools memory recall "abc:How was it fixed?" "def:What was the approach?" "ghi:Any caveats?"
+# 2. Found a promising session? Ask it directly
+claude-tools memory recall "abc-123:What ASUS laptop specs did the user mention?"
 
-# 3. Follow-up on specific session (reuses same fork)
-claude-tools memory recall "abc:What about edge cases?"
+# 3. Follow-up questions reuse the same fork
+claude-tools memory recall "abc-123:What was the RAM size?"
 
-# 4. Start fresh when needed
-claude-tools memory recall --new "abc:Different topic"
+# 4. Start fresh when switching topics
+claude-tools memory recall --new "abc-123:Different question"
 ```
 
-**Performance tips:**
-- Search: ONE complex query (90s) beats multiple simple queries (90s each)
-- Recall: PARALLEL recalls (90s total) beats sequential recalls (90s each)
+**Narrowing search with AND/NOT:**
+```bash
+# Too many results? Add +AND to narrow
+claude-tools memory search "asus +laptop"
+
+# Exclude noise with -NOT
+claude-tools memory search "asus +laptop -test"
+```
+
+**Parallel recall for multiple sessions:**
+```bash
+claude-tools memory recall "abc:question1" "def:question2" "ghi:question3"
+```
