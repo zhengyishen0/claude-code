@@ -36,31 +36,42 @@ brew bundle install --upgrade  # Update all dependencies & lockfile
 
 ## Development Workflow
 
-**NEVER edit main directly.** Use git worktrees for ALL code changes.
+**Default**: Use git worktrees for all code changes to maintain branch isolation.
 
-**Before ANY edit**:
-1. Check current branch: `git branch --show-current`
-2. If on `main`: Create a worktree first
-3. Make changes ONLY in the worktree using absolute paths
-4. Stage changes after each edit
+Before making edits:
+1. **Check current branch**: `git branch --show-current`
+2. **If on `main`**: Run `claude-tools worktree create feature-name`
+3. **Work in worktree**: Use absolute paths to make changes
+4. **Merge when done**: Merge back to main and remove worktree
 
-**Creating a worktree**:
+**Creating a worktree with Claude**:
 ```bash
 claude-tools worktree create feature-name
 # Creates worktree at ../claude-code-feature-name
-# Use absolute paths: /Users/.../claude-code-feature-name/file.js
+# Prints absolute path for use in current session
+# Grant permission when prompted to access the worktree
 ```
 
-**After merge - delete worktree, start fresh if needed**:
+**Using the worktree**:
+Use absolute paths when working in worktrees:
 ```bash
+# Good: absolute paths
+/Users/you/Codes/claude-code-feature-name/src/file.js
+
+# Avoid: cd and relative paths
+cd ../claude-code-feature-name && edit src/file.js
+```
+
+**Cleanup after merge**:
+```bash
+cd ../claude-code
 git merge feature-name
 claude-tools worktree remove feature-name
-# If more work needed, create a NEW worktree
-claude-tools worktree create new-feature-name
 ```
 
-**Common mistake to avoid**:
-After merging, if user gives follow-up tasks, do NOT edit main. Create a new worktree first.
+**MANDATORY**: Every Claude session MUST create a dedicated worktree before making ANY changes, no matter how small. No exceptions for typos, docs, or single-line fixes.
+
+**Automatic Triggering**: When on main branch and ANY edit is needed, immediately run `claude-tools worktree create <feature-name>` before making changes.
 
 ## Tool Design Principles
 
