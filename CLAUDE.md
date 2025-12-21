@@ -42,7 +42,9 @@ brew bundle install --upgrade  # Update all dependencies & lockfile
 1. Check current branch: `git branch --show-current`
 2. If on `main`: Create a worktree first
 3. Make changes ONLY in the worktree using absolute paths
-4. Stage changes after each edit
+
+**After EACH edit**:
+- Stage the change immediately: `git add <file>`
 
 **Creating a worktree**:
 ```bash
