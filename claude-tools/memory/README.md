@@ -10,44 +10,36 @@ Search all sessions for matching content with boolean logic.
 
 **Syntax:**
 ```bash
-claude-tools memory search [--limit N] [--summary] "<query>"
+claude-tools memory search "OR terms" --and "AND terms" [--not "NOT terms"] [--limit N] [--summary]
 ```
+
+**Arguments:**
+- First arg (required): OR terms - broaden search with synonyms/alternatives
+- `--and` (required): AND terms - narrow by requiring at least one of these
+- `--not` (optional): NOT terms - exclude sessions containing these
 
 **Flags:**
 - `--limit N` - Messages per session (default: 5)
 - `--summary`, `-s` - Summarize results with haiku (~90s)
 
-**Query syntax:**
-- `term1 term2` - OR (space-separated, finds either term)
-- `word_word` - PHRASE (underscore joins words, matches exact phrase)
-- `+term` - AND (must include this term)
-- `-term` - NOT (must exclude this term)
+**Phrase support:** Use underscore to join words: `reset_windows` matches "reset windows"
 
 **Examples:**
 ```bash
-# Simple keyword search
-claude-tools memory search "authentication"
+# Basic search: find ASUS-related sessions that mention specs
+claude-tools memory search "asus laptop machine" --and "spec"
 
-# OR search (finds 'chrome' OR 'playwright')
-claude-tools memory search "chrome playwright"
+# Multiple OR and AND terms
+claude-tools memory search "ollama devstral local" --and "slow error problem"
 
-# PHRASE search (finds 'reset windows' as exact phrase)
-claude-tools memory search "reset_windows"
+# With NOT to exclude test sessions
+claude-tools memory search "chrome playwright" --and "click" --not "test"
 
-# AND search (finds 'chrome' AND 'click')
-claude-tools memory search "chrome +click"
+# Phrase search
+claude-tools memory search "reset_windows factory_reset" --and "guide steps"
 
-# NOT search (finds 'error' but NOT 'test')
-claude-tools memory search "error -test"
-
-# Combined: PHRASE + AND
-claude-tools memory search "Tesla_Model_3 +price"
-
-# Combined: OR + AND + NOT
-claude-tools memory search "chrome playwright +click -test"
-
-# With summarization (slower but condensed)
-claude-tools memory search --summary "error_handling"
+# With summarization
+claude-tools memory search "authentication" --and "error" --summary
 ```
 
 **Output format:**
@@ -102,7 +94,7 @@ claude-tools memory recall "session1:question1" "session2:question2"
 5. **Parallel Recall** - Multiple sessions can be consulted in parallel
 6. **Cross-Project Recall** - Sessions from any project can be recalled; resolves original project directory automatically
 7. **Fast by Default** - Raw results returned instantly; use `--summary` for AI-condensed output (~90s)
-8. **Simple Query Syntax** - Space = OR, underscore = PHRASE, + = AND, - = NOT
+8. **Explicit Flag Syntax** - `--and` and `--not` flags make query intent clear
 
 ## Technical Details
 
@@ -118,7 +110,7 @@ claude-tools memory recall "session1:question1" "session2:question2"
 
 **Search pipeline:**
 ```bash
-# Query: "chrome playwright +click -test"
+# Query: memory search "chrome playwright" --and "click" --not "test"
 # Parsed as: OR(chrome, playwright) AND(click) NOT(test)
 # Becomes:
 rg -i '(chrome|playwright)' index.tsv | rg -i 'click' | grep -iv 'test'
@@ -144,8 +136,8 @@ When recalling a session from a different project, the tool:
 
 **Typical search→recall flow:**
 ```bash
-# 1. Search broadly with OR (fast, instant results)
-claude-tools memory search "asus laptop specs"
+# 1. Search with OR (broaden) and AND (narrow)
+claude-tools memory search "asus laptop machine" --and "spec"
 # Returns: Session abc-123, Session def-456, ...
 
 # 2. Found a promising session? Ask it directly
@@ -158,13 +150,10 @@ claude-tools memory recall "abc-123:What was the RAM size?"
 claude-tools memory recall --new "abc-123:Different question"
 ```
 
-**Narrowing search with AND/NOT:**
+**Excluding noise:**
 ```bash
-# Too many results? Add +AND to narrow
-claude-tools memory search "asus +laptop"
-
-# Exclude noise with -NOT
-claude-tools memory search "asus +laptop -test"
+# Add --not to filter out unwanted results
+claude-tools memory search "error bug" --and "fix solution" --not "test"
 ```
 
 **Parallel recall for multiple sessions:**

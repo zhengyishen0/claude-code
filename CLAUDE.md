@@ -38,11 +38,13 @@ brew bundle install --upgrade  # Update all dependencies & lockfile
 
 **Default**: Use git worktrees for all code changes to maintain branch isolation.
 
-Before making edits:
-1. **Check current branch**: `git branch --show-current`
-2. **If on `main`**: Run `claude-tools worktree create feature-name`
-3. **Work in worktree**: Use absolute paths to make changes
-4. **Merge when done**: Merge back to main and remove worktree
+**Before ANY edit**:
+1. Check current branch: `git branch --show-current`
+2. If on `main`: Create a worktree first
+3. Make changes ONLY in the worktree using absolute paths
+
+**After EACH edit**:
+- Stage the change immediately: `git add <file>`
 
 **Creating a worktree with Claude**:
 ```bash
@@ -174,7 +176,7 @@ Run `claude-tools memory` for full help.
 5. **Parallel Recall** - Multiple sessions can be consulted in parallel
 6. **Cross-Project Recall** - Sessions from any project can be recalled; resolves original project directory automatically
 7. **Fast by Default** - Raw results returned instantly; use `--summary` for AI-condensed output (~90s)
-8. **Simple Query Syntax** - Space = OR, underscore = PHRASE, + = AND, - = NOT
+8. **Explicit Flag Syntax** - `--and` and `--not` flags make query intent clear
 
 ### playwright
 Cross-platform browser automation with Playwright, wrapped in a shell-friendly CLI similar to the chrome tool.
