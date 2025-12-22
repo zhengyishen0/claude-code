@@ -1,10 +1,10 @@
 #!/bin/bash
 # Search Claude sessions with incremental indexing
-# Syntax: "term1 term2 phrase_here +and_term -not_term"
-# - space = OR (finds any term)
-# - underscore = PHRASE (joins words, e.g. reset_windows)
-# - + prefix = AND (must include)
-# - - prefix = NOT (must exclude)
+# Syntax: memory search "OR terms" --and "AND terms" [--not "NOT terms"]
+# - First arg: OR terms (broaden - synonyms/alternatives)
+# - --and: AND terms (narrow - must have at least one)
+# - --not: NOT terms (filter - exclude these)
+# - Underscore joins words into phrases: reset_windows
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -13,7 +13,9 @@ INDEX_FILE="$HOME/.claude/memory-index.tsv"
 
 # Parse args
 LIMIT=5  # Default: 5 messages per session (compact for raw mode)
-QUERY=""
+OR_QUERY=""
+AND_QUERY=""
+NOT_QUERY=""
 SUMMARIZE=false  # Default: raw output (fast)
 
 while [[ $# -gt 0 ]]; do
@@ -22,22 +24,51 @@ while [[ $# -gt 0 ]]; do
       LIMIT="$2"
       shift 2
       ;;
+    --and)
+      AND_QUERY="$2"
+      shift 2
+      ;;
+    --not)
+      NOT_QUERY="$2"
+      shift 2
+      ;;
     --summary|-s)
       SUMMARIZE=true
       shift
       ;;
+    -*)
+      echo "Error: Unknown flag '$1'" >&2
+      exit 1
+      ;;
     *)
-      QUERY="$1"
+      OR_QUERY="$1"
       shift
       ;;
   esac
 done
 
-[ -z "$QUERY" ] && {
-  echo "Usage: memory search [--limit N] [--summary] \"pattern\"" >&2
-  echo "Run 'memory --help' for full documentation" >&2
+# Validation: both OR and AND are required
+if [ -z "$OR_QUERY" ]; then
+  echo "Error: Missing OR terms (first argument)" >&2
+  echo "" >&2
+  echo "Usage: memory search \"OR terms\" --and \"AND terms\" [--not \"NOT terms\"]" >&2
+  echo "" >&2
+  echo "Examples:" >&2
+  echo "  memory search \"asus laptop machine\" --and \"spec\"" >&2
+  echo "  memory search \"chrome playwright\" --and \"click\" --not \"test\"" >&2
   exit 1
-}
+fi
+
+if [ -z "$AND_QUERY" ]; then
+  echo "Error: Missing --and flag (required)" >&2
+  echo "" >&2
+  echo "Usage: memory search \"OR terms\" --and \"AND terms\" [--not \"NOT terms\"]" >&2
+  echo "" >&2
+  echo "Examples:" >&2
+  echo "  memory search \"asus laptop machine\" --and \"spec\"" >&2
+  echo "  memory search \"chrome playwright\" --and \"click\" --not \"test\"" >&2
+  exit 1
+fi
 
 [ ! -d "$SESSION_DIR" ] && { echo "Error: No Claude sessions found" >&2; exit 1; }
 
@@ -101,60 +132,54 @@ to_pattern() {
   echo "$1" | sed 's/_/./g'
 }
 
-# Parse query into OR terms, AND terms (+prefix), and NOT terms (-prefix)
-read -ra TERMS <<< "$QUERY"
-OR_TERMS=()
-AND_TERMS=()
-NOT_TERMS=()
+# Parse space-separated terms into arrays
+read -ra OR_TERMS <<< "$OR_QUERY"
+read -ra AND_TERMS <<< "$AND_QUERY"
+read -ra NOT_TERMS <<< "$NOT_QUERY"
 
-for term in "${TERMS[@]}"; do
-  if [[ "$term" == +* ]]; then
-    AND_TERMS+=("$(to_pattern "${term:1}")")  # Remove + prefix, convert phrase
-  elif [[ "$term" == -* ]]; then
-    NOT_TERMS+=("$(to_pattern "${term:1}")")  # Remove - prefix, convert phrase
-  else
-    OR_TERMS+=("$(to_pattern "$term")")  # Convert phrase
-  fi
+# Build OR pattern from first arg terms
+OR_PATTERNS=()
+for term in "${OR_TERMS[@]}"; do
+  OR_PATTERNS+=("$(to_pattern "$term")")
 done
-
-# Build OR pattern (space-separated terms become OR)
-if [ ${#OR_TERMS[@]} -eq 0 ]; then
-  echo "Error: At least one search term required (not just +/- modifiers)" >&2
-  exit 1
-fi
-
-OR_PATTERN=$(IFS='|'; echo "${OR_TERMS[*]}")
+OR_PATTERN=$(IFS='|'; echo "${OR_PATTERNS[*]}")
 [[ "$OR_PATTERN" == *"|"* ]] && OR_PATTERN="($OR_PATTERN)"
 
-# Build search pipeline: OR first, then AND filters, then NOT filters
-CMD="rg -i '$OR_PATTERN' '$INDEX_FILE'"
+# Build AND pattern (must match at least one of these)
+AND_PATTERNS=()
 for term in "${AND_TERMS[@]}"; do
-  CMD="$CMD | rg -i '$term'"
+  AND_PATTERNS+=("$(to_pattern "$term")")
 done
+AND_PATTERN=$(IFS='|'; echo "${AND_PATTERNS[*]}")
+[[ "$AND_PATTERN" == *"|"* ]] && AND_PATTERN="($AND_PATTERN)"
+
+# Build search pipeline: OR first, then AND filter, then NOT filters
+CMD="rg -i '$OR_PATTERN' '$INDEX_FILE' | rg -i '$AND_PATTERN'"
 for term in "${NOT_TERMS[@]}"; do
-  CMD="$CMD | grep -iv '$term'"
+  pattern=$(to_pattern "$term")
+  CMD="$CMD | grep -iv '$pattern'"
 done
 
 # Search, dedup, group by session
 RESULTS=$(eval "$CMD" 2>/dev/null | sort -u || true)
 
 if [ -z "$RESULTS" ]; then
-  echo "No matches found for: $QUERY"
+  echo "No matches found."
   echo ""
-  echo "Syntax:"
-  echo "  • Space = OR: \"chrome playwright\" finds either"
-  echo "  • Underscore = PHRASE: \"reset_windows\" finds exact phrase"
-  echo "  • + = AND: \"chrome +click\" must include 'click'"
-  echo "  • - = NOT: \"error -test\" excludes 'test'"
+  echo "Query: OR($OR_QUERY) AND($AND_QUERY)${NOT_QUERY:+ NOT($NOT_QUERY)}"
   echo ""
-  echo "Try 'memory recall <session-id>:question' to ask a session directly."
+  echo "Tips:"
+  echo "  • Add more OR synonyms to broaden search"
+  echo "  • Use underscore for phrases: reset_windows"
+  echo "  • Try 'memory recall <session-id>:question' to ask a session directly"
   exit 0
 fi
 
 # Group by session, sort by latest timestamp
-# Pass LIMIT and QUERY as awk variables
+# Pass LIMIT and first OR term as query for snippet extraction
 # Snippet context: 100 chars before + 100 chars after = 200 total (compact for raw mode)
-RAW_OUTPUT=$(echo "$RESULTS" | awk -F'\t' -v limit="$LIMIT" -v query="$QUERY" '
+FIRST_TERM="${OR_TERMS[0]}"
+RAW_OUTPUT=$(echo "$RESULTS" | awk -F'\t' -v limit="$LIMIT" -v query="$FIRST_TERM" '
 {
   session = $1
   timestamp = $2
