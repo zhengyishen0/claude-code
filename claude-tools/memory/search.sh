@@ -174,36 +174,6 @@ shorten_path() {
   echo "$1" | sed "s|^$HOME|~|"
 }
 
-# Fast path: --recall mode
-if [ -n "$RECALL_QUESTION" ]; then
-  # Get unique session IDs with their projects, sorted by latest timestamp
-  SESSION_DATA=$(echo "$RESULTS" | awk -F'\t' '
-  {
-    session = $1
-    timestamp = $2
-    project = $5
-    if (timestamp > latest[session]) {
-      latest[session] = timestamp
-      projects[session] = project
-    }
-  }
-  END {
-    for (s in latest) {
-      print latest[s] "\t" s "\t" projects[s]
-    }
-  }' | sort -rn | head -$LIMIT)
-
-  # Build recall args
-  RECALL_ARGS=""
-  while IFS=$'\t' read -r ts sid proj; do
-    [ -z "$sid" ] && continue
-    RECALL_ARGS="$RECALL_ARGS \"$sid:$RECALL_QUESTION\""
-  done <<< "$SESSION_DATA"
-
-  # Run parallel recall with simplified output
-  eval "$SCRIPT_DIR/recall.sh --simple $RECALL_ARGS"
-  exit 0
-fi
 
 # Normal search path: group by session, format output
 FIRST_TERM="${OR_TERMS[0]}"
@@ -299,4 +269,25 @@ END {
   print "Found " total_matches " matches across " n " sessions"
 }')
 
-echo "$OUTPUT"
+# If --recall flag, extract session IDs and run parallel recall
+if [ -n "$RECALL_QUESTION" ]; then
+  # Extract session IDs from output (format: ~/path | session-id)
+  SESSION_IDS=$(echo "$OUTPUT" | grep -E '^\S.* \| [0-9a-f-]{36}$' | sed 's/.* | //' | head -$LIMIT)
+
+  if [ -z "$SESSION_IDS" ]; then
+    echo "$OUTPUT"
+    exit 0
+  fi
+
+  # Build recall args in format "session-id:question"
+  RECALL_ARGS=""
+  while IFS= read -r sid; do
+    [ -z "$sid" ] && continue
+    RECALL_ARGS="$RECALL_ARGS \"$sid:$RECALL_QUESTION\""
+  done <<< "$SESSION_IDS"
+
+  # Run parallel recall
+  eval "$SCRIPT_DIR/recall.sh $RECALL_ARGS"
+else
+  echo "$OUTPUT"
+fi

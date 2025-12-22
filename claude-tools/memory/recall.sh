@@ -64,51 +64,34 @@ recall_session() {
   if [ -n "$fork_id" ]; then
     echo "Reusing fork: $fork_id"
     echo ""
-    (cd "$project_dir" && claude --resume "$fork_id" -p "$question" --allowedTools "Read,Grep,Glob" --dangerously-skip-permissions)
+    (cd "$project_dir" && claude --resume "$fork_id" -p "$question" --allowedTools "Read,Grep,Glob" --model haiku)
   else
     echo "Creating new fork..."
     echo ""
 
-    # Create fork and run claude directly (stream output)
-    (cd "$project_dir" && claude --resume "$session_id" --fork-session -p "$question" --allowedTools "Read,Grep,Glob" --dangerously-skip-permissions)
+    # Create fork with JSON output to capture new session ID
+    local output
+    output=$(cd "$project_dir" && claude --resume "$session_id" --fork-session -p "$question" --output-format json --allowedTools "Read,Grep,Glob" --model haiku 2>/dev/null)
 
-    # Try to find the new fork session ID
-    sleep 1  # Give filesystem time to sync
-    local newest=$(find "$HOME/.claude/projects" -name "*.jsonl" -type f -mmin -1 -not -name "$session_id.jsonl" 2>/dev/null | head -1)
-    if [ -n "$newest" ]; then
-      local new_fork_id=$(basename "$newest" .jsonl)
+    # Extract and display the result text
+    local result_text=$(echo "$output" | jq -r '.result // empty')
+    if [ -n "$result_text" ]; then
+      echo "$result_text"
+    fi
+
+    # Extract and save fork session ID
+    local new_fork_id=$(echo "$output" | jq -r '.session_id // empty')
+    if [ -n "$new_fork_id" ]; then
       save_fork_id "$session_id" "$new_fork_id"
       echo ""
-      echo "Fork saved. Follow-up questions will reuse this fork."
+      echo "Fork saved: $new_fork_id"
     fi
   fi
-}
-
-# Recall a single session (simple mode - minimal output)
-recall_session_simple() {
-  local session_id="$1"
-  local question="$2"
-
-  # Get project directory from index
-  local project_dir=$(get_project_from_index "$session_id")
-  if [ -z "$project_dir" ] || [ ! -d "$project_dir" ]; then
-    echo "Error: Session not found: $session_id" >&2
-    return 1
-  fi
-
-  # Print header: ~/path/to/project | session-id
-  echo "$(shorten_path "$project_dir") | $session_id"
-
-  # Run claude with minimal output (no fork tracking in simple mode)
-  (cd "$project_dir" && claude --resume "$session_id" --fork-session -p "$question" --allowedTools "Read,Grep,Glob" --dangerously-skip-permissions 2>/dev/null) || echo "(no response)"
-
-  echo ""
 }
 
 # Batch recall with parallel execution
 batch_recall() {
   local force_new="false"
-  local simple_mode="false"
   local queries=()
 
   # Parse args
@@ -116,9 +99,6 @@ batch_recall() {
     case "$arg" in
       --new|-n)
         force_new="true"
-        ;;
-      --simple)
-        simple_mode="true"
         ;;
       *)
         queries+=("$arg")
@@ -133,38 +113,6 @@ batch_recall() {
     return 1
   fi
 
-  if [ "$simple_mode" = "true" ]; then
-    # Simple mode: parallel execution with minimal output
-    local pids=()
-    local temp_files=()
-    local index=0
-
-    for query in "${queries[@]}"; do
-      ((index++))
-      local session_id="${query%%:*}"
-      local question="${query#*:}"
-      local temp_file="/tmp/memory-simple-$$-$index.txt"
-      temp_files+=("$temp_file")
-
-      recall_session_simple "$session_id" "$question" > "$temp_file" 2>&1 &
-      pids+=($!)
-    done
-
-    # Wait for all
-    wait "${pids[@]}"
-
-    # Print results in order
-    for temp_file in "${temp_files[@]}"; do
-      if [ -f "$temp_file" ]; then
-        cat "$temp_file"
-      fi
-    done
-
-    rm -f "${temp_files[@]}"
-    return 0
-  fi
-
-  # Verbose mode
   if [ $total -eq 1 ]; then
     # Single query - run directly
     local query="${queries[0]}"
