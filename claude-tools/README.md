@@ -42,18 +42,16 @@ claude-tools worktree remove feature-name  # Remove worktree
 
 ## Tool Design Principles
 
-1. **Self-documenting** - Tools document themselves via `help` command
-2. **Help as default** - Running with no args shows help + prereq check
-3. **README for details** - Brief help in CLI, comprehensive docs in README.md
-4. **Prereq check on first use** - Tools check/install dependencies when run without args
-5. **Standard entry point** - Each tool uses `run.sh`, name derived from folder
+1. **No args = help** - Running a tool without arguments shows help (no `--help` or `help` subcommand)
+2. **README for details** - Brief help in CLI, comprehensive docs in README.md
+3. **Standard entry point** - Each tool uses `run.sh`, name derived from folder
 
 ## Getting Help
 
-Run any tool without arguments or with `help`:
+Run any tool without arguments:
 
 ```bash
-claude-tools chrome          # Show help + check prerequisites
-claude-tools chrome help     # Show help
-claude-tools worktree help   # Show help
+claude-tools chrome          # Show help
+claude-tools worktree        # Show help
+claude-tools memory          # Show help
 ```

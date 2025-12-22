@@ -102,7 +102,7 @@ COMMANDS:
   rename <new-name>     Rename temp worktree to meaningful name
   list                  List all worktrees
   remove <branch-name>  Remove a worktree
-  help                  Show this help
+  (no args)             Show this help
 
 PREREQUISITES:
 EOF
@@ -155,12 +155,12 @@ main() {
         rename)
             worktree_rename "$@"
             ;;
-        help|--help|-h|"")
+        "")
             show_help
             ;;
         *)
             echo "Unknown command: $command"
-            echo "Run 'claude-tools worktree help' for usage"
+            echo "Run 'claude-tools worktree' for usage"
             exit 1
             ;;
     esac

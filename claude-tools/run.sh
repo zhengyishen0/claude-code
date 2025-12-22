@@ -16,7 +16,7 @@ show_help() {
   echo "  sync                        Update CLAUDE.md/AGENT.md tools section"
   echo "  diagnose                    Validate tool structure and requirements"
   echo "  setup                       Add claude-tools alias to shell"
-  echo "  help, --help                Show this help message"
+  echo "  (no args)                   Show this help message"
   echo ""
   echo "New Tool Structure:"
   echo "  claude-tools/<name>/"
@@ -27,8 +27,7 @@ show_help() {
   echo "  └── ..."
   echo ""
   echo "Tool run.sh should:"
-  echo "  - Show help + prereq check when called with no args"
-  echo "  - Show help only when called with 'help'"
+  echo "  - Show help when called with no args"
   echo "  - Derive tool name from folder: TOOL_NAME=\"\$(basename \"\$SCRIPT_DIR\")\""
   echo ""
   echo "Help output format (for sync):"
@@ -57,9 +56,9 @@ diagnose() {
     [[ -x "$dir/run.sh" ]] && has_run=true
     [[ -f "$dir/README.md" ]] && has_readme=true
 
-    # Check if help command works
+    # Check if help works (no args = help)
     if $has_run; then
-      help_output=$("$dir/run.sh" help 2>/dev/null)
+      help_output=$("$dir/run.sh" 2>/dev/null)
       [[ -n "$help_output" ]] && help_works=true
     fi
 
@@ -318,7 +317,7 @@ setup_alias() {
 }
 
 case "$1" in
-  --help|-h|help)
+  "")
     show_help
     ;;
 
@@ -349,7 +348,7 @@ case "$1" in
       "$TOOLS_DIR/$TOOL/run.sh" "$@"
     else
       echo "Unknown tool: $TOOL" >&2
-      echo "Run 'claude-tools --help' for usage" >&2
+      echo "Run 'claude-tools' for usage" >&2
       exit 1
     fi
     ;;

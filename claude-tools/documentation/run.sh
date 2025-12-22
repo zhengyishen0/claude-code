@@ -320,7 +320,7 @@ cmd_help() {
   echo "  command <cmd>             Get CLI command examples (via cheat.sh)"
   echo "  api <name> [spec|info]    Get REST API specifications (via APIs.guru)"
   echo "  config <service> [key]    Configure API keys"
-  echo "  help                      Show this help message"
+  echo "  (no args)                 Show this help message"
   echo ""
   echo "Library Examples:"
   echo "  $TOOL_NAME library vercel/next.js --topic routing"
@@ -339,8 +339,7 @@ cmd_help() {
   echo "Configuration:"
   echo "  $TOOL_NAME config context7 'your-key'"
   echo ""
-  echo "For detailed help on a command, run:"
-  echo "  $TOOL_NAME <command> --help"
+  echo "For detailed help on a command, run it without arguments."
 }
 
 # ============================================================================
@@ -368,17 +367,13 @@ case "$1" in
     cmd_config "$@"
     ;;
 
-  help|--help|-h)
-    cmd_help
-    ;;
-
   "")
     cmd_help
     ;;
 
   *)
     echo "Unknown command: $1" >&2
-    echo "Run '$TOOL_NAME help' for usage" >&2
+    echo "Run '$TOOL_NAME' for usage" >&2
     exit 1
     ;;
 esac

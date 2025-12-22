@@ -17,7 +17,7 @@ claude-tools worktree remove feature-name
 
 ## Full Documentation
 
-Run `claude-tools worktree` or `claude-tools worktree help` for complete documentation.
+Run `claude-tools worktree` for complete documentation.
 
 ## How It Works
 

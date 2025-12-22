@@ -3,8 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Show help if no args or help requested
-if [ $# -eq 0 ] || [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+# Show help if no args
+if [ $# -eq 0 ]; then
   cat << 'EOF'
 screenshot - Background window capture for macOS
 

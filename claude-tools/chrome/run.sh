@@ -330,7 +330,7 @@ cmd_help() {
   echo "  click SELECTOR              Click element by CSS selector"
   echo "  input SELECTOR VALUE        Set input value by CSS selector"
   echo "  esc                         Send ESC key (close dialogs/modals)"
-  echo "  help                        Show this help message"
+  echo "  (no args)                   Show this help message"
   echo ""
   echo "Quick Examples:"
   echo "  $TOOL_NAME open \"https://example.com\""
@@ -360,7 +360,7 @@ execute_single() {
     click)      cmd_click "$@" ;;
     input)      cmd_input "$@" ;;
     esc)        cmd_esc "$@" ;;
-    help|--help|-h) cmd_help ;;
+    "") cmd_help ;;
     *)
       echo "Unknown command: $cmd" >&2
       return 1
@@ -456,17 +456,13 @@ case "$1" in
     cmd_esc
     ;;
 
-  help|--help|-h)
-    cmd_help
-    ;;
-
   "")
     cmd_help
     ;;
 
   *)
     echo "Unknown command: $1" >&2
-    echo "Run '$TOOL_NAME help' for usage" >&2
+    echo "Run '$TOOL_NAME' for usage" >&2
     exit 1
     ;;
 esac

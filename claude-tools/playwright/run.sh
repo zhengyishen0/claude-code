@@ -95,7 +95,7 @@ cmd_help() {
   echo "  click SELECTOR           Click element by selector"
   echo "  input SELECTOR VALUE     Type text into element"
   echo "  close                    Close browser and cleanup"
-  echo "  help                     Show this help message"
+  echo "  (no args)                Show this help message"
   echo ""
   echo "Quick Examples:"
   echo "  $TOOL_NAME open \"https://example.com\""
@@ -122,7 +122,7 @@ execute_single() {
     click)      cmd_click "$@" ;;
     input)      cmd_input "$@" ;;
     close)      cmd_close "$@" ;;
-    help|--help|-h) cmd_help ;;
+    "") cmd_help ;;
     *)
       echo "Unknown command: $cmd" >&2
       return 1
@@ -208,17 +208,13 @@ case "$1" in
     cmd_close
     ;;
 
-  help|--help|-h)
-    cmd_help
-    ;;
-
   "")
     cmd_help
     ;;
 
   *)
     echo "Unknown command: $1" >&2
-    echo "Run '$TOOL_NAME help' for usage" >&2
+    echo "Run '$TOOL_NAME' for usage" >&2
     exit 1
     ;;
 esac

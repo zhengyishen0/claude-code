@@ -76,13 +76,13 @@ case "${1:-}" in
     "$SCRIPT_DIR/recall.sh" "$@"
     ;;
 
-  --help|-h|help|"")
+  "")
     show_help
     ;;
 
   *)
     echo "Unknown command: $1" >&2
-    echo "Run 'claude-tools memory --help' for usage" >&2
+    echo "Run 'claude-tools memory' for usage" >&2
     exit 1
     ;;
 esac

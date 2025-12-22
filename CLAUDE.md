@@ -78,11 +78,21 @@ claude-tools worktree remove feature-name
 ## Tool Design Principles
 
 When creating tools:
-1. **Self-documenting** - Tools document themselves via `help` command
-2. **Help as default** - Running with no args shows help
-3. **README-based docs** - Full documentation in README.md (used by `claude-tools sync`)
-4. **Standard entry point** - Each tool uses `run.sh`, name derived from folder
-5. **Add to Brewfile** - If tool needs system dependencies, add to Brewfile
+1. **No args = help** - Running a tool without arguments MUST show help. No `--help` or `help` subcommand needed.
+2. **README-based docs** - Full documentation in README.md (used by `claude-tools sync`)
+3. **Standard entry point** - Each tool uses `run.sh`, name derived from folder
+4. **Add to Brewfile** - If tool needs system dependencies, add to Brewfile
+
+**Help convention:**
+```bash
+# Correct - no args shows help
+claude-tools chrome           # Shows help
+claude-tools memory           # Shows help
+
+# No need for these (removed)
+claude-tools chrome --help    # Not supported
+claude-tools chrome help      # Not supported
+```
 
 **README Structure** (required for sync):
 ```markdown
