@@ -10,29 +10,29 @@ show_help() {
 memory - Cross-session knowledge sharing for Claude Code
 
 USAGE
-  memory search [--limit N] [--raw] "<query>"
+  memory search "OR terms" --and "AND terms" [--not "NOT terms"] [--recall "question"]
   memory recall [--new] "<session-id>:<question>" [...]
 
 COMMANDS
-  search [--limit N] [--raw] "<query>"
+  search "OR terms" --and "AND terms" [options]
       Search all sessions with boolean logic.
 
+      Arguments:
+        First arg (required)   OR terms - broaden search with synonyms
+        --and (required)       AND terms - narrow by requiring these
+        --not (optional)       NOT terms - exclude sessions with these
+
       Flags:
-        --limit N    Messages per session (default: 15)
-        --raw        Skip summarization, show raw output
+        --limit N              Sessions to show (default: 5)
+        --recall "question"    Ask matching sessions a question (parallel)
 
-      Query syntax:
-        term1|term2    OR  (first term, rg pattern)
-        term           AND (space-separated)
-        -term          NOT (dash prefix)
-
-      Summarization:
-        Results are summarized by default with haiku. Use --raw to skip.
+      Phrase support:
+        Use underscore to join words: reset_windows matches "reset windows"
 
       Examples:
-        memory search "error"
-        memory search "chrome|playwright"
-        memory search --raw "chrome|playwright click -test"
+        memory search "asus laptop" --and "spec"
+        memory search "chrome playwright" --and "click" --not "test"
+        memory search "ollama devstral" --and "slow" --recall "What problems?"
 
   recall [--new] "<session-id>:<question>" [...]
       Consult a session by forking it and asking a question.
@@ -47,16 +47,13 @@ COMMANDS
 
 WORKFLOW
   1. Search for relevant sessions:
-     $ memory search "authentication"
+     $ memory search "authentication" --and "error"
 
   2. Pick a session and ask questions:
      $ memory recall "abc-123:How did you implement JWT?"
 
-  3. Follow-up (reuses same fork):
-     $ memory recall "abc-123:What about refresh tokens?"
-
-  4. Start fresh when needed:
-     $ memory recall --new "abc-123:Different topic"
+  3. Or search + recall in one step:
+     $ memory search "auth" --and "jwt" --recall "How was JWT implemented?"
 
 TECHNICAL NOTES
   - Index: ~/.claude/memory-index.tsv

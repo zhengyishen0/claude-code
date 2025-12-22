@@ -32,7 +32,12 @@ save_fork_id() {
   echo "$fork_id" > "$MEMORY_STATE_DIR/$session_id.fork"
 }
 
-# Recall a single session
+# Shorten path (replace $HOME with ~)
+shorten_path() {
+  echo "$1" | sed "s|^$HOME|~|"
+}
+
+# Recall a single session (verbose mode)
 recall_session() {
   local session_id="$1"
   local question="$2"
@@ -79,9 +84,31 @@ recall_session() {
   fi
 }
 
+# Recall a single session (simple mode - minimal output)
+recall_session_simple() {
+  local session_id="$1"
+  local question="$2"
+
+  # Get project directory from index
+  local project_dir=$(get_project_from_index "$session_id")
+  if [ -z "$project_dir" ] || [ ! -d "$project_dir" ]; then
+    echo "Error: Session not found: $session_id" >&2
+    return 1
+  fi
+
+  # Print header: ~/path/to/project | session-id
+  echo "$(shorten_path "$project_dir") | $session_id"
+
+  # Run claude with minimal output (no fork tracking in simple mode)
+  (cd "$project_dir" && claude --resume "$session_id" --fork-session -p "$question" --allowedTools "Read,Grep,Glob" --dangerously-skip-permissions 2>/dev/null) || echo "(no response)"
+
+  echo ""
+}
+
 # Batch recall with parallel execution
 batch_recall() {
   local force_new="false"
+  local simple_mode="false"
   local queries=()
 
   # Parse args
@@ -89,6 +116,9 @@ batch_recall() {
     case "$arg" in
       --new|-n)
         force_new="true"
+        ;;
+      --simple)
+        simple_mode="true"
         ;;
       *)
         queries+=("$arg")
@@ -103,6 +133,38 @@ batch_recall() {
     return 1
   fi
 
+  if [ "$simple_mode" = "true" ]; then
+    # Simple mode: parallel execution with minimal output
+    local pids=()
+    local temp_files=()
+    local index=0
+
+    for query in "${queries[@]}"; do
+      ((index++))
+      local session_id="${query%%:*}"
+      local question="${query#*:}"
+      local temp_file="/tmp/memory-simple-$$-$index.txt"
+      temp_files+=("$temp_file")
+
+      recall_session_simple "$session_id" "$question" > "$temp_file" 2>&1 &
+      pids+=($!)
+    done
+
+    # Wait for all
+    wait "${pids[@]}"
+
+    # Print results in order
+    for temp_file in "${temp_files[@]}"; do
+      if [ -f "$temp_file" ]; then
+        cat "$temp_file"
+      fi
+    done
+
+    rm -f "${temp_files[@]}"
+    return 0
+  fi
+
+  # Verbose mode
   if [ $total -eq 1 ]; then
     # Single query - run directly
     local query="${queries[0]}"

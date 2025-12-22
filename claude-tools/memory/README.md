@@ -10,7 +10,7 @@ Search all sessions for matching content with boolean logic.
 
 **Syntax:**
 ```bash
-claude-tools memory search "OR terms" --and "AND terms" [--not "NOT terms"] [--limit N] [--summary]
+claude-tools memory search "OR terms" --and "AND terms" [--not "NOT terms"] [--recall "question"] [--limit N]
 ```
 
 **Arguments:**
@@ -19,8 +19,8 @@ claude-tools memory search "OR terms" --and "AND terms" [--not "NOT terms"] [--l
 - `--not` (optional): NOT terms - exclude sessions containing these
 
 **Flags:**
-- `--limit N` - Messages per session (default: 5)
-- `--summary`, `-s` - Summarize results with haiku (~90s)
+- `--limit N` - Sessions to return (default: 5)
+- `--recall "question"` - Ask matching sessions a question (parallel)
 
 **Phrase support:** Use underscore to join words: `reset_windows` matches "reset windows"
 
@@ -29,31 +29,34 @@ claude-tools memory search "OR terms" --and "AND terms" [--not "NOT terms"] [--l
 # Basic search: find ASUS-related sessions that mention specs
 claude-tools memory search "asus laptop machine" --and "spec"
 
-# Multiple OR and AND terms
-claude-tools memory search "ollama devstral local" --and "slow error problem"
-
 # With NOT to exclude test sessions
 claude-tools memory search "chrome playwright" --and "click" --not "test"
 
-# Phrase search
-claude-tools memory search "reset_windows factory_reset" --and "guide steps"
+# Search + recall in one step
+claude-tools memory search "ollama devstral" --and "slow error" --recall "What problems with local LLMs?"
 
-# With summarization
-claude-tools memory search "authentication" --and "error" --summary
+# Limit to 3 sessions
+claude-tools memory search "auth" --and "jwt" --recall "How was JWT implemented?" --limit 3
 ```
 
-**Output format:**
+**Output format (search only):**
 ```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Session: 5a4020c4-ab2c-42b6-931e-0105c2060de8
+~/Codes/claude-code | 5a4020c4-ab2c-42b6-931e-0105c2060de8
 Matches: 12 | Latest: 2025-12-04T08:59:42.725Z
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [user] why did you propose the click and input command...
 [asst] I see the button is showing up. Let me try...
-[asst] Done! Here's a summary of the changes...
 ... and 2 more
 
 Found 72 matches across 26 sessions
+```
+
+**Output format (with --recall):**
+```
+~/Codes/claude-code | 5a4020c4-ab2c-42b6-931e-0105c2060de8
+The ASUS laptop has 32GB RAM, Intel i7-12700H, RTX 3060...
+
+~/Codes/other-project | abc123-def456-...
+I found that the user mentioned an ASUS ROG laptop...
 ```
 
 ### recall
@@ -93,14 +96,14 @@ claude-tools memory recall "session1:question1" "session2:question2"
 4. **Fork Tracking** - Follow-up questions reuse same fork for context
 5. **Parallel Recall** - Multiple sessions can be consulted in parallel
 6. **Cross-Project Recall** - Sessions from any project can be recalled; resolves original project directory automatically
-7. **Fast by Default** - Raw results returned instantly; use `--summary` for AI-condensed output (~90s)
+7. **Search + Recall** - Use `--recall` to search and ask in one step
 8. **Explicit Flag Syntax** - `--and` and `--not` flags make query intent clear
 
 ## Technical Details
 
 **Index:**
 - Location: `~/.claude/memory-index.tsv`
-- Format: `session_id\ttimestamp\ttype\ttext_preview`
+- Format: `session_id\ttimestamp\ttype\ttext_preview\tproject_path`
 - Extracts user/assistant messages, filters noise
 - Incremental: only processes files newer than index
 
@@ -134,26 +137,22 @@ When recalling a session from a different project, the tool:
 
 ## Workflow
 
-**Typical search→recall flow:**
+**Search + recall in one step:**
+```bash
+claude-tools memory search "asus laptop" --and "spec" --recall "What are the specs?"
+```
+
+**Two-step workflow:**
 ```bash
 # 1. Search with OR (broaden) and AND (narrow)
 claude-tools memory search "asus laptop machine" --and "spec"
-# Returns: Session abc-123, Session def-456, ...
+# Returns: ~/Codes/project | abc-123, ...
 
 # 2. Found a promising session? Ask it directly
 claude-tools memory recall "abc-123:What ASUS laptop specs did the user mention?"
 
 # 3. Follow-up questions reuse the same fork
 claude-tools memory recall "abc-123:What was the RAM size?"
-
-# 4. Start fresh when switching topics
-claude-tools memory recall --new "abc-123:Different question"
-```
-
-**Excluding noise:**
-```bash
-# Add --not to filter out unwanted results
-claude-tools memory search "error bug" --and "fix solution" --not "test"
 ```
 
 **Parallel recall for multiple sessions:**

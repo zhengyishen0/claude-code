@@ -1,10 +1,6 @@
 #!/bin/bash
 # Search Claude sessions with incremental indexing
-# Syntax: memory search "OR terms" --and "AND terms" [--not "NOT terms"]
-# - First arg: OR terms (broaden - synonyms/alternatives)
-# - --and: AND terms (narrow - must have at least one)
-# - --not: NOT terms (filter - exclude these)
-# - Underscore joins words into phrases: reset_windows
+# Syntax: memory search "OR terms" --and "AND terms" [--not "NOT terms"] [--recall "question"]
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,11 +8,11 @@ SESSION_DIR="$HOME/.claude/projects"
 INDEX_FILE="$HOME/.claude/memory-index.tsv"
 
 # Parse args
-LIMIT=5  # Default: 5 messages per session (compact for raw mode)
+LIMIT=5  # Default: 5 sessions
 OR_QUERY=""
 AND_QUERY=""
 NOT_QUERY=""
-SUMMARIZE=false  # Default: raw output (fast)
+RECALL_QUESTION=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -32,9 +28,9 @@ while [[ $# -gt 0 ]]; do
       NOT_QUERY="$2"
       shift 2
       ;;
-    --summary|-s)
-      SUMMARIZE=true
-      shift
+    --recall|-r)
+      RECALL_QUESTION="$2"
+      shift 2
       ;;
     -*)
       echo "Error: Unknown flag '$1'" >&2
@@ -51,22 +47,22 @@ done
 if [ -z "$OR_QUERY" ]; then
   echo "Error: Missing OR terms (first argument)" >&2
   echo "" >&2
-  echo "Usage: memory search \"OR terms\" --and \"AND terms\" [--not \"NOT terms\"]" >&2
+  echo "Usage: memory search \"OR terms\" --and \"AND terms\" [--not \"NOT terms\"] [--recall \"question\"]" >&2
   echo "" >&2
   echo "Examples:" >&2
-  echo "  memory search \"asus laptop machine\" --and \"spec\"" >&2
-  echo "  memory search \"chrome playwright\" --and \"click\" --not \"test\"" >&2
+  echo "  memory search \"asus laptop\" --and \"spec\"" >&2
+  echo "  memory search \"chrome playwright\" --and \"click\" --recall \"How to fix click issues?\"" >&2
   exit 1
 fi
 
 if [ -z "$AND_QUERY" ]; then
   echo "Error: Missing --and flag (required)" >&2
   echo "" >&2
-  echo "Usage: memory search \"OR terms\" --and \"AND terms\" [--not \"NOT terms\"]" >&2
+  echo "Usage: memory search \"OR terms\" --and \"AND terms\" [--not \"NOT terms\"] [--recall \"question\"]" >&2
   echo "" >&2
   echo "Examples:" >&2
-  echo "  memory search \"asus laptop machine\" --and \"spec\"" >&2
-  echo "  memory search \"chrome playwright\" --and \"click\" --not \"test\"" >&2
+  echo "  memory search \"asus laptop\" --and \"spec\"" >&2
+  echo "  memory search \"chrome playwright\" --and \"click\" --recall \"How to fix click issues?\"" >&2
   exit 1
 fi
 
@@ -127,7 +123,6 @@ else
 fi
 
 # Convert underscore phrases to regex: "Tesla_Model_3" -> "Tesla.Model.3"
-# This matches the phrase with any separator (space, dash, etc.)
 to_pattern() {
   echo "$1" | sed 's/_/./g'
 }
@@ -171,15 +166,48 @@ if [ -z "$RESULTS" ]; then
   echo "Tips:"
   echo "  • Add more OR synonyms to broaden search"
   echo "  • Use underscore for phrases: reset_windows"
-  echo "  • Try 'memory recall <session-id>:question' to ask a session directly"
   exit 0
 fi
 
-# Group by session, sort by latest timestamp
-# Pass LIMIT and first OR term as query for snippet extraction
-# Snippet context: 100 chars before + 100 chars after = 200 total (compact for raw mode)
+# Helper: shorten path (replace $HOME with ~)
+shorten_path() {
+  echo "$1" | sed "s|^$HOME|~|"
+}
+
+# Fast path: --recall mode
+if [ -n "$RECALL_QUESTION" ]; then
+  # Get unique session IDs with their projects, sorted by latest timestamp
+  SESSION_DATA=$(echo "$RESULTS" | awk -F'\t' '
+  {
+    session = $1
+    timestamp = $2
+    project = $5
+    if (timestamp > latest[session]) {
+      latest[session] = timestamp
+      projects[session] = project
+    }
+  }
+  END {
+    for (s in latest) {
+      print latest[s] "\t" s "\t" projects[s]
+    }
+  }' | sort -rn | head -$LIMIT)
+
+  # Build recall args
+  RECALL_ARGS=""
+  while IFS=$'\t' read -r ts sid proj; do
+    [ -z "$sid" ] && continue
+    RECALL_ARGS="$RECALL_ARGS \"$sid:$RECALL_QUESTION\""
+  done <<< "$SESSION_DATA"
+
+  # Run parallel recall with simplified output
+  eval "$SCRIPT_DIR/recall.sh --simple $RECALL_ARGS"
+  exit 0
+fi
+
+# Normal search path: group by session, format output
 FIRST_TERM="${OR_TERMS[0]}"
-RAW_OUTPUT=$(echo "$RESULTS" | awk -F'\t' -v limit="$LIMIT" -v query="$FIRST_TERM" '
+OUTPUT=$(echo "$RESULTS" | awk -F'\t' -v limit="$LIMIT" -v query="$FIRST_TERM" -v home="$HOME" '
 {
   session = $1
   timestamp = $2
@@ -202,21 +230,16 @@ RAW_OUTPUT=$(echo "$RESULTS" | awk -F'\t' -v limit="$LIMIT" -v query="$FIRST_TER
 
     # Extract snippet if text is long (compact: 100 before + 100 after)
     if (length(text) > 200) {
-      # Find query position (case-insensitive)
       lower_text = tolower(text)
       lower_query = tolower(query)
       pos = index(lower_text, lower_query)
 
       if (pos > 0) {
-        # Extract 100 chars before + 100 after match
         start = (pos > 100) ? pos - 100 : 1
         snippet = substr(text, start, 200)
-
-        # Add ellipsis for truncation
         if (start > 1) snippet = "..." snippet
         if (start + 200 < length(text)) snippet = snippet "..."
       } else {
-        # No direct match, show beginning
         snippet = substr(text, 1, 200) "..."
       }
     }
@@ -231,7 +254,6 @@ END {
     sessions[n] = latest[s] "\t" s
     n++
   }
-  # Bubble sort (simple, n is small)
   for (i = 0; i < n-1; i++) {
     for (j = i+1; j < n; j++) {
       if (sessions[i] < sessions[j]) {
@@ -242,19 +264,18 @@ END {
     }
   }
 
-  # Print session count first (for info)
-  print "SESSION_COUNT:" n
-
   # Print grouped results
   total_matches = 0
   for (i = 0; i < n; i++) {
     split(sessions[i], parts, "\t")
     s = parts[2]
 
-    print "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    print "Session: " s " | Project: " projects[s]
+    # Shorten project path
+    proj = projects[s]
+    gsub("^" home, "~", proj)
+
+    print proj " | " s
     print "Matches: " count[s] " | Latest: " latest[s]
-    print "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
     # Print messages
     split(messages[s], lines, "\n")
@@ -278,18 +299,4 @@ END {
   print "Found " total_matches " matches across " n " sessions"
 }')
 
-# Extract session count and output
-SESSION_COUNT=$(echo "$RAW_OUTPUT" | head -1 | cut -d: -f2)
-OUTPUT=$(echo "$RAW_OUTPUT" | tail -n +2)
-
-# Default: raw output; --summary enables summarization
-if [ "$SUMMARIZE" = "true" ]; then
-  echo "Summarizing $SESSION_COUNT sessions..." >&2
-  # Pipe output through summarize.sh
-  # Note: set +e temporarily to avoid SIGPIPE exit
-  set +e
-  echo "$OUTPUT" | "$SCRIPT_DIR/summarize.sh"
-  set -e
-else
-  echo "$OUTPUT"
-fi
+echo "$OUTPUT"
