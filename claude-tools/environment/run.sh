@@ -40,8 +40,14 @@ cmd_check() {
     if [ "$lines_after_marker" -gt 0 ]; then
         # Get unread entries (everything after last marker)
         new_entries=$(tail -n "$lines_after_marker" "$ENV_LOG")
-        # Count events (non-empty lines)
-        event_count=$(echo "$new_entries" | grep -c '^' || echo "0")
+        # Count events (non-empty lines, excluding sleep events)
+        # Filter out sleep events, then count remaining lines
+        local filtered=$(echo "$new_entries" | grep -v '\[sleep:' || true)
+        if [ -n "$filtered" ]; then
+            event_count=$(echo "$filtered" | wc -l | tr -d ' ')
+        else
+            event_count=0
+        fi
     fi
 
     # ALWAYS add read event (even if event_count is 0)
