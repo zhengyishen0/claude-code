@@ -84,7 +84,7 @@ build_full_index() {
         else "" end
       ) as $text |
       select($text | length > 10) |
-      select($text | test("<ide_|\\[Request interrupted|New environment|API Error|Limit reached|Caveat:|<bash-") | not) |
+      select($text | test("<ide_|\\[Request interrupted|New environment|API Error|Limit reached|Caveat:|<bash-|<function_calls|<invoke|</invoke|<parameter|</parameter|</function_calls") | not) |
       [.sessionId // .agentId // "unknown", .timestamp, .type, $text, .cwd // "unknown"] | @tsv
     ' 2>/dev/null > "$INDEX_FILE"
   echo "Index built: $(wc -l < "$INDEX_FILE" | tr -d ' ') messages" >&2
@@ -107,12 +107,13 @@ update_index() {
         else "" end
       ) as $text |
       select($text | length > 10) |
-      select($text | test("<ide_|\\[Request interrupted|New environment|API Error|Limit reached|Caveat:|<bash-") | not) |
+      select($text | test("<ide_|\\[Request interrupted|New environment|API Error|Limit reached|Caveat:|<bash-|<function_calls|<invoke|</invoke|<parameter|</parameter|</function_calls") | not) |
       [.sessionId // .agentId // "unknown", .timestamp, .type, $text, .cwd // "unknown"] | @tsv
     ' 2>/dev/null >> "$INDEX_FILE" || true
 }
 
 # Check if index needs update
+TIMING_START=$(date +%s.%N)
 if [ ! -f "$INDEX_FILE" ]; then
   build_full_index
 else
@@ -121,6 +122,8 @@ else
     update_index "$NEW_FILES"
   fi
 fi
+TIMING_INDEX=$(date +%s.%N)
+echo "[TIMING] Index check: $(echo "$TIMING_INDEX - $TIMING_START" | bc)s" >&2
 
 # Convert underscore phrases to regex: "Tesla_Model_3" -> "Tesla.Model.3"
 to_pattern() {
@@ -156,7 +159,10 @@ for term in "${NOT_TERMS[@]}"; do
 done
 
 # Search, dedup, group by session
+TIMING_SEARCH_START=$(date +%s.%N)
 RESULTS=$(eval "$CMD" 2>/dev/null | sort -u || true)
+TIMING_SEARCH_END=$(date +%s.%N)
+echo "[TIMING] Search + filter: $(echo "$TIMING_SEARCH_END - $TIMING_SEARCH_START" | bc)s" >&2
 
 if [ -z "$RESULTS" ]; then
   echo "No matches found."
@@ -176,98 +182,12 @@ shorten_path() {
 
 
 # Normal search path: group by session, format output
+TIMING_FORMAT_START=$(date +%s.%N)
 FIRST_TERM="${OR_TERMS[0]}"
-OUTPUT=$(echo "$RESULTS" | awk -F'\t' -v limit="$LIMIT" -v query="$FIRST_TERM" -v home="$HOME" '
-{
-  session = $1
-  timestamp = $2
-  type = $3
-  text = $4
-  project = $5
-
-  # Track count per session
-  count[session]++
-
-  # Track latest timestamp per session
-  if (timestamp > latest[session]) latest[session] = timestamp
-
-  # Track project per session (first seen)
-  if (!(session in projects)) projects[session] = project
-
-  # Store messages (up to limit per session) with snippet extraction
-  if (count[session] <= limit) {
-    snippet = text
-
-    # Extract snippet if text is long (compact: 100 before + 100 after)
-    if (length(text) > 200) {
-      lower_text = tolower(text)
-      lower_query = tolower(query)
-      pos = index(lower_text, lower_query)
-
-      if (pos > 0) {
-        start = (pos > 100) ? pos - 100 : 1
-        snippet = substr(text, start, 200)
-        if (start > 1) snippet = "..." snippet
-        if (start + 200 < length(text)) snippet = snippet "..."
-      } else {
-        snippet = substr(text, 1, 200) "..."
-      }
-    }
-
-    messages[session] = messages[session] type "\t" snippet "\n"
-  }
-}
-END {
-  # Sort sessions by latest timestamp (descending)
-  n = 0
-  for (s in latest) {
-    sessions[n] = latest[s] "\t" s
-    n++
-  }
-  for (i = 0; i < n-1; i++) {
-    for (j = i+1; j < n; j++) {
-      if (sessions[i] < sessions[j]) {
-        tmp = sessions[i]
-        sessions[i] = sessions[j]
-        sessions[j] = tmp
-      }
-    }
-  }
-
-  # Print grouped results
-  total_matches = 0
-  for (i = 0; i < n; i++) {
-    split(sessions[i], parts, "\t")
-    s = parts[2]
-
-    # Shorten project path
-    proj = projects[s]
-    gsub("^" home, "~", proj)
-
-    print proj " | " s
-    print "Matches: " count[s] " | Latest: " latest[s]
-
-    # Print messages
-    split(messages[s], lines, "\n")
-    for (j = 1; j <= length(lines); j++) {
-      if (lines[j] != "") {
-        split(lines[j], msg, "\t")
-        role = (msg[1] == "user") ? "[user]" : "[asst]"
-        txt = msg[2]
-        print role " " txt
-      }
-    }
-
-    if (count[s] > limit) {
-      print "... and " (count[s] - limit) " more"
-    }
-    print ""
-
-    total_matches += count[s]
-  }
-
-  print "Found " total_matches " matches across " n " sessions"
-}')
+OUTPUT=$(echo "$RESULTS" | python3 "$SCRIPT_DIR/format-results.py" "$LIMIT" "$FIRST_TERM")
+TIMING_FORMAT_END=$(date +%s.%N)
+echo "[TIMING] Format output: $(echo "$TIMING_FORMAT_END - $TIMING_FORMAT_START" | bc)s" >&2
+echo "[TIMING] TOTAL: $(echo "$TIMING_FORMAT_END - $TIMING_START" | bc)s" >&2
 
 # If --recall flag, extract session IDs and run parallel recall
 if [ -n "$RECALL_QUESTION" ]; then
