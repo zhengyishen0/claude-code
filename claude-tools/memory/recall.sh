@@ -41,7 +41,7 @@ shorten_path() {
 recall_session() {
   local session_id="$1"
   local question="$2"
-  local force_new="${3:-false}"
+  local resume_fork="${3:-false}"
 
   # Get project directory from index
   local project_dir=$(get_project_from_index "$session_id")
@@ -55,9 +55,9 @@ recall_session() {
   echo "Project: $project_dir"
   echo "Question: $question"
 
-  # Check for existing fork (unless --new)
+  # Check for existing fork (only if --resume)
   local fork_id=""
-  if [ "$force_new" != "true" ]; then
+  if [ "$resume_fork" = "true" ]; then
     fork_id=$(get_fork_id "$session_id")
   fi
 
@@ -91,14 +91,14 @@ recall_session() {
 
 # Batch recall with parallel execution
 batch_recall() {
-  local force_new="false"
+  local resume_fork="false"
   local queries=()
 
   # Parse args
   for arg in "$@"; do
     case "$arg" in
-      --new|-n)
-        force_new="true"
+      --resume|-r)
+        resume_fork="true"
         ;;
       *)
         queries+=("$arg")
@@ -118,7 +118,7 @@ batch_recall() {
     local query="${queries[0]}"
     local session_id="${query%%:*}"
     local question="${query#*:}"
-    recall_session "$session_id" "$question" "$force_new"
+    recall_session "$session_id" "$question" "$resume_fork"
   else
     # Multiple queries - run in parallel
     echo "=== Batch Recall: $total sessions (parallel) ==="
@@ -139,7 +139,7 @@ batch_recall() {
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "[$index/$total] Session: $session_id"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        recall_session "$session_id" "$question" "$force_new" 2>&1
+        recall_session "$session_id" "$question" "$resume_fork" 2>&1
       ) > "$temp_file" 2>&1 &
 
       pids+=($!)
@@ -164,7 +164,7 @@ batch_recall() {
 # Main
 case "${1:-}" in
   --help|-h|help)
-    echo "Usage: memory recall [--new] \"<session-id>:<question>\" [...]"
+    echo "Usage: memory recall [--resume] \"<session-id>:<question>\" [...]"
     echo "Run 'memory --help' for full documentation"
     ;;
   *)

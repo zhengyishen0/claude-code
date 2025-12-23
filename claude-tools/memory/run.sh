@@ -11,7 +11,7 @@ memory - Cross-session knowledge sharing for Claude Code
 
 USAGE
   memory search "OR terms" --and "AND terms" [--not "NOT terms"] [--recall "question"]
-  memory recall [--new] "<session-id>:<question>" [...]
+  memory recall [--resume] "<session-id>:<question>" [...]
 
 COMMANDS
   search "OR terms" --and "AND terms" [options]
@@ -36,15 +36,16 @@ COMMANDS
         memory search "chrome playwright" --and "click" --not "test"
         memory search "ollama devstral" --and "slow" --recall "What problems?"
 
-  recall [--new] "<session-id>:<question>" [...]
+  recall [--resume] "<session-id>:<question>" [...]
       Consult a session by forking it and asking a question.
+      By default, creates a fresh fork for each recall.
 
       Flags:
-        --new, -n    Force new fork (ignore existing fork)
+        --resume, -r    Reuse existing fork for follow-up questions
 
       Examples:
         memory recall "abc-123:How did you handle errors?"
-        memory recall --new "abc-123:Start fresh question"
+        memory recall --resume "abc-123:Follow-up question"
         memory recall "session1:q1" "session2:q2"  # parallel
 
 WORKFLOW
@@ -74,7 +75,7 @@ case "${1:-}" in
 
   recall)
     shift
-    [ $# -eq 0 ] && { echo "Usage: memory recall [--new] \"<session-id>:<question>\" [...]" >&2; exit 1; }
+    [ $# -eq 0 ] && { echo "Usage: memory recall [--resume] \"<session-id>:<question>\" [...]" >&2; exit 1; }
     "$SCRIPT_DIR/recall.sh" "$@"
     ;;
 
