@@ -33,32 +33,8 @@ def main():
         print("No matches found.")
         return
 
-    # Detect and filter session chains (compacted sessions)
-    # Sessions starting with "This session is being continued" are part of a chain
-    # Keep only the latest session from each chain
-    continued_sessions = df[df['text'].str.contains('This session is being continued from a previous conversation', case=False, na=False)]['session_id'].unique()
-
-    if len(continued_sessions) > 0:
-        # For continued sessions, keep only the one with latest timestamp per project
-        for session_id in continued_sessions:
-            session_data = df[df['session_id'] == session_id]
-            if not session_data.empty:
-                project = session_data['project_path'].iloc[0]
-                latest_ts = session_data['timestamp'].max()
-
-                # Find all continued sessions from same project
-                same_project_continued = df[
-                    (df['project_path'] == project) &
-                    (df['text'].str.contains('This session is being continued', case=False, na=False)) &
-                    (df['session_id'] != session_id)
-                ]
-
-                # If this isn't the latest continued session from this project, mark for removal
-                if not same_project_continued.empty:
-                    other_latest = same_project_continued.groupby('session_id')['timestamp'].max().max()
-                    if latest_ts < other_latest:
-                        # Remove this session, keep the later one
-                        df = df[df['session_id'] != session_id]
+    # No need for session chain deduplication - the indexer now uses filename as session ID,
+    # so all compacted sessions in the same file are automatically grouped together
 
     # Group by session and get stats
     session_stats = df.groupby('session_id').agg({

@@ -72,10 +72,17 @@ fi
 # Index format: session_id \t timestamp \t type \t text \t project_path
 build_full_index() {
   echo "Building index..." >&2
-  rg -N '"type":"(user|assistant)"' -g '*.jsonl' "$SESSION_DIR" 2>/dev/null | \
-    cut -d: -f2- | \
-    jq -rs '
-      .[] |
+  # First, find all JSONL files and filter out fork sessions (those starting with queue-operation)
+  find "$SESSION_DIR" -name "*.jsonl" -type f 2>/dev/null | while read -r file; do
+    # Check if file starts with queue-operation (fork session)
+    if ! head -1 "$file" | jq -e 'select(.type == "queue-operation")' >/dev/null 2>&1; then
+      echo "$file"
+    fi
+  done | xargs -I{} rg -N --json '"type":"(user|assistant)"' {} 2>/dev/null | \
+    jq -r '
+      select(.type == "match") |
+      .data.path.text as $filepath |
+      .data.lines.text | fromjson |
       select(.type == "user" or .type == "assistant") |
       (.message.content |
         if type == "array" then
@@ -85,7 +92,9 @@ build_full_index() {
       ) as $text |
       select($text | length > 10) |
       select($text | test("<ide_|\\[Request interrupted|New environment|API Error|Limit reached|Caveat:|<bash-|<function_calls|<invoke|</invoke|<parameter|</parameter|</function_calls") | not) |
-      [.sessionId // .agentId // "unknown", .timestamp, .type, $text, .cwd // "unknown"] | @tsv
+      # Use filename (without path) as session ID - this naturally deduplicates compacted sessions
+      ($filepath | split("/") | last | split(".jsonl") | first) as $session_id |
+      [$session_id, .timestamp, .type, $text, .cwd // "unknown"] | @tsv
     ' 2>/dev/null > "$INDEX_FILE"
   echo "Index built: $(wc -l < "$INDEX_FILE" | tr -d ' ') messages" >&2
 }
@@ -93,12 +102,25 @@ build_full_index() {
 # Incremental update - process only new files
 update_index() {
   local new_files="$1"
-  local count=$(echo "$new_files" | wc -l | tr -d ' ')
+  # Filter out fork sessions before processing
+  local non_fork_files=$(echo "$new_files" | while read -r file; do
+    if [ -f "$file" ] && ! head -1 "$file" | jq -e 'select(.type == "queue-operation")' >/dev/null 2>&1; then
+      echo "$file"
+    fi
+  done)
+
+  if [ -z "$non_fork_files" ]; then
+    echo "No new non-fork files to index" >&2
+    return
+  fi
+
+  local count=$(echo "$non_fork_files" | wc -l | tr -d ' ')
   echo "Updating index ($count files)..." >&2
-  echo "$new_files" | xargs -I{} rg -N -H '"type":"(user|assistant)"' {} 2>/dev/null | \
-    cut -d: -f2- | \
-    jq -rs '
-      .[] |
+  echo "$non_fork_files" | xargs -I{} rg -N --json '"type":"(user|assistant)"' {} 2>/dev/null | \
+    jq -r '
+      select(.type == "match") |
+      .data.path.text as $filepath |
+      .data.lines.text | fromjson |
       select(.type == "user" or .type == "assistant") |
       (.message.content |
         if type == "array" then
@@ -108,7 +130,9 @@ update_index() {
       ) as $text |
       select($text | length > 10) |
       select($text | test("<ide_|\\[Request interrupted|New environment|API Error|Limit reached|Caveat:|<bash-|<function_calls|<invoke|</invoke|<parameter|</parameter|</function_calls") | not) |
-      [.sessionId // .agentId // "unknown", .timestamp, .type, $text, .cwd // "unknown"] | @tsv
+      # Use filename (without path) as session ID - this naturally deduplicates compacted sessions
+      ($filepath | split("/") | last | split(".jsonl") | first) as $session_id |
+      [$session_id, .timestamp, .type, $text, .cwd // "unknown"] | @tsv
     ' 2>/dev/null >> "$INDEX_FILE" || true
 }
 
