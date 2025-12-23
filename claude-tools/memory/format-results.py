@@ -58,8 +58,9 @@ def main():
     for session_id in session_stats.index:
         project = shorten_path(session_stats.loc[session_id, 'project_path'])
         count = session_stats.loc[session_id, 'count']
+        timestamp = session_stats.loc[session_id, 'timestamp']
 
-        print(f"{project} | {session_id} | {count} matches")
+        print(f"{project} | {session_id} | {count} matches | {timestamp}")
 
         # Get messages for this session (these already match the search query)
         session_msgs = df[df['session_id'] == session_id].head(messages)
