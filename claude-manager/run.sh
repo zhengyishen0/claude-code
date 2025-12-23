@@ -103,31 +103,10 @@ cmd_start() {
 
 $new_entries
 
-Process these events and take appropriate action.
+Process these events according to your system prompt.
 
-Available tools (use Bash tool to call):
-- $ENV_TOOL event [source] [description]
-- $ENV_TOOL event [source] [task-id:status] description
-
-Examples:
-  # Create new task
-  $ENV_TOOL event [agent] [task-002:ready] \"research domains for task-001\"
-
-  # Update task status
-  $ENV_TOOL event [agent] [task-001:done] \"completed successfully\"
-
-  # Add note
-  $ENV_TOOL event [agent] \"observation or decision\"
-
-Decision framework:
-- [task-X:active] → Break into 3-5 smaller tasks
-- [task-X:ready] → Check if ready to execute (check dependencies, capacity)
-- [task-X:blocked] → Analyze blocker, try to unblock
-- [task-X:done] → Check if unblocks other tasks
-- Other events → Assess if action needed
-
-Always explain your reasoning briefly, then take action.
-" --model sonnet --system-prompt "$(cat "$SYSTEM_PROMPT" 2>/dev/null || echo 'You are the manager agent. Process environment events and coordinate work.')"
+Environment tool: $ENV_TOOL
+" --model sonnet --system-prompt "$(cat "$SYSTEM_PROMPT")"
 
                 # Continue immediately (check again)
                 continue
