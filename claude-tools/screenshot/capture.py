@@ -167,57 +167,36 @@ def output_image_with_base64(image_path):
         print(f"Error encoding image: {e}", file=sys.stderr)
 
 
+def show_list_and_exit():
+    """Show list of available windows with usage and exit."""
+    windows = get_windows()
+
+    # Filter out unwanted windows
+    filtered_windows = []
+    for w in windows:
+        # Skip status bar items and other non-windows
+        if w['title'] == 'Item-0':
+            continue
+        # Skip system UI elements
+        if w['app'] in ['Dock', 'Control Center', 'Window Server']:
+            continue
+        filtered_windows.append(w)
+
+    # Print flat list
+    for w in filtered_windows:
+        title = w['title'] if w['title'] else '(no title)'
+        print(f"[{w['id']}] {w['app']} - {title}")
+
+    # Print usage
+    print("\nUsage: screenshot <app_name|window_id>")
+
+    sys.exit(0)
+
+
 def main():
+    # Show list if no arguments
     if len(sys.argv) < 2:
-        print("Usage: capture.py <app_name> [output_path]")
-        print("       capture.py <window_id> [output_path]")
-        print("       capture.py --list")
-        print("")
-        print("Captures screenshot and outputs JPEG with base64 data:")
-        print("  • Resized to max 1500px width (maintains aspect ratio)")
-        print("  • JPEG quality 80 (~400KB, optimized for LLM)")
-        print("  • Outputs file path + base64 encoded image data")
-        print("")
-        print("Examples:")
-        print("  capture.py 'Google Chrome'              # Capture Chrome window")
-        print("  capture.py 1411                         # Capture by window ID")
-        print("  capture.py 1411 /tmp/my-screenshot.jpg  # Custom output path")
-        print("  capture.py --list                       # List all windows")
-        sys.exit(1)
-
-    # List windows mode
-    if sys.argv[1] == '--list':
-        windows = get_windows()
-
-        # Filter out unwanted windows
-        filtered_windows = []
-        for w in windows:
-            # Skip status bar items and other non-windows
-            if w['title'] == 'Item-0':
-                continue
-            # Skip system UI elements
-            if w['app'] in ['Dock', 'Control Center', 'Window Server']:
-                continue
-            filtered_windows.append(w)
-
-        # Group by application
-        apps = {}
-        for w in filtered_windows:
-            app_name = w['app']
-            if app_name not in apps:
-                apps[app_name] = []
-            apps[app_name].append(w)
-
-        # Print grouped by application
-        for app_name in sorted(apps.keys()):
-            print(f"\n{app_name}")
-            print("-" * 80)
-            for w in apps[app_name]:
-                title = w['title'][:60] if w['title'] else '(no title)'
-                print(f"  [{w['id']:<10}] {app_name} - {title}")
-
-        print(f"\nNote: Only showing active tab title for each window")
-        sys.exit(0)
+        show_list_and_exit()
 
     # Parse arguments (simple: app_name/window_id and optional output_path)
     app_name = sys.argv[1]
@@ -243,9 +222,8 @@ def main():
         all_windows = get_windows()
         window_exists = any(w['id'] == window_id for w in all_windows)
         if not window_exists:
-            print(f"Error: Window ID {window_id} not found", file=sys.stderr)
-            print("Run with --list to see all windows", file=sys.stderr)
-            sys.exit(1)
+            print(f"Window ID {window_id} not found\n", file=sys.stderr)
+            show_list_and_exit()
 
         # Capture
         temp_png_path = output_path
@@ -271,12 +249,17 @@ def main():
         # Ensure output directory exists
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-        # Find window
+        # Check for multiple matches first
+        all_matches = find_all_windows_by_app(app_name)
+        if len(all_matches) > 1:
+            print(f"Multiple windows found matching '{app_name}'\n", file=sys.stderr)
+            show_list_and_exit()
+
+        # Find single window
         window = find_window_by_app(app_name)
         if not window:
-            print(f"Error: No window found matching '{app_name}'", file=sys.stderr)
-            print("Run with --list to see all windows", file=sys.stderr)
-            sys.exit(1)
+            print(f"No window found matching '{app_name}'\n", file=sys.stderr)
+            show_list_and_exit()
 
         # Capture
         temp_png_path = output_path
