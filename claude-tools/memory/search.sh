@@ -8,7 +8,9 @@ SESSION_DIR="$HOME/.claude/projects"
 INDEX_FILE="$HOME/.claude/memory-index.tsv"
 
 # Parse args
-LIMIT=5  # Default: 5 sessions
+SESSIONS=5    # Default: 5 sessions
+MESSAGES=5    # Default: 5 messages per session
+CONTEXT=300   # Default: 300 chars per snippet
 OR_QUERY=""
 AND_QUERY=""
 NOT_QUERY=""
@@ -16,8 +18,16 @@ RECALL_QUESTION=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --limit)
-      LIMIT="$2"
+    --sessions)
+      SESSIONS="$2"
+      shift 2
+      ;;
+    --messages)
+      MESSAGES="$2"
+      shift 2
+      ;;
+    --context)
+      CONTEXT="$2"
       shift 2
       ;;
     --and)
@@ -208,7 +218,7 @@ shorten_path() {
 # Normal search path: group by session, format output
 TIMING_FORMAT_START=$(date +%s.%N)
 FIRST_TERM="${OR_TERMS[0]}"
-OUTPUT=$(echo "$RESULTS" | python3 "$SCRIPT_DIR/format-results.py" "$LIMIT" "$FIRST_TERM")
+OUTPUT=$(echo "$RESULTS" | python3 "$SCRIPT_DIR/format-results.py" "$SESSIONS" "$MESSAGES" "$CONTEXT" "$FIRST_TERM")
 TIMING_FORMAT_END=$(date +%s.%N)
 echo "[TIMING] Format output: $(echo "$TIMING_FORMAT_END - $TIMING_FORMAT_START" | bc)s" >&2
 echo "[TIMING] TOTAL: $(echo "$TIMING_FORMAT_END - $TIMING_START" | bc)s" >&2
@@ -217,7 +227,7 @@ echo "" >&2
 # If --recall flag, extract session IDs and run parallel recall
 if [ -n "$RECALL_QUESTION" ]; then
   # Extract session IDs from output (format: ~/path | session-id)
-  SESSION_IDS=$(echo "$OUTPUT" | grep -E '^\S.* \| [0-9a-f-]{36}$' | sed 's/.* | //' | head -$LIMIT)
+  SESSION_IDS=$(echo "$OUTPUT" | grep -E '^\S.* \| [0-9a-f-]{36}$' | sed 's/.* | //' | head -$SESSIONS)
 
   if [ -z "$SESSION_IDS" ]; then
     echo "$OUTPUT"

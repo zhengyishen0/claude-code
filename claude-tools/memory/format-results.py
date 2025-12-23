@@ -11,12 +11,14 @@ def shorten_path(path):
     return path.replace(home, "~")
 
 def main():
-    if len(sys.argv) < 3:
-        print("Usage: format-results.py <limit> <query>", file=sys.stderr)
+    if len(sys.argv) < 5:
+        print("Usage: format-results.py <sessions> <messages> <context> <query>", file=sys.stderr)
         sys.exit(1)
 
-    limit = int(sys.argv[1])
-    query = sys.argv[2].lower()
+    sessions = int(sys.argv[1])
+    messages = int(sys.argv[2])
+    context = int(sys.argv[3])
+    query = sys.argv[4].lower()
 
     # Read TSV from stdin manually (text field may contain tabs)
     # Columns: session_id, timestamp, type, text, project_path
@@ -43,15 +45,15 @@ def main():
         'session_id': 'count'  # Count of matches
     }).rename(columns={'session_id': 'count'})
 
-    # Sort by latest timestamp descending
-    session_stats = session_stats.sort_values('timestamp', ascending=False)
+    # Sort by relevance (match count) first, then by recency (timestamp)
+    # This prioritizes sessions with more matches as they're likely more relevant
+    session_stats = session_stats.sort_values(['count', 'timestamp'], ascending=[False, False])
 
     # Limit to top N sessions
-    session_stats = session_stats.head(limit)
+    session_stats = session_stats.head(sessions)
 
     # Print results
     total_sessions = len(session_stats)
-    msg_limit = 3  # Show up to 3 messages per session
 
     for session_id in session_stats.index:
         project = shorten_path(session_stats.loc[session_id, 'project_path'])
@@ -60,20 +62,22 @@ def main():
         print(f"{project} | {session_id} | {count} matches")
 
         # Get messages for this session (these already match the search query)
-        session_msgs = df[df['session_id'] == session_id].head(msg_limit)
+        session_msgs = df[df['session_id'] == session_id].head(messages)
 
         for _, row in session_msgs.iterrows():
             role = "[user]" if row['type'] == 'user' else "[asst]"
             text = row['text']
 
             # Extract snippet around the query term if text is long
-            if len(text) > 200:
+            if len(text) > context:
                 text_lower = text.lower()
                 pos = text_lower.find(query)
                 if pos >= 0:
-                    # Show context around the match
-                    start = max(0, pos - 75)
-                    end = min(len(text), pos + 125)
+                    # Show context around the match (1/3 before, 2/3 after)
+                    before = context // 3
+                    after = context - before
+                    start = max(0, pos - before)
+                    end = min(len(text), pos + after)
                     snippet = text[start:end]
                     if start > 0:
                         snippet = "..." + snippet
@@ -81,12 +85,12 @@ def main():
                         snippet = snippet + "..."
                     text = snippet
                 else:
-                    text = text[:200] + "..."
+                    text = text[:context] + "..."
 
             print(f"{role} {text}")
 
-        if count > msg_limit:
-            print(f"... and {count - msg_limit} more")
+        if count > messages:
+            print(f"... and {count - messages} more matches")
 
         print()
 

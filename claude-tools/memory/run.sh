@@ -23,7 +23,9 @@ COMMANDS
         --not (optional)       NOT terms - exclude sessions with these
 
       Flags:
-        --limit N              Sessions to show (default: 5)
+        --sessions N           Sessions to show (default: 5)
+        --messages N           Messages per session (default: 5)
+        --context N            Characters per snippet (default: 300)
         --recall "question"    Ask matching sessions a question (parallel)
 
       Phrase support:
