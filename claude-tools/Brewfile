@@ -12,10 +12,9 @@ tap "anthropics/claude"
 
 # System tools
 brew "git"               # Version control (usually pre-installed on macOS)
-brew "chrome-cli"        # Chrome browser automation via CLI
 
 # Runtime with version constraint
-brew "node@18"           # Node.js 18.x for tool scripts (playwright, etc)
+brew "node@18"           # Node.js 18.x for tool scripts (CDP browser automation)
 
 # Claude CLI (cask, not formula)
 cask "claude-code"       # Claude Code CLI tool

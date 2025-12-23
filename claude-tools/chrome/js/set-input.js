@@ -1,5 +1,5 @@
 // set-input.js - Set input value by CSS selector (React-safe)
-// Usage: chrome-cli execute "var SELECTOR='...'; var VALUE='...'; $(cat set-input.js)"
+// Used internally by: chrome input SELECTOR VALUE
 
 (function() {
   var el = document.querySelector(SELECTOR);

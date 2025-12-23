@@ -46,7 +46,8 @@ async function cmdOpen(args) {
 }
 
 async function cmdExecute(args) {
-  const jsCode = args.join(' ');
+  // Take first arg as-is (preserves newlines when passed via shell)
+  const jsCode = args[0] || '';
   if (!jsCode) {
     console.error('Error: JavaScript code required');
     process.exit(1);
@@ -66,6 +67,10 @@ async function cmdExecute(args) {
 
     if (result.exceptionDetails) {
       console.error(`Error: ${result.exceptionDetails.text}`);
+      if (result.exceptionDetails.exception) {
+        console.error(`Exception: ${JSON.stringify(result.exceptionDetails.exception, null, 2)}`);
+      }
+      console.error(`Line: ${result.exceptionDetails.lineNumber}, Column: ${result.exceptionDetails.columnNumber}`);
       await client.close();
       process.exit(1);
     }

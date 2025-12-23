@@ -1,5 +1,5 @@
 // send-esc.js - Send ESC key to close dialogs/modals
-// Usage: chrome-cli execute '<code>'
+// Used internally by: chrome esc
 
 (function() {
   // Find the active/focused element or document

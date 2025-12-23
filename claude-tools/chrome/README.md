@@ -249,7 +249,7 @@ click '[btn]' + wait '[role=dialog]'           # Wait for specific element
    - Automatic diff when page state stays the same
    - Fallback to full snapshot when state changes (modals, navigation)
 
-4. **Use chrome tool commands** - Avoid `chrome-cli execute` unless truly needed
+4. **Use chrome tool commands** - Built-in commands handle most automation needs
 
 5. **Manual chaining for advanced cases** - Override auto-behavior when needed
    ```bash
@@ -288,18 +288,5 @@ input '#modal-input' 'value'
 
 # Close modal (auto-feedback confirms it closed)
 esc + wait '[role=dialog]' --gone + snapshot
-```
-
-## Raw chrome-cli Commands
-
-For direct browser control:
-
-```bash
-chrome-cli list tabs              # List all tabs
-chrome-cli info                   # Current tab info
-chrome-cli close [-t ID]          # Close tab
-chrome-cli open URL               # Open URL
-chrome-cli activate -t ID         # Switch to tab
-chrome-cli execute JS             # Execute JavaScript
 ```
 
