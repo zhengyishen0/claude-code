@@ -171,6 +171,20 @@ Run `claude-tools documentation` for full help.
 4. **No auth needed** - Only Context7 (library docs) requires API key, command and api work without authentication
 5. **Topic filtering** - Get only relevant snippets, not entire documentation dumps
 
+### environment
+Event log for persistent AI collaboration - track tasks, events, and notes with marker-based reading.
+
+Run `claude-tools environment` for full help.
+
+**Commands:** check, event
+
+**Key Principles:**
+1. **Marker-based reading** - Only returns unread events, tracks "read up to here"
+2. **Append-only log** - Events never deleted, accumulate over time
+3. **Simple text format** - Human-readable, grep-able, version-controllable
+4. **Two patterns** - Work items (with task-id:status) and events/notes (just description)
+5. **Self-contained** - Log file lives in tool directory
+
 ### memory
 Cross-session knowledge sharing for Claude Code - search and consult previous sessions like a hive mind.
 
