@@ -19,7 +19,9 @@ claude-tools memory search "OR terms" --and "AND terms" [--not "NOT terms"] [--r
 - `--not` (optional): NOT terms - exclude sessions containing these
 
 **Flags:**
-- `--limit N` - Sessions to return (default: 5)
+- `--sessions N` - Number of sessions to return (default: 5)
+- `--messages N` - Messages per session to show (default: 5)
+- `--context N` - Characters of context per snippet (default: 300)
 - `--recall "question"` - Ask matching sessions a question (parallel)
 
 **Phrase support:** Use underscore to join words: `reset_windows` matches "reset windows"
@@ -36,7 +38,7 @@ claude-tools memory search "chrome playwright" --and "click" --not "test"
 claude-tools memory search "ollama devstral" --and "slow error" --recall "What problems with local LLMs?"
 
 # Limit to 3 sessions
-claude-tools memory search "auth" --and "jwt" --recall "How was JWT implemented?" --limit 3
+claude-tools memory search "auth" --and "jwt" --recall "How was JWT implemented?" --sessions 3
 ```
 
 **Output format (search only):**
@@ -65,39 +67,125 @@ Consult a session by forking it and asking a question.
 
 **Syntax:**
 ```bash
-claude-tools memory recall [--new] "<session-id>:<question>" [...]
+claude-tools memory recall [--resume] "<session-id>:<question>" [...]
 ```
 
 **Flags:**
-- `--new`, `-n` - Force new fork (ignore existing fork)
+- `--resume`, `-r` - Reuse existing fork for follow-up questions
 
 **Examples:**
 ```bash
-# Single query
+# Single query (fresh fork by default)
 claude-tools memory recall "abc-123:How did you handle errors?"
 
-# Force new fork
-claude-tools memory recall --new "abc-123:Start fresh question"
+# Follow-up question (reuse existing fork)
+claude-tools memory recall --resume "abc-123:What about edge cases?"
 
-# Multiple queries (parallel)
+# Multiple queries (parallel, all fresh forks)
 claude-tools memory recall "session1:question1" "session2:question2"
 ```
 
 **Behavior:**
-- First query creates a fork with `--fork-session`
-- Follow-up questions reuse the same fork
-- Use `--new` to force a fresh fork
+- By default, creates a fresh fork for each recall (predictable, consistent answers)
+- Use `--resume` to reuse an existing fork for follow-up questions
+- Fresh forks prevent context pollution and ensure independent answers
 
 ## Key Principles
 
 1. **Incremental Indexing** - Full index on first run (~12s), incremental updates after (~0.5s)
 2. **Clean Output** - Filters noise (tool results, IDE events, system messages)
 3. **Grouped Results** - Messages grouped by session, sorted by recency
-4. **Fork Tracking** - Follow-up questions reuse same fork for context
+4. **Fresh Fork by Default** - Each recall creates a fresh fork for consistent, independent answers; use `--resume` for follow-up questions
 5. **Parallel Recall** - Multiple sessions can be consulted in parallel
 6. **Cross-Project Recall** - Sessions from any project can be recalled; resolves original project directory automatically
 7. **Search + Recall** - Use `--recall` to search and ask in one step
 8. **Explicit Flag Syntax** - `--and` and `--not` flags make query intent clear
+
+## Two-Quality Framework for Effective Memory Retrieval
+
+Successful memory recall requires both **query quality** (finding the right sessions) and **question quality** (getting relevant answers).
+
+### 1. Query Quality (Search)
+
+**Goal:** Find sessions that actually contain the information you need.
+
+**Strategy:**
+- **OR terms** (first argument): Broad synonyms and alternatives to maximize coverage
+  - Example: `"asus laptop machine device"` - cast a wide net
+- **AND terms** (`--and` flag): Specific terms that must appear to narrow results
+  - Example: `--and "spec hardware gpu"` - at least one must match
+- **NOT terms** (`--not` flag): Exclude irrelevant sessions
+  - Example: `--not "test mock"` - filter out test-related sessions
+
+**Good query example:**
+```bash
+# Looking for laptop specs
+claude-tools memory search "asus laptop machine" --and "spec hardware ram cpu gpu"
+```
+
+**Bad query example:**
+```bash
+# Too narrow - might miss sessions that use different words
+claude-tools memory search "asus" --and "specification"
+```
+
+### 2. Question Quality (Recall)
+
+**Goal:** Ask questions that lead to relevant, specific answers.
+
+**Key principles:**
+- **Be explicit about domain** - Don't assume context carries over
+- **Use specific terminology** - "hardware specs" not just "specs"
+- **State what you're looking for** - List specific items you want
+
+**Good question example:**
+```bash
+# Explicit, domain-specific, lists what we want
+claude-tools memory recall "abc-123:What hardware specifications did the user mention about their ASUS laptop - specifically model name, GPU type, RAM amount, CPU, and ability to run LLMs locally?"
+```
+
+**Bad question example:**
+```bash
+# Vague - "specs" could mean anything (tool specs, API specs, etc.)
+claude-tools memory recall "abc-123:What are the complete specs?"
+```
+
+**Why question quality matters:**
+- The forked session sees your question without the current conversation context
+- Vague terms like "specs" can be misinterpreted based on what the session discusses
+- Example: A session about browser automation tools might interpret "specs" as "tool specifications" rather than "hardware specifications"
+
+### 3. When to Use Each Approach
+
+**Search only** (no recall):
+- Exploratory: Want to see what sessions exist
+- Quick reference: Just need to confirm something was discussed
+- Multiple relevant sessions: Want to manually pick which one to consult
+
+**Search + selective recall** (two-step):
+- Need to review search results first
+- Want to ask different questions to different sessions
+- Iterative refinement: Adjust questions based on initial results
+
+**Search + parallel recall** (--recall flag):
+- Know exactly what you want to ask
+- Same question applicable to all matching sessions
+- Want fastest results (one command does everything)
+- Most common use case
+
+**Example decision tree:**
+```bash
+# "I know ASUS was mentioned somewhere, what sessions was that?"
+claude-tools memory search "asus laptop" --and "spec"
+
+# "I need the actual hardware specs that were mentioned"
+claude-tools memory search "asus laptop" --and "spec hardware" \
+  --recall "What hardware specs: model, GPU, RAM, CPU?"
+
+# "I found the right session, now I have follow-up questions"
+claude-tools memory recall "abc-123:What was the RAM?"
+claude-tools memory recall --resume "abc-123:And the GPU?"  # reuse fork
+```
 
 ## Technical Details
 
@@ -148,11 +236,11 @@ claude-tools memory search "asus laptop" --and "spec" --recall "What are the spe
 claude-tools memory search "asus laptop machine" --and "spec"
 # Returns: ~/Codes/project | abc-123, ...
 
-# 2. Found a promising session? Ask it directly
+# 2. Found a promising session? Ask it directly (creates fresh fork)
 claude-tools memory recall "abc-123:What ASUS laptop specs did the user mention?"
 
-# 3. Follow-up questions reuse the same fork
-claude-tools memory recall "abc-123:What was the RAM size?"
+# 3. Follow-up questions? Use --resume to reuse the same fork
+claude-tools memory recall --resume "abc-123:What was the RAM size?"
 ```
 
 **Parallel recall for multiple sessions:**

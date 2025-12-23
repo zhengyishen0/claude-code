@@ -182,7 +182,7 @@ Run `claude-tools memory` for full help.
 1. **Incremental Indexing** - Full index on first run (~12s), incremental updates after (~0.5s)
 2. **Clean Output** - Filters noise (tool results, IDE events, system messages)
 3. **Grouped Results** - Messages grouped by session, sorted by recency
-4. **Fork Tracking** - Follow-up questions reuse same fork for context
+4. **Fresh Fork by Default** - Each recall creates a fresh fork for consistent, independent answers; use `--resume` for follow-up questions
 5. **Parallel Recall** - Multiple sessions can be consulted in parallel
 6. **Cross-Project Recall** - Sessions from any project can be recalled; resolves original project directory automatically
 7. **Search + Recall** - Use `--recall` to search and ask in one step
