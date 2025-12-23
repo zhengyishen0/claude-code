@@ -226,8 +226,8 @@ echo "" >&2
 
 # If --recall flag, extract session IDs and run parallel recall
 if [ -n "$RECALL_QUESTION" ]; then
-  # Extract session IDs from output (format: ~/path | session-id)
-  SESSION_IDS=$(echo "$OUTPUT" | grep -E '^\S.* \| [0-9a-f-]{36}$' | sed 's/.* | //' | head -$SESSIONS)
+  # Extract session IDs from output (format: ~/path | session-id | N matches | timestamp)
+  SESSION_IDS=$(echo "$OUTPUT" | grep -E '^\S.* \| [0-9a-f-]{36} \|' | sed 's/.* | \([0-9a-f-]*\) |.*/\1/' | head -$SESSIONS)
 
   if [ -z "$SESSION_IDS" ]; then
     echo "$OUTPUT"
