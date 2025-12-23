@@ -43,12 +43,27 @@ def get_windows():
 
 
 def find_window_by_app(app_name):
-    """Find first window matching application name (case-insensitive)."""
+    """Find first window matching application name with fuzzy matching (case-insensitive)."""
     windows = get_windows()
     app_lower = app_name.lower()
 
+    # First try exact substring match
     for window in windows:
         if app_lower in window['app'].lower():
+            return window
+
+    # Then try fuzzy match: all characters in order
+    for window in windows:
+        window_name = window['app'].lower()
+        # Check if all characters of app_name appear in order in window_name
+        pos = 0
+        for char in app_lower:
+            pos = window_name.find(char, pos)
+            if pos == -1:
+                break
+            pos += 1
+        else:
+            # All characters found in order
             return window
 
     return None
@@ -199,7 +214,7 @@ def main():
             print("-" * 80)
             for w in apps[app_name]:
                 title = w['title'][:60] if w['title'] else '(no title)'
-                print(f"  [{w['id']:<10}] {title}")
+                print(f"  [{w['id']:<10}] {app_name} - {title}")
 
         print(f"\nNote: Only showing active tab title for each window")
         sys.exit(0)
