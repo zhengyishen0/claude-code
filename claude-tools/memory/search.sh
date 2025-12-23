@@ -1,6 +1,6 @@
 #!/bin/bash
-# Search Claude sessions with boolean query support
-# Syntax: memory search "chrome AND click" [--recall "question"]
+# Search Claude sessions with incremental indexing
+# Syntax: memory search "OR terms" --and "AND terms" [--not "NOT terms"] [--recall "question"]
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,7 +11,9 @@ INDEX_FILE="$HOME/.claude/memory-index.tsv"
 SESSIONS=5    # Default: 5 sessions
 MESSAGES=5    # Default: 5 messages per session
 CONTEXT=300   # Default: 300 chars per snippet
-QUERY=""
+OR_QUERY=""
+AND_QUERY=""
+NOT_QUERY=""
 RECALL_QUESTION=""
 
 while [[ $# -gt 0 ]]; do
@@ -28,6 +30,14 @@ while [[ $# -gt 0 ]]; do
       CONTEXT="$2"
       shift 2
       ;;
+    --and)
+      AND_QUERY="$2"
+      shift 2
+      ;;
+    --not)
+      NOT_QUERY="$2"
+      shift 2
+      ;;
     --recall|-r)
       RECALL_QUESTION="$2"
       shift 2
@@ -37,24 +47,32 @@ while [[ $# -gt 0 ]]; do
       exit 1
       ;;
     *)
-      QUERY="$1"
+      OR_QUERY="$1"
       shift
       ;;
   esac
 done
 
-# Validation: query is required
-if [ -z "$QUERY" ]; then
-  echo "Error: Missing search query" >&2
+# Validation: both OR and AND are required
+if [ -z "$OR_QUERY" ]; then
+  echo "Error: Missing OR terms (first argument)" >&2
   echo "" >&2
-  echo "Usage: memory search \"QUERY\" [--recall \"question\"]" >&2
+  echo "Usage: memory search \"OR terms\" --and \"AND terms\" [--not \"NOT terms\"] [--recall \"question\"]" >&2
   echo "" >&2
-  echo "Query syntax:" >&2
-  echo "  Simple: memory search \"chrome click\"" >&2
-  echo "  Boolean: memory search \"chrome AND click\"" >&2
-  echo "  Complex: memory search \"(chrome OR playwright) AND click NOT test\"" >&2
+  echo "Examples:" >&2
+  echo "  memory search \"asus laptop\" --and \"spec\"" >&2
+  echo "  memory search \"chrome playwright\" --and \"click\" --recall \"How to fix click issues?\"" >&2
+  exit 1
+fi
+
+if [ -z "$AND_QUERY" ]; then
+  echo "Error: Missing --and flag (required)" >&2
   echo "" >&2
-  echo "Operators: AND, OR, NOT (case-sensitive)" >&2
+  echo "Usage: memory search \"OR terms\" --and \"AND terms\" [--not \"NOT terms\"] [--recall \"question\"]" >&2
+  echo "" >&2
+  echo "Examples:" >&2
+  echo "  memory search \"asus laptop\" --and \"spec\"" >&2
+  echo "  memory search \"chrome playwright\" --and \"click\" --recall \"How to fix click issues?\"" >&2
   exit 1
 fi
 
@@ -141,36 +159,52 @@ fi
 TIMING_INDEX=$(date +%s.%N)
 echo "[TIMING] Index check: $(echo "$TIMING_INDEX - $TIMING_START" | bc)s" >&2
 
-# Execute search
-# Strategy: Extract all terms and use ripgrep for initial filtering
-# This is fast even on large indices
+# Convert underscore phrases to regex: "Tesla_Model_3" -> "Tesla.Model.3"
+to_pattern() {
+  echo "$1" | sed 's/_/./g'
+}
 
-# Extract unique terms from query (remove operators and parentheses)
-all_terms=$(echo "$QUERY" | sed 's/\bAND\b//g; s/\bOR\b//g; s/\bNOT\b//g; s/[()]//g' | tr ' ' '\n' | grep -v '^$')
+# Parse space-separated terms into arrays
+read -ra OR_TERMS <<< "$OR_QUERY"
+read -ra AND_TERMS <<< "$AND_QUERY"
+read -ra NOT_TERMS <<< "$NOT_QUERY"
 
-if [ -z "$all_terms" ]; then
-  echo "Error: No search terms in query" >&2
-  exit 1
-fi
+# Build OR pattern from first arg terms
+OR_PATTERNS=()
+for term in "${OR_TERMS[@]}"; do
+  OR_PATTERNS+=("$(to_pattern "$term")")
+done
+OR_PATTERN=$(IFS='|'; echo "${OR_PATTERNS[*]}")
+[[ "$OR_PATTERN" == *"|"* ]] && OR_PATTERN="($OR_PATTERN)"
 
-# Build ripgrep alternation pattern (all terms with | operator)
-rg_pattern=$(echo "$all_terms" | sed 's/_/./g' | paste -sd '|')
-[[ "$rg_pattern" == *"|"* ]] && rg_pattern="($rg_pattern)" || true
+# Build AND pattern (must match at least one of these)
+AND_PATTERNS=()
+for term in "${AND_TERMS[@]}"; do
+  AND_PATTERNS+=("$(to_pattern "$term")")
+done
+AND_PATTERN=$(IFS='|'; echo "${AND_PATTERNS[*]}")
+[[ "$AND_PATTERN" == *"|"* ]] && AND_PATTERN="($AND_PATTERN)"
 
-# Execute search and get results
+# Build search pipeline: OR first, then AND filter, then NOT filters
+CMD="rg -i '$OR_PATTERN' '$INDEX_FILE' | rg -i '$AND_PATTERN'"
+for term in "${NOT_TERMS[@]}"; do
+  pattern=$(to_pattern "$term")
+  CMD="$CMD | grep -iv '$pattern'"
+done
+
+# Search, dedup, group by session
 TIMING_SEARCH_START=$(date +%s.%N)
-RESULTS=$(rg -i "$rg_pattern" "$INDEX_FILE" 2>/dev/null | sort -u || true)
+RESULTS=$(eval "$CMD" 2>/dev/null | sort -u || true)
 TIMING_SEARCH_END=$(date +%s.%N)
 echo "[TIMING] Search + filter: $(echo "$TIMING_SEARCH_END - $TIMING_SEARCH_START" | bc)s" >&2
 
 if [ -z "$RESULTS" ]; then
   echo "No matches found."
   echo ""
-  echo "Query: $QUERY"
+  echo "Query: OR($OR_QUERY) AND($AND_QUERY)${NOT_QUERY:+ NOT($NOT_QUERY)}"
   echo ""
   echo "Tips:"
-  echo "  • Check spelling and capitalization"
-  echo "  • Try simpler terms or add synonyms"
+  echo "  • Add more OR synonyms to broaden search"
   echo "  • Use underscore for phrases: reset_windows"
   exit 0
 fi
@@ -180,11 +214,10 @@ shorten_path() {
   echo "$1" | sed "s|^$HOME|~|"
 }
 
-# Extract first term for output formatting
-FIRST_TERM=$(echo "$QUERY" | sed 's/\bAND\b.*//; s/\bOR\b.*//; s/\bNOT\b.*//; s/[()]//g' | awk '{print $1}')
 
 # Normal search path: group by session, format output
 TIMING_FORMAT_START=$(date +%s.%N)
+FIRST_TERM="${OR_TERMS[0]}"
 OUTPUT=$(echo "$RESULTS" | python3 "$SCRIPT_DIR/format-results.py" "$SESSIONS" "$MESSAGES" "$CONTEXT" "$FIRST_TERM")
 TIMING_FORMAT_END=$(date +%s.%N)
 echo "[TIMING] Format output: $(echo "$TIMING_FORMAT_END - $TIMING_FORMAT_START" | bc)s" >&2
