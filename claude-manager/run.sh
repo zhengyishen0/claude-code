@@ -93,7 +93,7 @@ cmd_start() {
 
         while true; do
             # Check for new events
-            local new_entries=$("$ENV_TOOL" check)
+            local new_entries=$("$ENV_TOOL" check "manager-$session_id")
 
             if [ -n "$new_entries" ]; then
                 # Has new entries - process with Claude

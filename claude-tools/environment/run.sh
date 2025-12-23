@@ -13,40 +13,54 @@ MARKER_LINE="=================READ-MARKER================="
 #──────────────────────────────────────────────────────────────
 
 cmd_check() {
+    local agent_id="${1:-}"
+
     # Ensure log exists
     if [ ! -f "$ENV_LOG" ]; then
         touch "$ENV_LOG"
         echo "$MARKER_LINE" >> "$ENV_LOG"
-        return 0
     fi
 
-    # Find marker line number
-    marker_line_num=$(grep -n "^$MARKER_LINE$" "$ENV_LOG" | cut -d: -f1 || echo "0")
+    # Find LAST marker line number
+    marker_line_num=$(grep -n "^$MARKER_LINE$" "$ENV_LOG" | tail -1 | cut -d: -f1 || echo "0")
 
     if [ "$marker_line_num" = "0" ]; then
         # No marker found, add it at the end
         echo "$MARKER_LINE" >> "$ENV_LOG"
-        return 0
+        marker_line_num=$(wc -l < "$ENV_LOG" | tr -d ' ')
     fi
 
-    # Read everything AFTER marker (unread events)
+    # Read everything AFTER last marker (unread events)
     total_lines=$(wc -l < "$ENV_LOG" | tr -d ' ')
     lines_after_marker=$((total_lines - marker_line_num))
 
-    if [ "$lines_after_marker" -le 0 ]; then
-        # Nothing after marker
-        return 0
+    local event_count=0
+    local new_entries=""
+
+    if [ "$lines_after_marker" -gt 0 ]; then
+        # Get unread entries (everything after last marker)
+        new_entries=$(tail -n "$lines_after_marker" "$ENV_LOG")
+        # Count events (non-empty lines)
+        event_count=$(echo "$new_entries" | grep -c '^' || echo "0")
     fi
 
-    # Get unread entries (everything after marker)
-    new_entries=$(tail -n "$lines_after_marker" "$ENV_LOG")
+    # ALWAYS add read event (even if event_count is 0)
+    timestamp=$(date -u -Iseconds)
+    if [ -n "$agent_id" ]; then
+        echo "[$timestamp] [agent $agent_id] checked all $event_count events above" >> "$ENV_LOG"
+    else
+        echo "[$timestamp] [agent] checked all $event_count events above" >> "$ENV_LOG"
+    fi
 
-    # Move marker to end (delete old marker, add at end)
-    sed -i '' "/^$MARKER_LINE$/d" "$ENV_LOG"
+    # ALWAYS add new marker at end
     echo "$MARKER_LINE" >> "$ENV_LOG"
 
-    # Output new entries
-    echo "$new_entries"
+    # Output
+    if [ "$event_count" -eq 0 ]; then
+        echo "no new events"
+    else
+        echo "$new_entries"
+    fi
 }
 
 cmd_event() {
@@ -78,12 +92,16 @@ cmd_help() {
 environment - Event log tool
 
 USAGE:
-    environment check              Read new events since marker
+    environment check [agent-id]   Read new events since marker
     environment event <args>       Add event to log
 
 EXAMPLES:
-    # Check for new events
+    # Check for new events (no agent-id)
     environment check
+    # Returns: events or "no new events"
+
+    # Check with specific agent ID
+    environment check manager-abc123
 
     # Add task event
     environment event [agent] [task-001:active] "build website"
@@ -101,7 +119,12 @@ FORMAT:
 SOURCES:
     user, agent, system, fs, webhook, cron
 
-The READ-MARKER line separates read from unread events.
+BEHAVIOR:
+    Every check call ALWAYS adds:
+    1. Read event: "[timestamp] [agent xxx] checked all N events above"
+    2. Read marker: "=================READ-MARKER================="
+
+    This creates a complete audit trail even when no events are read (N=0).
 EOF
 }
 
@@ -111,7 +134,8 @@ EOF
 
 case "${1:-help}" in
     check)
-        cmd_check
+        shift
+        cmd_check "$@"
         ;;
     event)
         shift
