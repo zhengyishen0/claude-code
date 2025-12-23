@@ -186,7 +186,7 @@ Run `claude-tools memory` for full help.
 5. **Parallel Recall** - Multiple sessions can be consulted in parallel
 6. **Cross-Project Recall** - Sessions from any project can be recalled; resolves original project directory automatically
 7. **Search + Recall** - Use `--recall` to search and ask in one step
-8. **Explicit Flag Syntax** - `--and` and `--not` flags make query intent clear
+8. **Clear Boolean Logic** - `--require` (ALL must match) and `--exclude` (NONE can match) flags make intent explicit
 
 ### playwright
 Cross-platform browser automation with Playwright, wrapped in a shell-friendly CLI similar to the chrome tool.

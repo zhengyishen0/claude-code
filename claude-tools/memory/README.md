@@ -10,13 +10,13 @@ Search all sessions for matching content with boolean logic.
 
 **Syntax:**
 ```bash
-claude-tools memory search "OR terms" --and "AND terms" [--not "NOT terms"] [--recall "question"] [--limit N]
+claude-tools memory search "OR terms" --require "required terms" [--exclude "excluded terms"] [--recall "question"]
 ```
 
 **Arguments:**
 - First arg (required): OR terms - broaden search with synonyms/alternatives
-- `--and` (required): AND terms - narrow by requiring at least one of these
-- `--not` (optional): NOT terms - exclude sessions containing these
+- `--require` (required): ALL of these terms must be present (AND logic)
+- `--exclude` (optional): NONE of these terms can be present (NOT logic)
 
 **Flags:**
 - `--sessions N` - Number of sessions to return (default: 5)
@@ -26,19 +26,27 @@ claude-tools memory search "OR terms" --and "AND terms" [--not "NOT terms"] [--r
 
 **Phrase support:** Use underscore to join words: `reset_windows` matches "reset windows"
 
+**Boolean Logic:**
+- OR terms (first arg): Match ANY of these → `"chrome playwright"` finds sessions with chrome OR playwright
+- --require terms: Match ALL of these → `--require "click selector"` requires BOTH click AND selector
+- --exclude terms: Match NONE of these → `--exclude "test mock"` excludes sessions with test OR mock
+
 **Examples:**
 ```bash
-# Basic search: find ASUS-related sessions that mention specs
-claude-tools memory search "asus laptop machine" --and "spec"
+# Basic search: find sessions about (chrome OR playwright) that mention click
+claude-tools memory search "chrome playwright" --require "click"
 
-# With NOT to exclude test sessions
-claude-tools memory search "chrome playwright" --and "click" --not "test"
+# Require multiple terms: must have ALL of spec, hardware, AND ram
+claude-tools memory search "laptop asus" --require "spec hardware ram"
+
+# Exclude test sessions
+claude-tools memory search "chrome playwright" --require "click" --exclude "test mock"
 
 # Search + recall in one step
-claude-tools memory search "ollama devstral" --and "slow error" --recall "What problems with local LLMs?"
+claude-tools memory search "ollama devstral" --require "slow error" --recall "What problems with local LLMs?"
 
 # Limit to 3 sessions
-claude-tools memory search "auth" --and "jwt" --recall "How was JWT implemented?" --sessions 3
+claude-tools memory search "auth" --require "jwt" --recall "How was JWT implemented?" --sessions 3
 ```
 
 **Output format (search only):**
@@ -99,7 +107,7 @@ claude-tools memory recall "session1:question1" "session2:question2"
 5. **Parallel Recall** - Multiple sessions can be consulted in parallel
 6. **Cross-Project Recall** - Sessions from any project can be recalled; resolves original project directory automatically
 7. **Search + Recall** - Use `--recall` to search and ask in one step
-8. **Explicit Flag Syntax** - `--and` and `--not` flags make query intent clear
+8. **Clear Boolean Logic** - `--require` (ALL must match) and `--exclude` (NONE can match) flags make intent explicit
 
 ## Two-Quality Framework for Effective Memory Retrieval
 
@@ -112,21 +120,21 @@ Successful memory recall requires both **query quality** (finding the right sess
 **Strategy:**
 - **OR terms** (first argument): Broad synonyms and alternatives to maximize coverage
   - Example: `"asus laptop machine device"` - cast a wide net
-- **AND terms** (`--and` flag): Specific terms that must appear to narrow results
-  - Example: `--and "spec hardware gpu"` - at least one must match
-- **NOT terms** (`--not` flag): Exclude irrelevant sessions
-  - Example: `--not "test mock"` - filter out test-related sessions
+- **REQUIRE terms** (`--require` flag): Specific terms that ALL must be present
+  - Example: `--require "spec hardware"` - session must have BOTH spec AND hardware
+- **EXCLUDE terms** (`--exclude` flag): Terms that should NOT appear
+  - Example: `--exclude "test mock"` - exclude if either test OR mock appears
 
 **Good query example:**
 ```bash
-# Looking for laptop specs
-claude-tools memory search "asus laptop machine" --and "spec hardware ram cpu gpu"
+# Looking for laptop specs - requires BOTH spec AND hardware to appear
+claude-tools memory search "asus laptop machine" --require "spec hardware"
 ```
 
 **Bad query example:**
 ```bash
-# Too narrow - might miss sessions that use different words
-claude-tools memory search "asus" --and "specification"
+# Too narrow OR terms, too many required terms
+claude-tools memory search "asus" --require "specification hardware ram cpu gpu"
 ```
 
 ### 2. Question Quality (Recall)
@@ -176,10 +184,10 @@ claude-tools memory recall "abc-123:What are the complete specs?"
 **Example decision tree:**
 ```bash
 # "I know ASUS was mentioned somewhere, what sessions was that?"
-claude-tools memory search "asus laptop" --and "spec"
+claude-tools memory search "asus laptop" --require "spec"
 
-# "I need the actual hardware specs that were mentioned"
-claude-tools memory search "asus laptop" --and "spec hardware" \
+# "I need the actual hardware specs - must have BOTH spec AND hardware mentioned"
+claude-tools memory search "asus laptop" --require "spec hardware" \
   --recall "What hardware specs: model, GPU, RAM, CPU?"
 
 # "I found the right session, now I have follow-up questions"
@@ -201,10 +209,10 @@ claude-tools memory recall --resume "abc-123:And the GPU?"  # reuse fork
 
 **Search pipeline:**
 ```bash
-# Query: memory search "chrome playwright" --and "click" --not "test"
-# Parsed as: OR(chrome, playwright) AND(click) NOT(test)
+# Query: memory search "chrome playwright" --require "click selector" --exclude "test"
+# Parsed as: OR(chrome, playwright) REQUIRE(click AND selector) EXCLUDE(test)
 # Becomes:
-rg -i '(chrome|playwright)' index.tsv | rg -i 'click' | grep -iv 'test'
+rg -i '(chrome|playwright)' index.tsv | rg -i 'click' | rg -i 'selector' | grep -iv 'test'
 
 # Phrase: "reset_windows" -> "reset.windows" (regex matches any separator)
 ```
@@ -227,13 +235,13 @@ When recalling a session from a different project, the tool:
 
 **Search + recall in one step:**
 ```bash
-claude-tools memory search "asus laptop" --and "spec" --recall "What are the specs?"
+claude-tools memory search "asus laptop" --require "spec" --recall "What are the specs?"
 ```
 
 **Two-step workflow:**
 ```bash
-# 1. Search with OR (broaden) and AND (narrow)
-claude-tools memory search "asus laptop machine" --and "spec"
+# 1. Search with OR (broaden) and REQUIRE (narrow)
+claude-tools memory search "asus laptop machine" --require "spec"
 # Returns: ~/Codes/project | abc-123, ...
 
 # 2. Found a promising session? Ask it directly (creates fresh fork)

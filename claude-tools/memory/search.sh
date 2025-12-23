@@ -1,6 +1,6 @@
 #!/bin/bash
 # Search Claude sessions with incremental indexing
-# Syntax: memory search "OR terms" --and "AND terms" [--not "NOT terms"] [--recall "question"]
+# Syntax: memory search "OR terms" --require "required terms" [--exclude "excluded terms"] [--recall "question"]
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -12,8 +12,8 @@ SESSIONS=5    # Default: 5 sessions
 MESSAGES=5    # Default: 5 messages per session
 CONTEXT=300   # Default: 300 chars per snippet
 OR_QUERY=""
-AND_QUERY=""
-NOT_QUERY=""
+REQUIRE_QUERY=""
+EXCLUDE_QUERY=""
 RECALL_QUESTION=""
 
 while [[ $# -gt 0 ]]; do
@@ -30,12 +30,12 @@ while [[ $# -gt 0 ]]; do
       CONTEXT="$2"
       shift 2
       ;;
-    --and)
-      AND_QUERY="$2"
+    --require)
+      REQUIRE_QUERY="$2"
       shift 2
       ;;
-    --not)
-      NOT_QUERY="$2"
+    --exclude)
+      EXCLUDE_QUERY="$2"
       shift 2
       ;;
     --recall|-r)
@@ -53,26 +53,26 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Validation: both OR and AND are required
+# Validation: both OR and REQUIRE are required
 if [ -z "$OR_QUERY" ]; then
   echo "Error: Missing OR terms (first argument)" >&2
   echo "" >&2
-  echo "Usage: memory search \"OR terms\" --and \"AND terms\" [--not \"NOT terms\"] [--recall \"question\"]" >&2
+  echo "Usage: memory search \"OR terms\" --require \"required terms\" [--exclude \"excluded terms\"] [--recall \"question\"]" >&2
   echo "" >&2
   echo "Examples:" >&2
-  echo "  memory search \"asus laptop\" --and \"spec\"" >&2
-  echo "  memory search \"chrome playwright\" --and \"click\" --recall \"How to fix click issues?\"" >&2
+  echo "  memory search \"asus laptop\" --require \"spec\"" >&2
+  echo "  memory search \"chrome playwright\" --require \"click\" --recall \"How to fix click issues?\"" >&2
   exit 1
 fi
 
-if [ -z "$AND_QUERY" ]; then
-  echo "Error: Missing --and flag (required)" >&2
+if [ -z "$REQUIRE_QUERY" ]; then
+  echo "Error: Missing --require flag (required)" >&2
   echo "" >&2
-  echo "Usage: memory search \"OR terms\" --and \"AND terms\" [--not \"NOT terms\"] [--recall \"question\"]" >&2
+  echo "Usage: memory search \"OR terms\" --require \"required terms\" [--exclude \"excluded terms\"] [--recall \"question\"]" >&2
   echo "" >&2
   echo "Examples:" >&2
-  echo "  memory search \"asus laptop\" --and \"spec\"" >&2
-  echo "  memory search \"chrome playwright\" --and \"click\" --recall \"How to fix click issues?\"" >&2
+  echo "  memory search \"asus laptop\" --require \"spec\"" >&2
+  echo "  memory search \"chrome playwright\" --require \"click\" --recall \"How to fix click issues?\"" >&2
   exit 1
 fi
 
@@ -166,8 +166,8 @@ to_pattern() {
 
 # Parse space-separated terms into arrays
 read -ra OR_TERMS <<< "$OR_QUERY"
-read -ra AND_TERMS <<< "$AND_QUERY"
-read -ra NOT_TERMS <<< "$NOT_QUERY"
+read -ra REQUIRE_TERMS <<< "$REQUIRE_QUERY"
+read -ra EXCLUDE_TERMS <<< "$EXCLUDE_QUERY"
 
 # Build OR pattern from first arg terms
 OR_PATTERNS=()
@@ -177,17 +177,17 @@ done
 OR_PATTERN=$(IFS='|'; echo "${OR_PATTERNS[*]}")
 [[ "$OR_PATTERN" == *"|"* ]] && OR_PATTERN="($OR_PATTERN)"
 
-# Build AND pattern (must match at least one of these)
-AND_PATTERNS=()
-for term in "${AND_TERMS[@]}"; do
-  AND_PATTERNS+=("$(to_pattern "$term")")
-done
-AND_PATTERN=$(IFS='|'; echo "${AND_PATTERNS[*]}")
-[[ "$AND_PATTERN" == *"|"* ]] && AND_PATTERN="($AND_PATTERN)"
+# Build search pipeline: OR first, then REQUIRE filters (each term must match), then EXCLUDE filters
+CMD="rg -i '$OR_PATTERN' '$INDEX_FILE'"
 
-# Build search pipeline: OR first, then AND filter, then NOT filters
-CMD="rg -i '$OR_PATTERN' '$INDEX_FILE' | rg -i '$AND_PATTERN'"
-for term in "${NOT_TERMS[@]}"; do
+# Each required term creates its own filter (AND logic)
+for term in "${REQUIRE_TERMS[@]}"; do
+  pattern=$(to_pattern "$term")
+  CMD="$CMD | rg -i '$pattern'"
+done
+
+# Each excluded term creates its own filter
+for term in "${EXCLUDE_TERMS[@]}"; do
   pattern=$(to_pattern "$term")
   CMD="$CMD | grep -iv '$pattern'"
 done
@@ -201,10 +201,11 @@ echo "[TIMING] Search + filter: $(echo "$TIMING_SEARCH_END - $TIMING_SEARCH_STAR
 if [ -z "$RESULTS" ]; then
   echo "No matches found."
   echo ""
-  echo "Query: OR($OR_QUERY) AND($AND_QUERY)${NOT_QUERY:+ NOT($NOT_QUERY)}"
+  echo "Query: OR($OR_QUERY) REQUIRE($REQUIRE_QUERY)${EXCLUDE_QUERY:+ EXCLUDE($EXCLUDE_QUERY)}"
   echo ""
   echo "Tips:"
   echo "  • Add more OR synonyms to broaden search"
+  echo "  • Use fewer --require terms if too restrictive"
   echo "  • Use underscore for phrases: reset_windows"
   exit 0
 fi
