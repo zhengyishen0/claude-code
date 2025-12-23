@@ -188,13 +188,6 @@ Run `claude-tools memory` for full help.
 7. **Search + Recall** - Use `--recall` to search and ask in one step
 8. **Clear Boolean Logic** - `--require` (ALL must match) and `--exclude` (NONE can match) flags make intent explicit
 
-### playwright
-Cross-platform browser automation with Playwright, wrapped in a shell-friendly CLI similar to the chrome tool.
-
-Run `claude-tools playwright` for full help.
-
-**Commands:** open, recon, click, input, wait, close
-
 ### screenshot
 Background window capture for macOS with automatic dual-version output
 
