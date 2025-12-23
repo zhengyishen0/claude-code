@@ -115,12 +115,12 @@ Environment tool: $ENV_TOOL
                 # No new entries - sleep
                 if [ "$was_recently_active" = true ]; then
                     # First idle - short sleep
-                    "$ENV_TOOL" event '[system]' "[sleep:${SLEEP_ACTIVE}s]" "manager sleeping (first idle)"
+                    "$ENV_TOOL" event '[system]' "[sleep:short]" "manager sleeping ${SLEEP_ACTIVE}s"
                     sleep $SLEEP_ACTIVE
                     was_recently_active=false
                 else
                     # Still idle - long sleep
-                    "$ENV_TOOL" event '[system]' "[sleep:${SLEEP_IDLE}s]" "manager sleeping (still idle)"
+                    "$ENV_TOOL" event '[system]' "[sleep:long]" "manager sleeping ${SLEEP_IDLE}s"
                     sleep $SLEEP_IDLE
                 fi
             fi

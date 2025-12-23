@@ -105,7 +105,7 @@ Task cannot proceed.
 
 **System events ([system]):**
 - Manager lifecycle (started/stopped)
-- Sleep events ([sleep:Ns]) - ignore these, they're for audit trail only
+- Sleep events ([sleep:short] or [sleep:long]) - ignore these, they're for audit trail only
 - Generally informational
 
 **Other sources:**
