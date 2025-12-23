@@ -212,6 +212,7 @@ OUTPUT=$(echo "$RESULTS" | python3 "$SCRIPT_DIR/format-results.py" "$LIMIT" "$FI
 TIMING_FORMAT_END=$(date +%s.%N)
 echo "[TIMING] Format output: $(echo "$TIMING_FORMAT_END - $TIMING_FORMAT_START" | bc)s" >&2
 echo "[TIMING] TOTAL: $(echo "$TIMING_FORMAT_END - $TIMING_START" | bc)s" >&2
+echo "" >&2
 
 # If --recall flag, extract session IDs and run parallel recall
 if [ -n "$RECALL_QUESTION" ]; then

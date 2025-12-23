@@ -57,8 +57,7 @@ def main():
         project = shorten_path(session_stats.loc[session_id, 'project_path'])
         count = session_stats.loc[session_id, 'count']
 
-        print(f"{project} | {session_id}")
-        print(f"Matches: {count}")
+        print(f"{project} | {session_id} | {count} matches")
 
         # Get messages for this session (these already match the search query)
         session_msgs = df[df['session_id'] == session_id].head(msg_limit)
@@ -91,7 +90,7 @@ def main():
 
         print()
 
-    print(f"Found matches in {total_sessions} sessions")
+    print(f"\nFound matches in {total_sessions} sessions")
 
 if __name__ == '__main__':
     main()
