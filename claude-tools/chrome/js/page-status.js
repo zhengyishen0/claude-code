@@ -1,5 +1,5 @@
 // page-status.js - Get page loading status
-// Usage: chrome-cli execute "$(cat page-status.js)"
+// Used internally by: chrome wait
 
 (function() {
   const status = {

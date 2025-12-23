@@ -1,5 +1,5 @@
 // click-element.js - Click element by CSS selector
-// Usage: chrome-cli execute "var SELECTOR='...'; $(cat click-element.js)"
+// Used internally by: chrome click SELECTOR
 
 (function() {
   var el = document.querySelector(SELECTOR);
