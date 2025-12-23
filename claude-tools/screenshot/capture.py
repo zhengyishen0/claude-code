@@ -109,21 +109,47 @@ def downscale_image(image_path, factor):
         return False
 
 
-def optimize_with_clop(image_path):
-    """Optimize PNG with Clop (lossless compression)."""
+def convert_to_jpeg(png_path, jpeg_path, max_width=1500, quality=80):
+    """Convert PNG to JPEG with resize and compression."""
     try:
+        # Resize to max width (maintains aspect ratio)
         subprocess.run(
-            ['open', '-a', 'Clop', image_path],
-            check=True,
-            capture_output=True
+            ['sips', '-Z', str(max_width), png_path, '--out', jpeg_path],
+            capture_output=True,
+            check=True
         )
-        # Wait for Clop to finish processing
-        import time
-        time.sleep(2)
+
+        # Convert to JPEG with quality setting
+        subprocess.run(
+            ['sips', '-s', 'format', 'jpeg', '-s', 'formatOptions', str(quality), jpeg_path],
+            capture_output=True,
+            check=True
+        )
+
         return True
     except subprocess.CalledProcessError as e:
-        print(f"Warning: Clop optimization failed: {e}", file=sys.stderr)
+        print(f"Error converting to JPEG: {e}", file=sys.stderr)
         return False
+
+
+def output_image_with_base64(image_path):
+    """Output image path and base64 data for inline display."""
+    import base64
+
+    # Output path
+    print(image_path)
+
+    # Output marker
+    print("---IMAGE-DATA---")
+
+    # Output base64 encoded image
+    try:
+        with open(image_path, 'rb') as f:
+            image_data = f.read()
+            b64_data = base64.b64encode(image_data).decode('utf-8')
+            print(b64_data)
+    except Exception as e:
+        print(f"Error encoding image: {e}", file=sys.stderr)
 
 
 def main():
@@ -132,14 +158,15 @@ def main():
         print("       capture.py <window_id> [output_path]")
         print("       capture.py --list")
         print("")
-        print("Captures TWO versions automatically:")
-        print("  1. screenshot.png - 0.5 downscale + Clop (268KB, for AI analysis)")
-        print("  2. screenshot-full.png - Full-res + Clop (979KB, for detailed review)")
+        print("Captures screenshot and outputs JPEG with base64 data:")
+        print("  • Resized to max 1500px width (maintains aspect ratio)")
+        print("  • JPEG quality 80 (~400KB, optimized for LLM)")
+        print("  • Outputs file path + base64 encoded image data")
         print("")
         print("Examples:")
         print("  capture.py 'Google Chrome'              # Capture Chrome window")
         print("  capture.py 1411                         # Capture by window ID")
-        print("  capture.py 1411 /tmp/my-screenshot.png  # Custom output path")
+        print("  capture.py 1411 /tmp/my-screenshot.jpg  # Custom output path")
         print("  capture.py --list                       # List all windows")
         sys.exit(1)
 
@@ -206,21 +233,19 @@ def main():
             sys.exit(1)
 
         # Capture
-        if capture_window(window_id, output_path):
-            import shutil
+        temp_png_path = output_path
+        jpeg_path = output_path.replace('.png', '.jpg')
 
-            # Save full-resolution version
-            full_path = output_path.replace('.png', '-full.png')
-            shutil.copy2(output_path, full_path)
-            optimize_with_clop(full_path)
+        if capture_window(window_id, temp_png_path):
+            # Convert PNG to JPEG with resize and compression
+            if convert_to_jpeg(temp_png_path, jpeg_path):
+                # Clean up temporary PNG
+                os.remove(temp_png_path)
 
-            # Save downscaled version (main file)
-            downscale_image(output_path, 0.5)
-            optimize_with_clop(output_path)
-
-            # Print both paths (AI reads downscaled by default)
-            print(output_path)
-            print(full_path)
+                # Output path and base64 data
+                output_image_with_base64(jpeg_path)
+            else:
+                sys.exit(1)
         else:
             sys.exit(1)
     else:
@@ -239,21 +264,19 @@ def main():
             sys.exit(1)
 
         # Capture
-        if capture_window(window['id'], output_path):
-            import shutil
+        temp_png_path = output_path
+        jpeg_path = output_path.replace('.png', '.jpg')
 
-            # Save full-resolution version
-            full_path = output_path.replace('.png', '-full.png')
-            shutil.copy2(output_path, full_path)
-            optimize_with_clop(full_path)
+        if capture_window(window['id'], temp_png_path):
+            # Convert PNG to JPEG with resize and compression
+            if convert_to_jpeg(temp_png_path, jpeg_path):
+                # Clean up temporary PNG
+                os.remove(temp_png_path)
 
-            # Save downscaled version (main file)
-            downscale_image(output_path, 0.5)
-            optimize_with_clop(output_path)
-
-            # Print both paths (AI reads downscaled by default)
-            print(output_path)
-            print(full_path)
+                # Output path and base64 data
+                output_image_with_base64(jpeg_path)
+            else:
+                sys.exit(1)
         else:
             sys.exit(1)
 
