@@ -365,7 +365,6 @@ cmd_interact() {
   local SELECTOR=""
   local INPUT_VALUE=""
   local INDEX=""
-  local WAIT_FOR=""
 
   # Parse arguments
   while [ $# -gt 0 ]; do
@@ -376,10 +375,6 @@ cmd_interact() {
         ;;
       --index)
         INDEX="$2"
-        shift 2
-        ;;
-      --wait-for)
-        WAIT_FOR="$2"
         shift 2
         ;;
       *)
@@ -395,7 +390,7 @@ cmd_interact() {
   done
 
   if [ -z "$SELECTOR" ]; then
-    echo "Usage: interact 'selector or text' [--input 'value'] [--index N] [--wait-for 'selector']" >&2
+    echo "Usage: interact 'selector or text' [--input 'value'] [--index N]" >&2
     return 1
   fi
 
@@ -446,13 +441,10 @@ cmd_interact() {
 
   # Wait strategy (only for successful interactions)
   if [ "$status" = "OK" ]; then
-    # Tier 2: Manual override with --wait-for
-    if [ -n "$WAIT_FOR" ]; then
-      cmd_wait "$WAIT_FOR" > /dev/null 2>&1
     # Tier 1: Smart contextual wait (if context available)
-    elif [ -n "$context" ]; then
+    if [ -n "$context" ]; then
       smart_wait_with_context "$context"
-    # Tier 3: General fallback
+    # Tier 2: General fallback
     else
       cmd_wait > /dev/null 2>&1
     fi
@@ -633,7 +625,6 @@ COMMANDS:
                     Click or input on element (text or CSS selector)
     --input VALUE   Set input value instead of clicking
     --index N       Select Nth match when multiple elements found
-    --wait-for SEL  Wait for specific element after interaction
   wait [SEL]        Wait for DOM stability or element
     --gone          Wait for element to disappear
   snapshot          Capture page content as markdown
@@ -664,7 +655,7 @@ EXAMPLES:
   $TOOL_NAME open "https://example.com"
   $TOOL_NAME interact "Submit" + snapshot
   $TOOL_NAME interact "#email" --input "user@example.com"
-  $TOOL_NAME interact "Load More" --wait-for ".results"
+  $TOOL_NAME interact "Load More"
   $TOOL_NAME --profile personal open "https://gmail.com"
   $TOOL_NAME status
 
