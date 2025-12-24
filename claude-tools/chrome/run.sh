@@ -148,10 +148,10 @@ get_page_state() {
 cmd_snapshot() {
   ensure_chrome_running || return 1
 
-  local DIFF_MODE=""
+  local FORCE_FULL=false
   while [ $# -gt 0 ]; do
     case "$1" in
-      --diff) DIFF_MODE="true"; shift ;;
+      --full) FORCE_FULL=true; shift ;;
       -*) echo "Unknown option: $1" >&2; return 1 ;;
       *) shift ;;
     esac
@@ -164,14 +164,18 @@ cmd_snapshot() {
 
   local content=$($CDP_CLI execute "window.__RECON_FULL__ = true; $(cat "$SCRIPT_DIR/js/html2md.js")")
 
-  if [ "$DIFF_MODE" = "true" ]; then
+  # Smart diff by default (unless --full specified)
+  if [ "$FORCE_FULL" = false ]; then
     local latest=$(ls -t "$SNAPSHOT_DIR/${prefix}-${state}"-*.md 2>/dev/null | head -1)
-    if [ -z "$latest" ]; then
-      echo "No previous snapshot for this URL state ($state). Run snapshot first." >&2
-      return 1
+    if [ -n "$latest" ]; then
+      # Previous snapshot exists - show diff
+      echo "$content" | tee "$snapshot_file" | diff "$latest" - || true
+    else
+      # No previous snapshot - show full
+      echo "$content" | tee "$snapshot_file"
     fi
-    echo "$content" | tee "$snapshot_file" | diff "$latest" - || true
   else
+    # Force full
     echo "$content" | tee "$snapshot_file"
   fi
 }
@@ -212,11 +216,9 @@ cmd_wait() {
 
   local timeout=${CHROME_WAIT_TIMEOUT}
   local SELECTOR=""
-  local GONE=false
 
   while [ $# -gt 0 ]; do
     case "$1" in
-      --gone) GONE=true; shift ;;
       -*) echo "Unknown option: $1" >&2; return 1 ;;
       *) SELECTOR="$1"; shift ;;
     esac
@@ -226,24 +228,17 @@ cmd_wait() {
   local elapsed=0
 
   if [ -n "$SELECTOR" ]; then
+    # Wait for element to appear
     while (( $(echo "$elapsed < $timeout" | bc -l) )); do
-      if [ "$GONE" = true ]; then
-        result=$($CDP_CLI execute "document.querySelector('$SELECTOR') ? 'exists' : 'gone'")
-        if [ "$result" = "gone" ]; then
-          echo "OK: $SELECTOR disappeared"
-          return 0
-        fi
-      else
-        result=$($CDP_CLI execute "document.querySelector('$SELECTOR') ? 'found' : 'waiting'")
-        if [ "$result" = "found" ]; then
-          echo "OK: $SELECTOR found"
-          return 0
-        fi
+      result=$($CDP_CLI execute "document.querySelector('$SELECTOR') ? 'found' : 'waiting'")
+      if [ "$result" = "found" ]; then
+        echo "OK: $SELECTOR found"
+        return 0
       fi
       sleep $interval
       elapsed=$(echo "$elapsed + $interval" | bc)
     done
-    echo "TIMEOUT: $SELECTOR not $( [ "$GONE" = true ] && echo 'gone' || echo 'found' ) after ${timeout}s" >&2
+    echo "TIMEOUT: $SELECTOR not found after ${timeout}s" >&2
     return 1
 
   else
@@ -439,7 +434,7 @@ cmd_interact() {
     return 0
   fi
 
-  # Wait strategy (only for successful interactions)
+  # Auto-run wait and snapshot (only for successful interactions)
   if [ "$status" = "OK" ]; then
     # Tier 1: Smart contextual wait (if context available)
     if [ -n "$context" ]; then
@@ -448,15 +443,37 @@ cmd_interact() {
     else
       cmd_wait > /dev/null 2>&1
     fi
+
+    # Auto-snapshot (smart diff by default)
+    cmd_snapshot
   fi
 }
 
 # ============================================================================
-# Command: esc
+# Command: sendkey
 # ============================================================================
-cmd_esc() {
+cmd_sendkey() {
+  local KEY=$1
+  if [ -z "$KEY" ]; then
+    echo "Usage: sendkey <key>" >&2
+    echo "Supported keys: esc, enter, tab, space, backspace, delete, arrowup, arrowdown, arrowleft, arrowright, pageup, pagedown, home, end, f1-f12" >&2
+    return 1
+  fi
+
   ensure_chrome_running || return 1
-  $CDP_CLI execute "$(cat "$SCRIPT_DIR/js/send-esc.js")"
+
+  # Send key via JavaScript (pass key name as global variable)
+  local js_code="var KEY_NAME = '$KEY'; $(cat "$SCRIPT_DIR/js/send-key.js")"
+  local result=$($CDP_CLI execute "$js_code")
+  local status=$(echo "$result" | grep -o "^OK\|^ERROR" || echo "ERROR")
+
+  echo "$result"
+
+  # Auto-run wait and snapshot (only for successful keystrokes)
+  if [ "$status" = "OK" ]; then
+    cmd_wait > /dev/null 2>&1
+    cmd_snapshot
+  fi
 }
 
 # ============================================================================
@@ -608,7 +625,7 @@ cmd_help() {
   cat << EOF
 $TOOL_NAME - Browser automation with CDP (Chrome DevTools Protocol)
 
-Usage: $TOOL_NAME [OPTIONS] <command> [args...] [+ command ...]
+Usage: $TOOL_NAME [OPTIONS] <command> [args...]
 
 OPTIONS:
   --profile NAME    Use named profile (headless mode by default)
@@ -623,14 +640,16 @@ COMMANDS:
   open URL          Navigate to URL, wait for load, show content
   interact SELECTOR [OPTIONS]
                     Click or input on element (text or CSS selector)
+                    Auto-runs wait and snapshot after successful interaction
     --input VALUE   Set input value instead of clicking
     --index N       Select Nth match when multiple elements found
   wait [SEL]        Wait for DOM stability or element
-    --gone          Wait for element to disappear
-  snapshot          Capture page content as markdown
-    --diff          Show changes vs previous snapshot
+  snapshot          Capture page content as markdown (smart diff by default)
+    --full          Show full snapshot instead of diff
   inspect           Show URL parameters from links/forms
-  esc               Send ESC key (close dialogs)
+  sendkey KEY       Send keyboard input (auto-runs wait and snapshot)
+                    Supported: esc, enter, tab, space, backspace, delete,
+                    arrowup/down/left/right, pageup/down, home, end, f1-f12
 
   profile [NAME]    Manage credential profiles
     (no args)       List all profiles
@@ -653,9 +672,11 @@ PROFILE WORKFLOW:
 
 EXAMPLES:
   $TOOL_NAME open "https://example.com"
-  $TOOL_NAME interact "Submit" + snapshot
+  $TOOL_NAME interact "Submit"
   $TOOL_NAME interact "#email" --input "user@example.com"
-  $TOOL_NAME interact "Load More"
+  $TOOL_NAME sendkey esc
+  $TOOL_NAME sendkey enter
+  $TOOL_NAME snapshot --full
   $TOOL_NAME --profile personal open "https://gmail.com"
   $TOOL_NAME status
 
@@ -679,7 +700,7 @@ execute_single() {
     open)       cmd_open "$@" ;;
     wait)       cmd_wait "$@" ;;
     interact)   cmd_interact "$@" ;;
-    esc)        cmd_esc "$@" ;;
+    sendkey)    cmd_sendkey "$@" ;;
     profile)    cmd_profile "$@" ;;
     status)     cmd_status "$@" ;;
     close)      cmd_close "$@" ;;
@@ -692,52 +713,12 @@ execute_single() {
 }
 
 # ============================================================================
-# Execute chain of commands separated by +
-# ============================================================================
-execute_chain() {
-  local cmd="$1"
-  shift
-  local args=()
-
-  for arg in "$@"; do
-    if [ "$arg" = "+" ]; then
-      execute_single "$cmd" "${args[@]}"
-      if [ $? -ne 0 ]; then return 1; fi
-      cmd=""
-      args=()
-    elif [ -z "$cmd" ]; then
-      cmd="$arg"
-    else
-      args+=("$arg")
-    fi
-  done
-
-  if [ -n "$cmd" ]; then
-    execute_single "$cmd" "${args[@]}"
-  fi
-}
-
-# ============================================================================
 # Main execution
 # ============================================================================
 
-# Check for command chaining
-has_chain=false
-for arg in "$@"; do
-  if [ "$arg" = "+" ]; then
-    has_chain=true
-    break
-  fi
-done
-
-if [ "$has_chain" = true ]; then
-  execute_chain "$@"
-  exit $?
-fi
-
-# Single command
+# Execute single command
 case "$1" in
-  snapshot|recon|inspect|open|wait|interact|esc|profile|status|close)
+  snapshot|recon|inspect|open|wait|interact|sendkey|profile|status|close)
     cmd="$1"
     shift
     execute_single "$cmd" "$@"
