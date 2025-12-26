@@ -180,10 +180,6 @@ cmd_snapshot() {
   fi
 }
 
-cmd_recon() {
-  cmd_snapshot "$@"
-}
-
 # ============================================================================
 # Command: open
 # ============================================================================
@@ -486,43 +482,130 @@ cmd_inspect() {
 }
 
 # ============================================================================
-# Command: close
+# Command: execute
 # ============================================================================
-cmd_close() {
-  if cdp_is_running; then
-    # Find Chrome process using this CDP port and kill it
-    local chrome_pid=$(pgrep -f "remote-debugging-port=$CDP_PORT")
-    if [ -n "$chrome_pid" ]; then
-      kill $chrome_pid 2>/dev/null
-      echo "Chrome closed (PID $chrome_pid)"
-    else
-      echo "Chrome process not found"
-    fi
-  else
-    echo "Chrome not running"
+cmd_execute() {
+  local JS_CODE=""
+  local FROM_FILE=false
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --file)
+        FROM_FILE=true
+        if [ -z "$2" ]; then
+          echo "ERROR: --file requires a path argument" >&2
+          return 1
+        fi
+        if [ ! -f "$2" ]; then
+          echo "ERROR: File not found: $2" >&2
+          return 1
+        fi
+        JS_CODE=$(cat "$2")
+        shift 2
+        ;;
+      *)
+        JS_CODE="$1"
+        shift
+        ;;
+    esac
+  done
+
+  if [ -z "$JS_CODE" ]; then
+    echo "Usage: execute <javascript>" >&2
+    echo "       execute --file <path>" >&2
+    return 1
   fi
+
+  ensure_chrome_running || return 1
+
+  # Execute JavaScript and show result
+  local result=$($CDP_CLI execute "$JS_CODE" 2>&1)
+  local exit_code=$?
+
+  if [ $exit_code -ne 0 ]; then
+    echo "$result" >&2
+    return 1
+  fi
+
+  echo "$result"
+
+  # Auto-run wait and snapshot (like interact/sendkey)
+  cmd_wait > /dev/null 2>&1
+  cmd_snapshot
 }
 
 # ============================================================================
-# Command: status
+# Command: tabs
 # ============================================================================
-cmd_status() {
-  if cdp_is_running; then
-    local version=$(curl -s "http://$CDP_HOST:$CDP_PORT/json/version" | python3 -c "import sys,json; print(json.load(sys.stdin).get('Browser','unknown'))" 2>/dev/null)
-    local profile_in_use=""
-    local chrome_pid=$(pgrep -f "remote-debugging-port=$CDP_PORT")
-    if [ -n "$chrome_pid" ]; then
-      profile_in_use=$(ps -p $chrome_pid -o args= | grep -o 'user-data-dir=[^ ]*' | cut -d= -f2)
-    fi
-    echo "Chrome: running"
-    echo "  Version: $version"
-    echo "  CDP: http://$CDP_HOST:$CDP_PORT"
-    echo "  Profile: ${profile_in_use:-unknown}"
-    echo "  PID: ${chrome_pid:-unknown}"
-  else
-    echo "Chrome: not running"
-    echo "  CDP port $CDP_PORT available"
+get_tab_id_from_index() {
+  local index=$1
+  curl -s "http://$CDP_HOST:$CDP_PORT/json" | python3 -c "import sys,json; tabs=json.load(sys.stdin); print(tabs[$index]['id'] if $index < len(tabs) else '')" 2>/dev/null
+}
+
+cmd_tabs() {
+  local subcommand="$1"
+
+  ensure_chrome_running || return 1
+
+  if [ -z "$subcommand" ]; then
+    # List all tabs (default)
+    local tabs_json=$(curl -s "http://$CDP_HOST:$CDP_PORT/json")
+    echo "$tabs_json" | python3 -c "
+import sys, json
+tabs = json.load(sys.stdin)
+for i, tab in enumerate(tabs):
+    url = tab.get('url', 'about:blank')
+    title = tab.get('title', '(no title)')
+    print(f'[{i}] {url}')
+    if title and title != url:
+        print(f'    {title}')
+"
+    return 0
   fi
+
+  case "$subcommand" in
+    activate)
+      local index="$2"
+      if [ -z "$index" ]; then
+        echo "Usage: tabs activate <index>" >&2
+        return 1
+      fi
+
+      local tab_id=$(get_tab_id_from_index "$index")
+      if [ -z "$tab_id" ]; then
+        echo "ERROR: Invalid tab index: $index" >&2
+        return 1
+      fi
+
+      curl -s "http://$CDP_HOST:$CDP_PORT/json/activate/$tab_id" > /dev/null
+      echo "OK: Activated tab $index"
+      ;;
+
+    close)
+      local index="$2"
+      if [ -z "$index" ]; then
+        echo "Usage: tabs close <index>" >&2
+        return 1
+      fi
+
+      local tab_id=$(get_tab_id_from_index "$index")
+      if [ -z "$tab_id" ]; then
+        echo "ERROR: Invalid tab index: $index" >&2
+        return 1
+      fi
+
+      curl -s -X DELETE "http://$CDP_HOST:$CDP_PORT/json/close/$tab_id" > /dev/null
+      echo "OK: Closed tab $index"
+      ;;
+
+    *)
+      echo "Unknown tabs subcommand: $subcommand" >&2
+      echo "Usage: tabs                  List tabs" >&2
+      echo "       tabs activate <index> Activate tab" >&2
+      echo "       tabs close <index>    Close tab" >&2
+      return 1
+      ;;
+  esac
 }
 
 # ============================================================================
@@ -637,27 +720,33 @@ MODES:
   --profile --debug Headed Chrome with saved credentials
 
 COMMANDS:
-  open URL          Navigate to URL, wait for load, show content
-  interact SELECTOR [OPTIONS]
-                    Click or input on element (text or CSS selector)
-                    Auto-runs wait and snapshot after successful interaction
-    --input VALUE   Set input value instead of clicking
-    --index N       Select Nth match when multiple elements found
-  wait [SEL]        Wait for DOM stability or element
-  snapshot          Capture page content as markdown (smart diff by default)
-    --full          Show full snapshot instead of diff
-  inspect           Show URL parameters from links/forms
-  sendkey KEY       Send keyboard input (auto-runs wait and snapshot)
-                    Supported: esc, enter, tab, space, backspace, delete,
-                    arrowup/down/left/right, pageup/down, home, end, f1-f12
+  Primary:
+    open URL          Navigate to URL, discover structure, show content
+    interact SELECTOR Click or input element, show results
+      --input VALUE   Set input value instead of clicking
+      --index N       Select Nth match when multiple elements found
 
-  profile [NAME]    Manage credential profiles
-    (no args)       List all profiles
-    NAME [URL]      Open headed browser for login
-    rename OLD NEW  Rename a profile
+  Secondary:
+    profile [NAME]    Manage credential profiles for auth
+      (no args)       List all profiles
+      NAME [URL]      Open headed browser for login
+      rename OLD NEW  Rename a profile
+    tabs              List/activate/close tabs
+      (no args)       List all tabs with index
+      activate INDEX  Switch to tab
+      close INDEX     Close tab
 
-  status            Show Chrome/CDP status
-  close             Close Chrome instance
+  Utility:
+    snapshot          Capture page state (smart diff by default)
+      --full          Show full snapshot instead of diff
+    inspect           Discover URL parameters from links/forms
+    wait [SEL]        Wait for DOM stability or element
+    sendkey KEY       Send keyboard input (auto-runs wait and snapshot)
+                      Supported: esc, enter, tab, space, backspace, delete,
+                      arrowup/down/left/right, pageup/down, home, end, f1-f12
+    execute JS        Execute JavaScript (auto-runs wait and snapshot)
+      --file PATH     Execute from file
+
   help              Show this help
 
 PROFILE WORKFLOW:
@@ -674,14 +763,14 @@ EXAMPLES:
   $TOOL_NAME open "https://example.com"
   $TOOL_NAME interact "Submit"
   $TOOL_NAME interact "#email" --input "user@example.com"
+  $TOOL_NAME tabs
+  $TOOL_NAME tabs close 0
+  $TOOL_NAME execute "document.title"
   $TOOL_NAME sendkey esc
-  $TOOL_NAME sendkey enter
-  $TOOL_NAME snapshot --full
   $TOOL_NAME --profile personal open "https://gmail.com"
-  $TOOL_NAME status
 
 PERSISTENCE:
-  Chrome stays running between commands. Use 'close' to stop it.
+  Chrome stays running between commands. Use 'tabs close' to close individual tabs.
   Each profile maintains separate cookies/sessions.
 
 EOF
@@ -695,15 +784,14 @@ execute_single() {
   shift
   case "$cmd" in
     snapshot)   cmd_snapshot "$@" ;;
-    recon)      cmd_recon "$@" ;;
     inspect)    cmd_inspect "$@" ;;
     open)       cmd_open "$@" ;;
     wait)       cmd_wait "$@" ;;
     interact)   cmd_interact "$@" ;;
     sendkey)    cmd_sendkey "$@" ;;
+    tabs)       cmd_tabs "$@" ;;
+    execute)    cmd_execute "$@" ;;
     profile)    cmd_profile "$@" ;;
-    status)     cmd_status "$@" ;;
-    close)      cmd_close "$@" ;;
     help|--help|-h) cmd_help ;;
     *)
       echo "Unknown command: $cmd" >&2
@@ -718,7 +806,7 @@ execute_single() {
 
 # Execute single command
 case "$1" in
-  snapshot|recon|inspect|open|wait|interact|sendkey|profile|status|close)
+  snapshot|inspect|open|wait|interact|sendkey|tabs|execute|profile)
     cmd="$1"
     shift
     execute_single "$cmd" "$@"
