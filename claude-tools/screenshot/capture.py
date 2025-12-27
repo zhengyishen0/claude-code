@@ -147,24 +147,11 @@ def convert_to_jpeg(png_path, jpeg_path, max_width=1500, quality=80):
         return False
 
 
-def output_image_with_base64(image_path):
-    """Output image path and base64 data for inline display."""
-    import base64
-
-    # Output path
-    print(image_path)
-
-    # Output marker
-    print("---IMAGE-DATA---")
-
-    # Output base64 encoded image
-    try:
-        with open(image_path, 'rb') as f:
-            image_data = f.read()
-            b64_data = base64.b64encode(image_data).decode('utf-8')
-            print(b64_data)
-    except Exception as e:
-        print(f"Error encoding image: {e}", file=sys.stderr)
+def output_image_with_instruction(image_path):
+    """Output image path with instruction for LLMs to use Read tool."""
+    # Output path with instruction for LLMs
+    print(f"Screenshot saved: {image_path}")
+    print("Use Read tool to view the image.")
 
 
 def show_list_and_exit():
@@ -235,8 +222,8 @@ def main():
                 # Clean up temporary PNG
                 os.remove(temp_png_path)
 
-                # Output path and base64 data
-                output_image_with_base64(jpeg_path)
+                # Output path with instruction for LLMs
+                output_image_with_instruction(jpeg_path)
             else:
                 sys.exit(1)
         else:
@@ -271,8 +258,8 @@ def main():
                 # Clean up temporary PNG
                 os.remove(temp_png_path)
 
-                # Output path and base64 data
-                output_image_with_base64(jpeg_path)
+                # Output path with instruction for LLMs
+                output_image_with_instruction(jpeg_path)
             else:
                 sys.exit(1)
         else:
