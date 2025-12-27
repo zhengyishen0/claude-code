@@ -192,7 +192,27 @@ cmd_open() {
 
   ensure_chrome_running || return 1
 
-  $CDP_CLI open "$URL" > /dev/null
+  # Extract domain from target URL
+  local target_domain=$(echo "$URL" | python3 -c "
+import sys
+from urllib.parse import urlparse
+url = sys.stdin.read().strip()
+parsed = urlparse(url)
+print(parsed.netloc)
+")
+
+  # Get current tab's domain (if exists)
+  local current_domain=$($CDP_CLI execute "location.hostname" 2>/dev/null | tr -d '"' || echo "")
+
+  # Smart domain-based tab reuse
+  if [ -n "$current_domain" ] && [ "$current_domain" = "$target_domain" ]; then
+    # Same domain → reuse tab (navigate in place)
+    $CDP_CLI open "$URL" > /dev/null
+  else
+    # Different domain → create new tab
+    curl -s -X PUT "http://$CDP_HOST:$CDP_PORT/json/new?$URL" > /dev/null
+    sleep 0.5  # Brief wait for tab creation
+  fi
 
   # Wait for page with general strategy (readyState + network + DOM)
   cmd_wait > /dev/null 2>&1
@@ -539,7 +559,7 @@ cmd_execute() {
 # ============================================================================
 get_tab_id_from_index() {
   local index=$1
-  curl -s "http://$CDP_HOST:$CDP_PORT/json" | python3 -c "import sys,json; tabs=json.load(sys.stdin); print(tabs[$index]['id'] if $index < len(tabs) else '')" 2>/dev/null
+  curl -s "http://$CDP_HOST:$CDP_PORT/json" | python3 -c "import sys,json; tabs=[t for t in json.load(sys.stdin) if t.get('type') == 'page']; print(tabs[$index]['id'] if $index < len(tabs) else '')" 2>/dev/null
 }
 
 cmd_tabs() {
@@ -548,11 +568,12 @@ cmd_tabs() {
   ensure_chrome_running || return 1
 
   if [ -z "$subcommand" ]; then
-    # List all tabs (default)
+    # List all tabs (default) - filter to only show page tabs
     local tabs_json=$(curl -s "http://$CDP_HOST:$CDP_PORT/json")
     echo "$tabs_json" | python3 -c "
 import sys, json
-tabs = json.load(sys.stdin)
+all_tabs = json.load(sys.stdin)
+tabs = [t for t in all_tabs if t.get('type') == 'page']
 for i, tab in enumerate(tabs):
     url = tab.get('url', 'about:blank')
     title = tab.get('title', '(no title)')

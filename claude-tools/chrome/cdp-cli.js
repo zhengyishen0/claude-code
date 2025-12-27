@@ -16,6 +16,36 @@ async function connectCDP() {
     const client = await CDP({ port: CDP_PORT, host: CDP_HOST });
     return client;
   } catch (error) {
+    // If no targets available, create a new tab first
+    if (error.message.includes('No inspectable targets')) {
+      try {
+        const http = require('http');
+        await new Promise((resolve, reject) => {
+          const req = http.request({
+            hostname: CDP_HOST,
+            port: CDP_PORT,
+            path: '/json/new?about:blank',
+            method: 'PUT'
+          }, (res) => {
+            res.on('data', () => {});
+            res.on('end', resolve);
+          });
+          req.on('error', reject);
+          req.end();
+        });
+
+        // Wait briefly for tab to be ready
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Try connecting again
+        const client = await CDP({ port: CDP_PORT, host: CDP_HOST });
+        return client;
+      } catch (retryError) {
+        console.error(`Failed to create initial tab: ${retryError.message}`);
+        process.exit(1);
+      }
+    }
+
     console.error(`Failed to connect to Chrome CDP on ${CDP_HOST}:${CDP_PORT}`);
     console.error('Make sure Chrome is running with --remote-debugging-port flag');
     console.error(`Error: ${error.message}`);

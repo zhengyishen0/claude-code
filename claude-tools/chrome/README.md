@@ -10,6 +10,25 @@ claude-tools chrome <command> [args...]
 
 ## Commands
 
+Commands are organized by usage frequency:
+
+**Primary (most common):**
+- `open` - Navigate and discover structure
+- `interact` - Click or input elements
+
+**Secondary (frequent):**
+- `profile` - Manage credential profiles
+- `tabs` - Manage browser tabs
+
+**Utility (advanced):**
+- `snapshot` - Capture page state
+- `inspect` - Discover URL parameters
+- `wait` - Wait for stability/element
+- `sendkey` - Send keyboard input
+- `execute` - Execute JavaScript
+
+---
+
 ### snapshot
 Capture page state as markdown with smart diff by default
 
@@ -40,8 +59,6 @@ Example filenames:
 - `www.airbnb.com-base-1234567890.md`
 - `www.airbnb.com-dropdown-1234567891.md`
 - `www.airbnb.com-dialog-1234567892.md`
-
-**Note:** `recon` is aliased to `snapshot` for backward compatibility
 
 ### inspect
 Discover URL parameters from links and forms on the current page
@@ -217,6 +234,95 @@ sendkey tab              # Move focus, shows change
 - Submit forms with ENTER (when submit button is hard to target)
 - Navigate autocomplete/dropdowns with arrow keys
 - Trigger keyboard shortcuts
+
+### tabs
+Manage browser tabs (list, activate, close)
+
+```bash
+tabs                    # List all tabs
+tabs activate <index>   # Switch to tab by index
+tabs close <index>      # Close tab by index
+```
+
+**Behavior:**
+- Lists only page tabs (filters out service workers and extensions)
+- Uses simple numeric index [0], [1], [2] for easy reference
+- Shows URL and title for each tab
+
+**Examples:**
+```bash
+tabs                    # [0] https://google.com
+                        #     Google
+                        # [1] https://github.com
+                        #     GitHub
+
+tabs activate 1         # Switch to GitHub tab
+tabs close 0            # Close Google tab
+```
+
+**Use cases:**
+- Manage multiple tabs when working across different sites
+- Close tabs to clean up after automation
+- Switch between tabs for comparison
+
+### execute
+Execute JavaScript code (auto-runs wait and snapshot)
+
+```bash
+execute <javascript>    # Execute inline JavaScript
+execute --file <path>   # Execute from file
+```
+
+**Auto-feedback behavior:**
+1. Executes the JavaScript code
+2. Shows the return value
+3. Waits for page to react
+4. Shows snapshot diff automatically
+
+**Return values:**
+- Strings: Shown as-is
+- Objects/Arrays: Formatted as JSON
+
+**Examples:**
+```bash
+execute "document.title"                              # Returns: "Google"
+execute "document.querySelectorAll('a').length"       # Returns: 42
+execute "({title: document.title, url: location.href})"  # Returns: {"title":"Google","url":"https://google.com"}
+execute --file extract-data.js                        # Execute multi-line script
+```
+
+**When to use execute:**
+- Extract data from the page (titles, URLs, counts)
+- Manipulate DOM when interact doesn't fit (rare)
+- Run complex JavaScript logic from a file
+
+**When NOT to use execute:**
+- Simple clicks/inputs → Use `interact` instead
+- Keyboard events → Use `sendkey` instead
+
+### profile
+Manage browser profiles for authentication
+
+```bash
+profile                  # List all profiles
+profile <name> [url]     # Open headed browser for login
+profile rename OLD NEW   # Rename a profile
+```
+
+**Behavior:**
+- Each profile has separate cookies/sessions
+- Headless by default, headed with `profile <name>`
+- Use `--profile <name>` flag on other commands
+
+**Examples:**
+```bash
+profile                           # List: work, personal
+profile work https://gmail.com    # Open headed Chrome for login
+# ... log in manually ...
+
+# Use the profile
+claude-tools chrome --profile work open "https://gmail.com"
+```
 
 ## Key Principles
 
