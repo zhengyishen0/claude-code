@@ -509,6 +509,48 @@ cmd_status() {
 }
 
 # ============================================================================
+# Command: screenshot (VISUAL)
+# ============================================================================
+cmd_screenshot() {
+  ensure_chrome_running || return 1
+  $CDP_CLI screenshot "$@"
+}
+
+# ============================================================================
+# Command: pointer (VISUAL)
+# ============================================================================
+cmd_pointer() {
+  local subcommand="$1"
+  shift
+
+  case "$subcommand" in
+    click)
+      ensure_chrome_running || return 1
+      $CDP_CLI click "$@"
+      ;;
+    hover)
+      ensure_chrome_running || return 1
+      $CDP_CLI hover "$@"
+      ;;
+    drag)
+      ensure_chrome_running || return 1
+      $CDP_CLI drag "$@"
+      ;;
+    "")
+      echo "Usage: pointer <click|hover|drag> <args...>" >&2
+      echo "  click <x> <y>           - Click at coordinates" >&2
+      echo "  hover <x> <y>           - Hover at coordinates" >&2
+      echo "  drag <x1> <y1> <x2> <y2> - Drag from->to" >&2
+      return 1
+      ;;
+    *)
+      echo "Unknown pointer subcommand: $subcommand" >&2
+      return 1
+      ;;
+  esac
+}
+
+# ============================================================================
 # Command: profile
 # ============================================================================
 cmd_profile() {
@@ -632,6 +674,22 @@ COMMANDS:
   inspect           Show URL parameters from links/forms
   esc               Send ESC key (close dialogs)
 
+VISUAL COMMANDS (Vision-based automation):
+  screenshot [OPTIONS]
+                    Capture page screenshot for AI vision (~1,280 tokens)
+    --width=N       Viewport width (default: 1200)
+    --height=N      Viewport height (default: 800)
+    --quality=N     JPEG quality 1-100 (default: 70)
+    --full          Capture full page
+
+  pointer click X Y
+                    Click at pixel coordinates from screenshot
+  pointer hover X Y
+                    Hover at pixel coordinates
+  pointer drag X1 Y1 X2 Y2
+                    Drag from one coordinate to another
+
+MANAGEMENT:
   profile [NAME]    Manage credential profiles
     (no args)       List all profiles
     NAME [URL]      Open headed browser for login
@@ -652,10 +710,17 @@ PROFILE WORKFLOW:
      $TOOL_NAME --profile work --debug open https://mail.google.com
 
 EXAMPLES:
+  # Standard automation
   $TOOL_NAME open "https://example.com"
   $TOOL_NAME interact "Submit" + snapshot
   $TOOL_NAME interact "#email" --input "user@example.com"
   $TOOL_NAME interact "Load More"
+
+  # Vision-based automation (no CSS selectors needed!)
+  $TOOL_NAME screenshot              # AI sees page, identifies coordinates
+  $TOOL_NAME pointer click 600 130   # Click button at those coordinates
+
+  # Profile automation
   $TOOL_NAME --profile personal open "https://gmail.com"
   $TOOL_NAME status
 
@@ -680,6 +745,8 @@ execute_single() {
     wait)       cmd_wait "$@" ;;
     interact)   cmd_interact "$@" ;;
     esc)        cmd_esc "$@" ;;
+    screenshot) cmd_screenshot "$@" ;;
+    pointer)    cmd_pointer "$@" ;;
     profile)    cmd_profile "$@" ;;
     status)     cmd_status "$@" ;;
     close)      cmd_close "$@" ;;
@@ -737,7 +804,7 @@ fi
 
 # Single command
 case "$1" in
-  snapshot|recon|inspect|open|wait|interact|esc|profile|status|close)
+  snapshot|recon|inspect|open|wait|interact|esc|screenshot|pointer|profile|status|close)
     cmd="$1"
     shift
     execute_single "$cmd" "$@"
