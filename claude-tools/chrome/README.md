@@ -324,6 +324,105 @@ profile work https://gmail.com    # Open headed Chrome for login
 claude-tools chrome --profile work open "https://gmail.com"
 ```
 
+## Chaining Commands
+
+Commands can still be chained with `+` for advanced control:
+
+```bash
+# Auto-feedback is built-in (no chaining needed)
+click '[data-testid="btn"]'                    # Auto waits + snapshots
+input '#search' 'Paris'                        # Auto waits + snapshots
+
+# Manual chaining for advanced cases
+esc + wait '[role=dialog]' --gone + snapshot   # Wait for specific condition
+open "https://example.com" + wait --network    # Custom wait before snapshot
+click '[btn]' + wait '[role=dialog]'           # Wait for specific element
+```
+
+**Note:** With auto-feedback, manual chaining is rarely needed. Use it only for:
+- Waiting for specific elements/conditions
+- Custom timing requirements
+- Suppressing auto-snapshot (advanced)
+
+## Visual Commands (CDP)
+
+Vision-based automation using screenshots and coordinates. No CSS selectors needed!
+
+### screenshot
+Capture page screenshot optimized for AI vision
+
+```bash
+chrome screenshot [options]
+```
+
+**Auto-generates path:** `/tmp/screenshot-YYYY-MM-DD-HH-MM-SS.jpg`
+
+**Options:**
+- `--width=N` - Viewport width (default: 1200)
+- `--height=N` - Viewport height (default: 800)
+- `--quality=N` - JPEG quality 1-100 (default: 70)
+- `--full` - Capture full page
+- `--png` - PNG format instead of JPEG
+
+**Output:**
+```
+Screenshot saved: /tmp/screenshot-2025-12-27-12-34-56.jpg
+Use Read tool to view the image.
+```
+
+**Examples:**
+```bash
+chrome screenshot                           # Optimized: 1200x800, ~1,280 tokens
+chrome screenshot --width=800               # Smaller: 800x600, ~640 tokens
+chrome screenshot --full                    # Full page capture
+```
+
+**Token Cost:** `(width × height) / 750`
+
+### pointer
+Interact using pixel coordinates from screenshots
+
+```bash
+chrome pointer click <x> <y>                # Click at coordinates
+chrome pointer hover <x> <y>                # Hover at coordinates
+chrome pointer drag <x1> <y1> <x2> <y2>     # Drag from->to
+```
+
+**Examples:**
+```bash
+chrome pointer click 237 267                # Click button
+chrome pointer hover 400 300                # Hover over menu
+chrome pointer drag 100 200 300 400         # Drag slider
+```
+
+### Vision Workflow
+
+1. **Screenshot** - Auto-generates path, outputs location
+2. **Read** - AI uses Read tool to view the image
+3. **Analysis** - AI identifies element coordinates
+4. **Pointer** - Click/hover/drag using coordinates
+
+**No CSS selectors needed!** The AI sees the page and tells you coordinates.
+
+**Example:**
+```bash
+# 1. Take screenshot
+chrome screenshot
+# Output:
+#   Screenshot saved: /tmp/screenshot-2025-12-27-12-34-56.jpg
+#   Use Read tool to view the image.
+
+# 2. AI uses Read tool to view the image
+
+# 3. AI analyzes and says: "Search button is at (600, 130)"
+
+# 4. Click using coordinates
+chrome pointer click 600 130
+
+# 5. Verify result
+chrome screenshot
+```
+
 ## Key Principles
 
 1. **URL params first** - Always prefer direct URLs over interact commands
