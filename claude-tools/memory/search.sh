@@ -223,16 +223,15 @@ if [ -n "$OR_QUERY" ]; then
   # Legacy mode (--require or --exclude was specified)
   RESULTS=$(run_legacy_search | sort -u || true)
 elif has_parentheses "$QUERY" || has_boolean_operators "$QUERY"; then
-  # New dual-mode: use jq for complex queries or those with boolean operators
+  # New dual-mode: use ripgrep pipeline for queries with boolean operators or parentheses
   # Extract terms from query (handle parentheses, AND, OR, NOT)
-  # Build a jq expression that filters the TSV index
+  # Apply AND logic across all terms
 
-  # For now, use simple approach: extract all terms and apply AND logic
-  local terms=()
-  local query_clean=$(echo "$QUERY" | sed -E 's/[\(\)]+/ /g; s/(AND|OR|NOT)/ /g')
+  # Extract all terms, removing operators and parentheses
+  query_clean=$(echo "$QUERY" | sed -E 's/[\(\)]+/ /g; s/(AND|OR|NOT)/ /g')
   read -ra terms <<< "$query_clean"
 
-  # Filter the index using jq - all terms must match (conservative AND approach)
+  # Filter the index - all terms must match (conservative AND approach)
   # Build initial ripgrep pipeline with first term
   CMD="rg -i '$(to_pattern "${terms[0]}")' '$INDEX_FILE'"
 
