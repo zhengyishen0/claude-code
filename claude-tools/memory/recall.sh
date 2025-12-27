@@ -13,6 +13,19 @@ get_project_from_index() {
   grep "^$session_id" "$INDEX_FILE" 2>/dev/null | head -1 | cut -f5
 }
 
+# Get session date from index (2nd column)
+get_session_date() {
+  local session_id="$1"
+  local timestamp=$(grep "^$session_id" "$INDEX_FILE" 2>/dev/null | head -1 | cut -f2)
+  # Extract date part (YYYY-MM-DD) and reformat to "MMM DD"
+  echo "$timestamp" | cut -d'T' -f1 | awk -F'-' '{
+    months["01"]="Jan"; months["02"]="Feb"; months["03"]="Mar"; months["04"]="Apr";
+    months["05"]="May"; months["06"]="Jun"; months["07"]="Jul"; months["08"]="Aug";
+    months["09"]="Sep"; months["10"]="Oct"; months["11"]="Nov"; months["12"]="Dec";
+    print months[$2] " " int($3)
+  }'
+}
+
 # Get fork session ID for a session
 get_fork_id() {
   local session_id="$1"
@@ -37,7 +50,7 @@ shorten_path() {
   echo "$1" | sed "s|^$HOME|~|"
 }
 
-# Recall a single session (verbose mode)
+# Recall a single session (compact mode)
 recall_session() {
   local session_id="$1"
   local question="$2"
@@ -160,8 +173,9 @@ batch_recall() {
     # Wait for all
     wait "${pids[@]}"
 
-    # Print results in order with compact headers
+    # Print results in order with compact headers, filtering out "no info" responses
     index=0
+    local shown=0
     for temp_file in "${temp_files[@]}"; do
       ((index++))
       local session_id="${session_ids[$((index-1))]}"
@@ -169,8 +183,14 @@ batch_recall() {
       local session_date=$(get_session_date "$session_id")
 
       if [ -f "$temp_file" ]; then
-        echo "[$index/$total] $short_id • $session_date"
-        cat "$temp_file"
+        local content=$(cat "$temp_file")
+        # Skip responses indicating no useful information
+        if echo "$content" | grep -qiE "(I don't have information|Could you clarify what|I'm not sure about|don't have.*details about|cannot find|no information about)"; then
+          continue
+        fi
+        ((shown++))
+        echo "[$shown/$total] $short_id • $session_date"
+        echo "$content"
         echo ""
       fi
     done
