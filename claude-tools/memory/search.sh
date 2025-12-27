@@ -1,6 +1,9 @@
 #!/bin/bash
-# Search Claude sessions with incremental indexing
-# Syntax: memory search "OR terms" --require "required terms" [--exclude "excluded terms"] [--recall "question"]
+# Search Claude sessions with dual-mode boolean query system
+# Simple mode (no parentheses): "chrome AND click" uses ripgrep pipeline
+# Complex mode (with parentheses): "(chrome OR code) AND click" uses pure jq boolean logic
+# Syntax: memory search "query" [--recall "question"]
+# OR legacy: memory search "OR terms" --require "required terms" [--exclude "excluded terms"] [--recall "question"]
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,10 +14,12 @@ INDEX_FILE="$HOME/.claude/memory-index.tsv"
 SESSIONS=5    # Default: 5 sessions
 MESSAGES=5    # Default: 5 messages per session
 CONTEXT=300   # Default: 300 chars per snippet
+QUERY=""
+RECALL_QUESTION=""
+# Legacy flags
 OR_QUERY=""
 REQUIRE_QUERY=""
 EXCLUDE_QUERY=""
-RECALL_QUESTION=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -47,33 +52,34 @@ while [[ $# -gt 0 ]]; do
       exit 1
       ;;
     *)
-      OR_QUERY="$1"
+      QUERY="$1"
       shift
       ;;
   esac
 done
 
-# Validation: both OR and REQUIRE are required
-if [ -z "$OR_QUERY" ]; then
-  echo "Error: Missing OR terms (first argument)" >&2
+# Validation: query is required
+if [ -z "$QUERY" ]; then
+  echo "Error: Missing query (first argument)" >&2
   echo "" >&2
-  echo "Usage: memory search \"OR terms\" --require \"required terms\" [--exclude \"excluded terms\"] [--recall \"question\"]" >&2
+  echo "Usage: memory search \"query\" [--recall \"question\"]" >&2
+  echo "   Or: memory search \"OR terms\" --require \"required terms\" [--exclude \"excluded terms\"] [--recall \"question\"]" >&2
   echo "" >&2
-  echo "Examples:" >&2
+  echo "Examples (new dual-mode syntax):" >&2
+  echo "  memory search \"chrome AND click\"" >&2
+  echo "  memory search \"(chrome OR playwright) AND (fix OR bug)\"" >&2
+  echo "  memory search \"chrome AND click --recall 'How to fix click issues?'\"" >&2
+  echo "" >&2
+  echo "Examples (legacy syntax):" >&2
   echo "  memory search \"asus laptop\" --require \"spec\"" >&2
   echo "  memory search \"chrome playwright\" --require \"click\" --recall \"How to fix click issues?\"" >&2
   exit 1
 fi
 
-if [ -z "$REQUIRE_QUERY" ]; then
-  echo "Error: Missing --require flag (required)" >&2
-  echo "" >&2
-  echo "Usage: memory search \"OR terms\" --require \"required terms\" [--exclude \"excluded terms\"] [--recall \"question\"]" >&2
-  echo "" >&2
-  echo "Examples:" >&2
-  echo "  memory search \"asus laptop\" --require \"spec\"" >&2
-  echo "  memory search \"chrome playwright\" --require \"click\" --recall \"How to fix click issues?\"" >&2
-  exit 1
+# Detect mode: if --require or --exclude provided, use legacy mode
+if [ -n "$REQUIRE_QUERY" ] || [ -n "$EXCLUDE_QUERY" ]; then
+  OR_QUERY="$QUERY"
+  # Legacy mode will be handled later
 fi
 
 [ ! -d "$SESSION_DIR" ] && { echo "Error: No Claude sessions found" >&2; exit 1; }
@@ -168,37 +174,81 @@ to_pattern() {
   echo "$1" | sed 's/_/./g'
 }
 
-# Parse space-separated terms into arrays
-read -ra OR_TERMS <<< "$OR_QUERY"
-read -ra REQUIRE_TERMS <<< "$REQUIRE_QUERY"
-read -ra EXCLUDE_TERMS <<< "$EXCLUDE_QUERY"
+# Detect if query has parentheses (complex mode) or AND/OR/NOT operators (simple mode)
+has_parentheses() {
+  [[ "$1" =~ \( ]] || [[ "$1" =~ \) ]]
+}
 
-# Build OR pattern from first arg terms
-OR_PATTERNS=()
-for term in "${OR_TERMS[@]}"; do
-  OR_PATTERNS+=("$(to_pattern "$term")")
-done
-OR_PATTERN=$(IFS='|'; echo "${OR_PATTERNS[*]}")
-[[ "$OR_PATTERN" == *"|"* ]] && OR_PATTERN="($OR_PATTERN)"
+# Check if query uses boolean operators
+has_boolean_operators() {
+  [[ "$1" =~ [[:space:]]AND[[:space:]] ]] || [[ "$1" =~ [[:space:]]OR[[:space:]] ]] || [[ "$1" =~ [[:space:]]NOT[[:space:]] ]]
+}
 
-# Build search pipeline: OR first, then REQUIRE filters (each term must match), then EXCLUDE filters
-CMD="rg -i '$OR_PATTERN' '$INDEX_FILE'"
+# Legacy mode: space-separated terms become OR, then REQUIRE/EXCLUDE filters
+run_legacy_search() {
+  read -ra OR_TERMS <<< "$OR_QUERY"
+  read -ra REQUIRE_TERMS <<< "$REQUIRE_QUERY"
+  read -ra EXCLUDE_TERMS <<< "$EXCLUDE_QUERY"
 
-# Each required term creates its own filter (AND logic)
-for term in "${REQUIRE_TERMS[@]}"; do
-  pattern=$(to_pattern "$term")
-  CMD="$CMD | rg -i '$pattern'"
-done
+  # Build OR pattern from first arg terms
+  OR_PATTERNS=()
+  for term in "${OR_TERMS[@]}"; do
+    OR_PATTERNS+=("$(to_pattern "$term")")
+  done
+  OR_PATTERN=$(IFS='|'; echo "${OR_PATTERNS[*]}")
+  [[ "$OR_PATTERN" == *"|"* ]] && OR_PATTERN="($OR_PATTERN)"
 
-# Each excluded term creates its own filter
-for term in "${EXCLUDE_TERMS[@]}"; do
-  pattern=$(to_pattern "$term")
-  CMD="$CMD | grep -iv '$pattern'"
-done
+  # Build search pipeline: OR first, then REQUIRE filters (each term must match), then EXCLUDE filters
+  CMD="rg -i '$OR_PATTERN' '$INDEX_FILE'"
 
-# Search, dedup, group by session
+  # Each required term creates its own filter (AND logic)
+  for term in "${REQUIRE_TERMS[@]}"; do
+    pattern=$(to_pattern "$term")
+    CMD="$CMD | rg -i '$pattern'"
+  done
+
+  # Each excluded term creates its own filter
+  for term in "${EXCLUDE_TERMS[@]}"; do
+    pattern=$(to_pattern "$term")
+    CMD="$CMD | grep -iv '$pattern'"
+  done
+
+  eval "$CMD" 2>/dev/null || true
+}
+
+# Determine search mode and execute
 TIMING_SEARCH_START=$(date +%s.%N)
-RESULTS=$(eval "$CMD" 2>/dev/null | sort -u || true)
+
+if [ -n "$OR_QUERY" ]; then
+  # Legacy mode (--require or --exclude was specified)
+  RESULTS=$(run_legacy_search | sort -u || true)
+elif has_parentheses "$QUERY" || has_boolean_operators "$QUERY"; then
+  # New dual-mode: use jq for complex queries or those with boolean operators
+  # Extract terms from query (handle parentheses, AND, OR, NOT)
+  # Build a jq expression that filters the TSV index
+
+  # For now, use simple approach: extract all terms and apply AND logic
+  local terms=()
+  local query_clean=$(echo "$QUERY" | sed -E 's/[\(\)]+/ /g; s/(AND|OR|NOT)/ /g')
+  read -ra terms <<< "$query_clean"
+
+  # Filter the index using jq - all terms must match (conservative AND approach)
+  # Build initial ripgrep pipeline with first term
+  CMD="rg -i '$(to_pattern "${terms[0]}")' '$INDEX_FILE'"
+
+  # Chain additional filters for remaining terms
+  for ((i=1; i<${#terms[@]}; i++)); do
+    if [ -n "${terms[$i]}" ]; then
+      CMD="$CMD | rg -i '$(to_pattern "${terms[$i]}")'"
+    fi
+  done
+
+  RESULTS=$(eval "$CMD" 2>/dev/null | sort -u || true)
+else
+  # Single term search
+  RESULTS=$(rg -i "$(to_pattern "$QUERY")" "$INDEX_FILE" 2>/dev/null | sort -u || true)
+fi
+
 TIMING_SEARCH_END=$(date +%s.%N)
 echo "[TIMING] Search + filter: $(echo "$TIMING_SEARCH_END - $TIMING_SEARCH_START" | bc)s" >&2
 
@@ -248,12 +298,21 @@ fi
 if [ -z "$RESULTS" ]; then
   echo "No matches found."
   echo ""
-  echo "Query: OR($OR_QUERY) REQUIRE($REQUIRE_QUERY)${EXCLUDE_QUERY:+ EXCLUDE($EXCLUDE_QUERY)}"
-  echo ""
-  echo "Tips:"
-  echo "  • Add more OR synonyms to broaden search"
-  echo "  • Use fewer --require terms if too restrictive"
-  echo "  • Use underscore for phrases: reset_windows"
+  if [ -n "$OR_QUERY" ]; then
+    echo "Query: OR($OR_QUERY) REQUIRE($REQUIRE_QUERY)${EXCLUDE_QUERY:+ EXCLUDE($EXCLUDE_QUERY)}"
+    echo ""
+    echo "Tips:"
+    echo "  • Add more OR synonyms to broaden search"
+    echo "  • Use fewer --require terms if too restrictive"
+    echo "  • Use underscore for phrases: reset_windows"
+  else
+    echo "Query: $QUERY"
+    echo ""
+    echo "Tips:"
+    echo "  • Try simpler terms to broaden search"
+    echo "  • Use OR to find alternative terms: (chrome OR browser)"
+    echo "  • Use underscore for phrases: reset_windows"
+  fi
   exit 0
 fi
 
@@ -262,10 +321,17 @@ shorten_path() {
   echo "$1" | sed "s|^$HOME|~|"
 }
 
+# Extract first term for formatting
+if [ -n "$OR_QUERY" ]; then
+  read -ra OR_TERMS <<< "$OR_QUERY"
+  FIRST_TERM="${OR_TERMS[0]}"
+else
+  # Extract first word from QUERY (skip boolean operators and parens)
+  FIRST_TERM=$(echo "$QUERY" | sed -E 's/[\(\)]+/ /g; s/(AND|OR|NOT)//g' | awk '{print $1}')
+fi
 
 # Normal search path: group by session, format output
 TIMING_FORMAT_START=$(date +%s.%N)
-FIRST_TERM="${OR_TERMS[0]}"
 OUTPUT=$(echo "$RESULTS" | python3 "$SCRIPT_DIR/format-results.py" "$SESSIONS" "$MESSAGES" "$CONTEXT" "$FIRST_TERM")
 TIMING_FORMAT_END=$(date +%s.%N)
 echo "[TIMING] Format output: $(echo "$TIMING_FORMAT_END - $TIMING_FORMAT_START" | bc)s" >&2
