@@ -615,6 +615,14 @@ for i, tab in enumerate(tabs):
         return 1
       fi
 
+      # Count page tabs to ensure we always have at least one
+      local tab_count=$(curl -s "http://$CDP_HOST:$CDP_PORT/json" | python3 -c "import sys,json; print(len([t for t in json.load(sys.stdin) if t.get('type') == 'page']))")
+
+      # If closing the last tab, create a new one first (like Chrome does)
+      if [ "$tab_count" -eq 1 ]; then
+        curl -s -X PUT "http://$CDP_HOST:$CDP_PORT/json/new?about:blank" > /dev/null
+      fi
+
       curl -s -X DELETE "http://$CDP_HOST:$CDP_PORT/json/close/$tab_id" > /dev/null
       echo "OK: Closed tab $index"
       ;;
