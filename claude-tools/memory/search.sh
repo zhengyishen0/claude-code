@@ -102,6 +102,8 @@ build_full_index() {
       ) as $text |
       select($text | length > 10) |
       select($text | test("<ide_|\\[Request interrupted|New environment|API Error|Limit reached|Caveat:|<bash-|<function_calls|<invoke|</invoke|<parameter|</parameter|</function_calls") | not) |
+      # Filter out messages containing recall output patterns (session summaries with "[N/M] sessionid • date" format)
+      select($text | test("^\\[[0-9]+/[0-9]+\\]\\s+[a-f0-9]{7}\\s+•") | not) |
       # Use filename (without path) as session ID - this naturally deduplicates compacted sessions
       ($filepath | split("/") | last | split(".jsonl") | first) as $session_id |
       [$session_id, .timestamp, .type, $text, .cwd // "unknown"] | @tsv
@@ -140,6 +142,8 @@ update_index() {
       ) as $text |
       select($text | length > 10) |
       select($text | test("<ide_|\\[Request interrupted|New environment|API Error|Limit reached|Caveat:|<bash-|<function_calls|<invoke|</invoke|<parameter|</parameter|</function_calls") | not) |
+      # Filter out messages containing recall output patterns (session summaries with "[N/M] sessionid • date" format)
+      select($text | test("^\\[[0-9]+/[0-9]+\\]\\s+[a-f0-9]{7}\\s+•") | not) |
       # Use filename (without path) as session ID - this naturally deduplicates compacted sessions
       ($filepath | split("/") | last | split(".jsonl") | first) as $session_id |
       [$session_id, .timestamp, .type, $text, .cwd // "unknown"] | @tsv
@@ -197,6 +201,49 @@ TIMING_SEARCH_START=$(date +%s.%N)
 RESULTS=$(eval "$CMD" 2>/dev/null | sort -u || true)
 TIMING_SEARCH_END=$(date +%s.%N)
 echo "[TIMING] Search + filter: $(echo "$TIMING_SEARCH_END - $TIMING_SEARCH_START" | bc)s" >&2
+
+# Post-process: Exclude current session and messages at/before recall outputs
+if [ -n "$RESULTS" ]; then
+  # Strategy 1: Exclude entire current session (tracked by PreToolUse hook via SSE port)
+  CURRENT_SESSION=""
+  if [ -n "$CLAUDE_CODE_SSE_PORT" ] && [ -f "$HOME/.claude/session-ports/$CLAUDE_CODE_SSE_PORT.txt" ]; then
+    CURRENT_SESSION=$(cat "$HOME/.claude/session-ports/$CLAUDE_CODE_SSE_PORT.txt")
+  fi
+
+  if [ -n "$CURRENT_SESSION" ]; then
+    RESULTS=$(echo "$RESULTS" | grep -v "^$CURRENT_SESSION	" || true)
+  fi
+
+  # Strategy 2: Find query sessions (messages indicating memory search/recall usage)
+  # Look for patterns like "I'll search memory", "memory search", "Did you remember"
+  # Format: session_id \t timestamp \t type \t text
+  RECALL_CUTOFFS=$(echo "$RESULTS" | awk -F'\t' '$4 ~ /(I'\''ll search|memory search|Did you remember.*talked about|go back to a memory|memory recall)/ {print $1 "\t" $2}' | sort -u || true)
+
+  if [ -n "$RECALL_CUTOFFS" ]; then
+    # Build exclusion filter: for each session with recall, exclude messages at/before that timestamp
+    FILTERED_RESULTS=""
+    while IFS= read -r line; do
+      SESSION=$(echo "$line" | cut -f1)
+      TIMESTAMP=$(echo "$line" | cut -f2)
+
+      # Find cutoff timestamp for this session
+      CUTOFF=$(echo "$RECALL_CUTOFFS" | awk -F'\t' -v sess="$SESSION" '$1 == sess {print $2; exit}')
+
+      if [ -n "$CUTOFF" ]; then
+        # Exclude if timestamp <= cutoff
+        LINE_TS=$(echo "$line" | cut -f2)
+        if [[ "$LINE_TS" > "$CUTOFF" ]]; then
+          FILTERED_RESULTS="$FILTERED_RESULTS$line"$'\n'
+        fi
+      else
+        # No recall in this session, keep all messages
+        FILTERED_RESULTS="$FILTERED_RESULTS$line"$'\n'
+      fi
+    done <<< "$RESULTS"
+
+    RESULTS="$FILTERED_RESULTS"
+  fi
+fi
 
 if [ -z "$RESULTS" ]; then
   echo "No matches found."

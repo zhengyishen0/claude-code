@@ -51,9 +51,24 @@ recall_session() {
     return 1
   fi
 
-  echo "Session: $session_id"
-  echo "Project: $project_dir"
-  echo "Question: $question"
+  # Wrap question with format instructions
+  local formatted_prompt="Answer the question concisely in this format:
+
+[First line: One sentence summarizing the core idea]
+
+• [Bullet point with key detail 1]
+• [Bullet point with key detail 2]
+• [Bullet point with key detail 3]
+• [Additional bullets if essential, max 5 total]
+
+Rules:
+- First line MUST be a complete sentence (no label like \"ANSWER:\" or \"REASON:\")
+- Each bullet point = one fact/comparison/metric
+- Include numbers/metrics when relevant
+- Keep total response under 150 tokens
+- No tables, no headers, no markdown sections
+
+Question: $question"
 
   # Check for existing fork (only if --resume)
   local fork_id=""
@@ -62,29 +77,23 @@ recall_session() {
   fi
 
   if [ -n "$fork_id" ]; then
-    echo "Reusing fork: $fork_id"
-    echo ""
-    (cd "$project_dir" && claude --resume "$fork_id" -p "$question" --allowedTools "Read,Grep,Glob" --model haiku)
+    # Resume existing fork (silent)
+    (cd "$project_dir" && claude --resume "$fork_id" -p "$formatted_prompt" --allowedTools "Read,Grep,Glob" --model haiku 2>/dev/null)
   else
-    echo "Creating new fork..."
-    echo ""
-
     # Create fork with JSON output to capture new session ID
     local output
-    output=$(cd "$project_dir" && claude --resume "$session_id" --fork-session -p "$question" --output-format json --allowedTools "Read,Grep,Glob" --model haiku 2>/dev/null)
+    output=$(cd "$project_dir" && claude --resume "$session_id" --fork-session -p "$formatted_prompt" --output-format json --allowedTools "Read,Grep,Glob" --model haiku 2>/dev/null)
 
-    # Extract and display the result text
+    # Extract and display the result text only
     local result_text=$(echo "$output" | jq -r '.result // empty')
     if [ -n "$result_text" ]; then
       echo "$result_text"
     fi
 
-    # Extract and save fork session ID
+    # Save fork session ID silently
     local new_fork_id=$(echo "$output" | jq -r '.session_id // empty')
     if [ -n "$new_fork_id" ]; then
       save_fork_id "$session_id" "$new_fork_id"
-      echo ""
-      echo "Fork saved: $new_fork_id"
     fi
   fi
 }
@@ -114,31 +123,34 @@ batch_recall() {
   fi
 
   if [ $total -eq 1 ]; then
-    # Single query - run directly
+    # Single query - run directly (no header)
     local query="${queries[0]}"
     local session_id="${query%%:*}"
     local question="${query#*:}"
     recall_session "$session_id" "$question" "$resume_fork"
   else
     # Multiple queries - run in parallel
-    echo "=== Batch Recall: $total sessions (parallel) ==="
+    # First, show the question once at the top
+    local first_query="${queries[0]}"
+    local first_question="${first_query#*:}"
+    echo "Q: $first_question"
     echo ""
 
     local pids=()
     local temp_files=()
+    local session_ids=()
     local index=0
 
+    # Start all sessions in parallel
     for query in "${queries[@]}"; do
       ((index++))
       local session_id="${query%%:*}"
       local question="${query#*:}"
       local temp_file="/tmp/memory-batch-$$-$index.txt"
       temp_files+=("$temp_file")
+      session_ids+=("$session_id")
 
       (
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "[$index/$total] Session: $session_id"
-        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         recall_session "$session_id" "$question" "$resume_fork" 2>&1
       ) > "$temp_file" 2>&1 &
 
@@ -148,15 +160,21 @@ batch_recall() {
     # Wait for all
     wait "${pids[@]}"
 
-    # Print results in order
+    # Print results in order with compact headers
+    index=0
     for temp_file in "${temp_files[@]}"; do
+      ((index++))
+      local session_id="${session_ids[$((index-1))]}"
+      local short_id="${session_id:0:7}"
+      local session_date=$(get_session_date "$session_id")
+
       if [ -f "$temp_file" ]; then
+        echo "[$index/$total] $short_id • $session_date"
         cat "$temp_file"
         echo ""
       fi
     done
 
-    echo "=== All $total queries complete ==="
     rm -f "${temp_files[@]}"
   fi
 }
