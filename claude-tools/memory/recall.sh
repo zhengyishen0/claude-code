@@ -185,7 +185,7 @@ batch_recall() {
       if [ -f "$temp_file" ]; then
         local content=$(cat "$temp_file")
         # Skip responses indicating no useful information
-        if echo "$content" | grep -qiE "(I don't have information|Could you clarify what|I'm not sure about|don't have.*details about|cannot find|no information about)"; then
+        if echo "$content" | grep -qiE "(I don't have (enough )?information|Could you clarify|I'm not sure about|don't have.*(details|info)|cannot find|no information about|haven't researched)"; then
           continue
         fi
         ((shown++))
