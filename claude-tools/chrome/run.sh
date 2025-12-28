@@ -1100,56 +1100,41 @@ MODES:
   --profile NAME    Headless Chrome with saved credentials
   --profile --debug Headed Chrome with saved credentials
 
-COMMANDS:
-  Primary:
-    open URL          Navigate to URL, discover structure, show content
-    click SELECTOR    Click element by selector or coordinates
+COMMANDS (use in order of preference):
+
+  1. URL Construction (PREFERRED - 10x faster):
+    open URL          Navigate with URL params (construct URLs for search/filter)
+    snapshot          View page state (smart diff shows changes)
+      --full          Show full snapshot instead of diff
+    inspect           Discover available URL parameters from page
+
+  2. Selector-Based Interaction (when URL construction not possible):
+    click SELECTOR    Click element by CSS selector or text
       --index N       Select Nth match when multiple elements found
-    click X Y         Click at pixel coordinates (vision-based)
     input SELECTOR VALUE  Set input value (React-compatible)
       --index N       Select Nth match when multiple elements found
-    hover X Y         Hover at pixel coordinates
-    drag X1 Y1 X2 Y2  Drag from coordinates to coordinates
+    sendkey KEY       Send keyboard input (esc, enter, tab, arrows, etc.)
 
-  Secondary:
+  3. Management:
     profile [NAME]    Manage credential profiles for auth
-      (no args)       List all profiles
-      NAME [URL]      Open headed browser for login
-      rename OLD NEW  Rename a profile
     tabs              List/activate/close tabs
-      (no args)       List all tabs with index
-      activate INDEX  Switch to tab
-      close INDEX     Close tab
-
-  Utility:
-    snapshot          Capture page state (smart diff by default)
-      --full          Show full snapshot instead of diff
-    inspect           Discover URL parameters from links/forms
+    execute JS        Execute JavaScript code
     wait [SEL]        Wait for DOM stability or element
-    sendkey KEY       Send keyboard input (auto-runs wait and snapshot)
-                      Supported: esc, enter, tab, space, backspace, delete,
-                      arrowup/down/left/right, pageup/down, home, end, f1-f12
-    execute JS        Execute JavaScript (auto-runs wait and snapshot)
-      --file PATH     Execute from file
-    tabs [CMD]        Manage Chrome tabs
-      (no args)       List all tabs
-      close INDEX     Close tab by index
-      activate INDEX  Switch to tab by index
 
-VISUAL COMMANDS (Vision-based automation):
+VISUAL COMMANDS (Edge case - when selectors unavailable):
+  Use vision-based coordinates ONLY when CSS selectors don't work or aren't reliable.
+  Workflow: screenshot → identify coordinates → click/hover/drag
+
   screenshot [OPTIONS]
-                    Capture page screenshot for AI vision (~1,280 tokens)
+                    Capture page for AI vision analysis (~1,280 tokens)
     --width=N       Viewport width (default: 1200)
     --height=N      Viewport height (default: 800)
     --quality=N     JPEG quality 1-100 (default: 70)
     --full          Capture full page
 
-  pointer click X Y
-                    Click at pixel coordinates from screenshot
-  pointer hover X Y
-                    Hover at pixel coordinates
-  pointer drag X1 Y1 X2 Y2
-                    Drag from one coordinate to another
+  click X Y         Click at pixel coordinates (from screenshot)
+  hover X Y         Hover at pixel coordinates (from screenshot)
+  drag X1 Y1 X2 Y2  Drag from coordinates to coordinates (from screenshot)
 
 MANAGEMENT:
   profile [NAME]    Manage credential profiles
@@ -1169,22 +1154,22 @@ PROFILE WORKFLOW:
   3. Debug profile issues (headed):
      $TOOL_NAME --profile work --debug open https://mail.google.com
 
-EXAMPLES:
-  # Standard automation
-  $TOOL_NAME open "https://example.com"
-  $TOOL_NAME click "Submit"
-  $TOOL_NAME input "#email" "user@example.com"
-  $TOOL_NAME click "Load More"
-  $TOOL_NAME tabs
-  $TOOL_NAME tabs close 0
-  $TOOL_NAME execute "document.title"
-  $TOOL_NAME sendkey esc
+EXAMPLES (in order of preference):
 
-  # Vision-based automation (no CSS selectors needed!)
-  $TOOL_NAME screenshot              # AI sees page, identifies coordinates
-  $TOOL_NAME click 600 130            # Click at coordinates (with auto-feedback)
-  $TOOL_NAME hover 400 300            # Hover at coordinates
-  $TOOL_NAME drag 100 200 300 400    # Drag from one point to another
+  # 1. PREFERRED: URL construction (10x faster than clicking)
+  $TOOL_NAME open "https://airbnb.com/s/Paris/homes?adults=2&checkin=2025-01-15"
+  $TOOL_NAME snapshot              # See results instantly
+  $TOOL_NAME inspect               # Discover what URL params are available
+
+  # 2. Selector-based interaction (when URL construction not possible)
+  $TOOL_NAME open "https://example.com"
+  $TOOL_NAME click "Submit"        # Click by text
+  $TOOL_NAME input "#email" "user@example.com"  # Fill form
+  $TOOL_NAME sendkey esc           # Close modal
+
+  # 3. EDGE CASE: Vision-based (only when selectors don't work)
+  $TOOL_NAME screenshot            # AI analyzes page
+  $TOOL_NAME click 600 130         # Click at coordinates (last resort)
 
   # Profile automation
   $TOOL_NAME --profile personal open "https://gmail.com"

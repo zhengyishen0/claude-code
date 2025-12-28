@@ -150,12 +150,12 @@ Run `claude-tools chrome` for full help.
 
 **Commands:** snapshot, inspect, open, wait, click, input, hover, drag, sendkey, tabs, execute, screenshot, profile
 
-**Key Principles:**
-1. **URL params first** - Always prefer direct URLs over click commands
-2. **Auto-feedback shows results** - All interaction commands automatically show what changed
-3. **Smart dispatch** - `click`/`hover`/`drag` work with both selectors and coordinates
-4. **Trust the tool** - Commands wait for stability before showing results
-5. **Vision automation** - Use screenshot + coordinates when CSS selectors aren't available
+**Key Principles (in order of preference):**
+1. **URL params first (PREFERRED)** - Always construct URLs for search/filter (10x faster than clicking)
+2. **Selectors second** - Use CSS selectors or text when URL construction not possible
+3. **Vision last resort** - Use screenshot + coordinates ONLY when selectors don't work
+4. **Auto-feedback shows results** - All interaction commands automatically show what changed
+5. **Trust the tool** - Commands wait for stability before showing results
 
 ### documentation
 Get external documentation for libraries, commands, and APIs
