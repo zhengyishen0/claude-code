@@ -1,0 +1,9 @@
+# Proxy configuration for Claude Code
+# This file is sourced by the proxy tool
+
+# Local proxy settings
+PROXY_HOST="127.0.0.1"
+PROXY_PORT="33210"
+
+# Anthropic API proxy (if using custom proxy)
+ANTHROPIC_PROXY="https://claude-proxy.zhengyishen1.workers.dev"
