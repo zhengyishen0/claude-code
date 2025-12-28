@@ -14,7 +14,10 @@ Commands are organized by usage frequency:
 
 **Primary (most common):**
 - `open` - Navigate and discover structure
-- `interact` - Click or input elements
+- `click` - Click by selector or coordinates
+- `input` - Set input value (React-compatible)
+- `hover` - Hover at coordinates
+- `drag` - Drag from coordinates to coordinates
 
 **Secondary (frequent):**
 - `profile` - Manage credential profiles
@@ -26,6 +29,10 @@ Commands are organized by usage frequency:
 - `wait` - Wait for stability/element
 - `sendkey` - Send keyboard input
 - `execute` - Execute JavaScript
+
+**Visual Commands (CDP):**
+- `screenshot` - Capture page for AI vision
+- Legacy `pointer` commands (use click/hover/drag instead)
 
 ---
 
@@ -160,42 +167,123 @@ wait '[data-testid="x"]'      # wait for element
 
 **Note:** Element disappearance is detected automatically via smart diff. No need to explicitly wait for elements to disappear.
 
-### interact
-Click or input on element (unified command)
+### click
+Click element by selector or coordinates
 
 ```bash
-interact SELECTOR [--input VALUE] [--index N]
+click SELECTOR [--index N]     # Click by selector
+click X Y                       # Click at coordinates
 ```
 
 **Auto-feedback behavior:**
-1. Clicks element (or sets input if --input provided)
+1. Clicks element (or coordinates)
 2. Waits for page to react with smart contextual wait
 3. Shows snapshot diff automatically
 
 **Options:**
-- `--input VALUE`: Set input value instead of clicking
-- `--index N`: Select Nth match when multiple elements found
-
-**Why auto-feedback:**
-- See results immediately (modal opened, autocomplete shown, etc.)
-- Smart contextual wait tracks parent container changes
-- Automatic snapshot shows what changed
+- `--index N`: Select Nth match when multiple elements found (selector mode only)
 
 **Examples:**
 ```bash
-interact "Search"                         # Click by text, shows results
-interact "#email" --input "user@ex.com"   # Fill input, shows validation
-interact "[Submit]" --index 2             # Click 2nd submit button
+click "Search"                  # Click by text, shows results
+click "#submit"                 # Click by CSS selector
+click "[Submit]" --index 2      # Click 2nd submit button
+click 600 130                   # Click at pixel coordinates (vision-based)
 ```
 
-**When to use interact:**
-- Login forms (POST requests, session cookies)
-- Checkout flows (multi-step wizards)
-- Actions that can't be done via URL params
+**When to use click:**
+- Buttons, links, checkboxes
+- Login/submit actions
+- Navigation that requires interaction
 
-**When NOT to use interact:**
+**When NOT to use click:**
 - Search/filter forms → Use URL construction instead (10x faster)
-- Navigation → Use `open` with direct URLs
+- Simple navigation → Use `open` with direct URLs
+
+---
+
+### input
+Set input value (React-compatible)
+
+```bash
+input SELECTOR VALUE [--index N]
+```
+
+**Auto-feedback behavior:**
+1. Sets input value using React-safe method
+2. Dispatches input/change events
+3. Waits for validation/reactions
+4. Shows snapshot diff automatically
+
+**Options:**
+- `--index N`: Select Nth match when multiple inputs found
+
+**Examples:**
+```bash
+input "#email" "user@example.com"    # Fill input, shows validation
+input "Search" "query text"          # Fill search box by text
+input "[name='phone']" "555-1234"    # Fill by attribute
+```
+
+**Why React-compatible:**
+- Uses native property setters (not just .value)
+- Triggers proper React state updates
+- Works with React, Vue, Angular forms
+
+---
+
+### hover
+Hover at coordinates (for dropdowns, tooltips)
+
+```bash
+hover X Y
+```
+
+**Auto-feedback behavior:**
+1. Moves mouse to coordinates
+2. Waits for hover effects
+3. Shows snapshot diff (dropdowns, tooltips revealed)
+
+**Examples:**
+```bash
+hover 400 300                   # Hover at coordinates
+screenshot                      # See what appears (dropdown menu, etc.)
+```
+
+**When to use hover:**
+- Revealing dropdown menus
+- Showing tooltips
+- Triggering hover-based UI
+
+**Note:** Selector-based hover (`hover "Menu"`) not yet implemented - use coordinates for now.
+
+---
+
+### drag
+Drag from one coordinate to another
+
+```bash
+drag X1 Y1 X2 Y2
+```
+
+**Auto-feedback behavior:**
+1. Press mouse at start coordinates
+2. Drag to end coordinates
+3. Release mouse
+4. Shows snapshot diff (new position)
+
+**Examples:**
+```bash
+drag 100 200 300 400            # Drag slider, move element
+screenshot                      # See new state
+```
+
+**When to use drag:**
+- Sliders, range controls
+- Drag-and-drop elements
+- Sortable lists
+
+**Note:** Selector-based drag not yet implemented - use coordinates only.
 
 
 ### sendkey
