@@ -388,9 +388,12 @@ if [ -n "$RECALL_QUESTION" ]; then
 
   # Check if recall returned fallback marker (no good answers)
   if echo "$RECALL_OUTPUT" | grep -q "^RECALL_FALLBACK$"; then
-    echo "⚠️  No relevant answers from past sessions. Showing search results instead:" >&2
     echo "" >&2
-    echo "$OUTPUT"
+    echo "💡 No relevant answers found. Try:" >&2
+    echo "   • Refine your search query (use different terms or --require/--exclude)" >&2
+    echo "   • Rephrase your recall question" >&2
+    echo "   • Run search without --recall to see raw snippets: memory search \"$OR_QUERY\"" >&2
+    echo "" >&2
   else
     echo "$RECALL_OUTPUT"
   fi
