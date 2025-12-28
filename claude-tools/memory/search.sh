@@ -8,7 +8,7 @@ SESSION_DIR="$HOME/.claude/projects"
 INDEX_FILE="$HOME/.claude/memory-index.tsv"
 
 # Parse args
-SESSIONS=5    # Default: 5 sessions
+SESSIONS=10   # Default: 10 sessions (for recall with filtering)
 MESSAGES=5    # Default: 5 messages per session
 CONTEXT=300   # Default: 300 chars per snippet
 QUERY=""

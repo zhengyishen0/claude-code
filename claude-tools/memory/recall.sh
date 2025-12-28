@@ -68,16 +68,22 @@ Rules:
 - Keep total response under 150 tokens
 - No tables, no headers, no markdown sections
 
+IMPORTANT: If this session does NOT contain relevant information to answer the question, or if you are not confident about the answer, respond with ONLY:
+\"I don't have information about that.\"
+
+Do NOT attempt to answer if the information is not clearly present in this session.
+
 Question: $question"
 
   # Timing: End overhead, start API call
   local end_overhead=$(get_time_ms)
   local start_api=$(get_time_ms)
 
-  # Create fork with JSON output using claude-fast (v2.0.45)
-  # Uses older version without performance regression (~3-4s vs 60+s with current claude)
+  # Resume session with JSON output using claude-fast
+  # claude-fast is 1.3-2x faster than normal claude (4-11s vs 8-13s)
+  # Note: Adds recall Q&A to session history (not read-only)
   local output
-  output=$("$CLAUDE_FAST" --model haiku --resume "$session_id" --fork-session -p "$formatted_prompt" --output-format json --allowedTools "Read,Grep,Glob" 2>/dev/null)
+  output=$("$CLAUDE_FAST" --model haiku --resume "$session_id" -p "$formatted_prompt" --output-format json --allowedTools "Read,Grep,Glob" 2>/dev/null)
 
   # Timing: End API call
   local end_api=$(get_time_ms)
