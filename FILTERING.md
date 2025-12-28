@@ -8,6 +8,13 @@
 - **Session-Level:** Exclude entire sessions (all messages)
 - **Message-Level:** Exclude individual messages within sessions
 
+### Filtering Matrix
+
+| Level | Stage 1: Index | Stage 2: Search | Stage 3: Recall Cutoff | Stage 4: Ranking |
+|-------|---------------|-----------------|----------------------|------------------|
+| **Session-Level** | Fork sessions<br>Current session | *(none)* | *(none)* | Beyond top N sessions |
+| **Message-Level** | Short messages<br>System noise<br>Recall outputs | Non-matching queries<br>`--exclude` terms | Messages before recall | Beyond top M per session<br>Snippet extraction |
+
 ---
 
 ## Stage 1: Indexing
