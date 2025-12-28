@@ -60,20 +60,14 @@ if [ -z "$QUERY" ]; then
   echo "" >&2
   echo "Usage: memory search QUERY [--require TERMS] [--exclude TERMS] [--recall QUESTION]" >&2
   echo "" >&2
-  echo "Query Modes:" >&2
-  echo "  Simple mode (default): Space-separated OR terms, use --require for AND, --exclude for NOT" >&2
-  echo "    Example: memory search \"chrome playwright\" --require \"click\"" >&2
-  echo "    (Finds messages about chrome OR playwright that also mention click)" >&2
-  echo "" >&2
-  echo "  Boolean mode: Use parentheses for complex AND/OR/NOT logic" >&2
-  echo "    Example: memory search \"(chrome AND click) OR (playwright AND input)\"" >&2
-  echo "    Example: memory search \"((A AND B) OR (C AND D)) | not\"" >&2
-  echo "    (Use | not for negation, e.g. '(A AND B) | not' to negate the expression)" >&2
+  echo "Query:" >&2
+  echo "  Space-separated OR terms, use --require for AND, --exclude for NOT" >&2
+  echo "    Example: memory search \"authentication jwt\" --require \"implement\"" >&2
+  echo "    (Finds messages about authentication OR jwt that also mention implement)" >&2
   echo "" >&2
   echo "Examples:" >&2
   echo "  memory search \"asus laptop\" --require \"spec\"" >&2
-  echo "  memory search \"chrome playwright\" --require \"click\" --recall \"How to fix click issues?\"" >&2
-  echo "  memory search \"(chrome AND click) OR (playwright AND input)\"" >&2
+  echo "  memory search \"authentication jwt\" --require \"implement\" --recall \"How was it implemented?\"" >&2
   exit 1
 fi
 
@@ -171,97 +165,8 @@ to_pattern() {
   echo "$1" | sed 's/_/./g'
 }
 
-# Check if query contains parentheses (indicates jq boolean mode)
-has_parentheses() {
-  [[ "$1" =~ \( || "$1" =~ \) ]]
-}
-
-# Search with jq boolean mode (for queries with parentheses)
-# Uses native jq boolean operators (and, or, not) within parenthesized expressions
-# Example: "(chrome AND click)" or "((chrome AND click) OR (playwright AND input))"
-run_search_jq_mode() {
-  local query="$1"
-
-  # Normalize operators: convert AND/OR/NOT (case-insensitive) to jq operators
-  # AND -> and, OR -> or, NOT prefix is handled in Python conversion
-  query=$(echo "$query" | sed -E 's/\s+and\s+/ AND /gi; s/\s+or\s+/ OR /gi; s/\s+not\s+/ NOT /gi')
-
-  # Get all terms from the query for ripgrep initial filter
-  # Extract words that aren't operators or parentheses
-  local all_terms=$(echo "$query" | grep -oE '\b[a-zA-Z_][a-zA-Z0-9_]*\b' | grep -v -i '^and$\|^or$\|^not$' | sort -u | tr '\n' '|' | sed 's/|$//')
-
-  # If no terms found, return empty
-  if [ -z "$all_terms" ]; then
-    return
-  fi
-
-  # Build jq filter by converting terms to test() calls
-  # Strategy: replace each term with (.data.lines.text | test("term"; "i"))
-  local jq_filter="$query"
-
-  # Replace each non-operator word with jq test() call
-  # This is a simple approach: find words and wrap them
-  # We'll use a helper approach: pass through to jq with regex substitution
-
-  # For simplicity, we'll use jq's built-in string operations
-  # Convert query to jq by:
-  # 1. Wrap terms in test() calls
-  # 2. Keep operators and parentheses as-is
-
-  # Use Python for more reliable regex substitution
-  local jq_filter=$(python3 -c "
-import re
-
-query = '''$query'''
-
-# Replace terms with jq test() calls
-def replace_terms(query):
-  result = []
-  tokens = []
-
-  # Tokenize: split on spaces but preserve parentheses and pipes
-  for match in re.finditer(r'\(|\)|\|[^|]|[^()\s|]+', query):
-    token = match.group(0).strip()
-    if token:
-      tokens.append(token)
-
-  for word in tokens:
-    if word in ('(', ')'):
-      result.append(word)
-    elif word == '|':
-      result.append(' | ')
-    elif word.lower() == 'and':
-      result.append(' and ')
-    elif word.lower() == 'or':
-      result.append(' or ')
-    elif word.lower() == 'not':
-      # NOT is a postfix in jq - output as-is
-      # Users should write: (expr | not) for proper NOT filtering
-      result.append('not ')
-    else:
-      # It's a term - wrap it
-      pattern = word.replace('_', '.')
-      result.append(f'(.data.lines.text | test(\"{pattern}\"; \"i\"))')
-
-  return ''.join(result)
-
-print(replace_terms(query))
-")
-
-  # Use ripgrep for initial filter, then jq for boolean logic
-  rg --json -i "$all_terms" "$INDEX_FILE" 2>/dev/null | \
-    jq -r "select(.type==\"match\") | select($jq_filter) | .data.lines.text" || true
-}
-
 # Search: space-separated terms become OR, then REQUIRE/EXCLUDE filters
-# If query contains parentheses, use jq boolean mode
 run_search() {
-  # Check if main query contains parentheses
-  if has_parentheses "$OR_QUERY"; then
-    # Use jq boolean mode
-    run_search_jq_mode "$OR_QUERY"
-    return
-  fi
 
   read -ra OR_TERMS <<< "$OR_QUERY"
   read -ra REQUIRE_TERMS <<< "$REQUIRE_QUERY"
