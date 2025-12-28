@@ -202,15 +202,9 @@ RESULTS=$(eval "$CMD" 2>/dev/null | sort -u || true)
 TIMING_SEARCH_END=$(date +%s.%N)
 echo "[TIMING] Search + filter: $(echo "$TIMING_SEARCH_END - $TIMING_SEARCH_START" | bc)s" >&2
 
-# Post-process: Exclude current session and messages at/before recall outputs
+# Post-process: Exclude messages at/before recall outputs
 if [ -n "$RESULTS" ]; then
-  # Strategy 1: Exclude entire current session (written by SessionStart hook)
-  if [ -f "$HOME/.claude/current-session-id" ]; then
-    CURRENT_SESSION=$(cat "$HOME/.claude/current-session-id")
-    RESULTS=$(echo "$RESULTS" | grep -v "^$CURRENT_SESSION	" || true)
-  fi
-
-  # Strategy 2: Find query sessions (messages indicating memory search/recall usage)
+  # Find query sessions (messages indicating memory search/recall usage)
   # Look for patterns like "I'll search memory", "memory search", "Did you remember"
   # Format: session_id \t timestamp \t type \t text
   RECALL_CUTOFFS=$(echo "$RESULTS" | awk -F'\t' '$4 ~ /(I'\''ll search|memory search|Did you remember.*talked about|go back to a memory|memory recall)/ {print $1 "\t" $2}' | sort -u || true)

@@ -1,17 +1,11 @@
 #!/bin/bash
-# SessionStart hook: Display session info and write session ID for memory tools
+# SessionStart hook: Display session info
 set -eo pipefail
 
 # Read hook input with session_id and cwd
 input=$(cat)
 session_id=$(echo "$input" | jq -r '.session_id')
 cwd=$(echo "$input" | jq -r '.cwd')
-
-# Write session ID to file for memory tools to exclude current session
-if [ -n "$session_id" ]; then
-  mkdir -p ~/.claude
-  echo "$session_id" > ~/.claude/current-session-id
-fi
 
 # Show session info and git branch
 echo "" >&2
