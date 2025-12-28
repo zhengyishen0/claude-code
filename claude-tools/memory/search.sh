@@ -1,9 +1,6 @@
 #!/bin/bash
-# Search Claude sessions with dual-mode boolean query system
-# Simple mode (no parentheses): "chrome AND click" uses ripgrep pipeline
-# Complex mode (with parentheses): "(chrome OR code) AND click" uses pure jq boolean logic
-# Syntax: memory search "query" [--recall "question"]
-# OR legacy: memory search "OR terms" --require "required terms" [--exclude "excluded terms"] [--recall "question"]
+# Search Claude sessions
+# Syntax: memory search "OR terms" [--require "required terms"] [--exclude "excluded terms"] [--recall "question"]
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,7 +13,6 @@ MESSAGES=5    # Default: 5 messages per session
 CONTEXT=300   # Default: 300 chars per snippet
 QUERY=""
 RECALL_QUESTION=""
-# Legacy flags
 OR_QUERY=""
 REQUIRE_QUERY=""
 EXCLUDE_QUERY=""
@@ -62,25 +58,15 @@ done
 if [ -z "$QUERY" ]; then
   echo "Error: Missing query (first argument)" >&2
   echo "" >&2
-  echo "Usage: memory search \"query\" [--recall \"question\"]" >&2
-  echo "   Or: memory search \"OR terms\" --require \"required terms\" [--exclude \"excluded terms\"] [--recall \"question\"]" >&2
+  echo "Usage: memory search \"OR terms\" [--require \"required terms\"] [--exclude \"excluded terms\"] [--recall \"question\"]" >&2
   echo "" >&2
-  echo "Examples (new dual-mode syntax):" >&2
-  echo "  memory search \"chrome AND click\"" >&2
-  echo "  memory search \"(chrome OR playwright) AND (fix OR bug)\"" >&2
-  echo "  memory search \"chrome AND click --recall 'How to fix click issues?'\"" >&2
-  echo "" >&2
-  echo "Examples (legacy syntax):" >&2
+  echo "Examples:" >&2
   echo "  memory search \"asus laptop\" --require \"spec\"" >&2
   echo "  memory search \"chrome playwright\" --require \"click\" --recall \"How to fix click issues?\"" >&2
   exit 1
 fi
 
-# Detect mode: if --require or --exclude provided, use legacy mode
-if [ -n "$REQUIRE_QUERY" ] || [ -n "$EXCLUDE_QUERY" ]; then
-  OR_QUERY="$QUERY"
-  # Legacy mode will be handled later
-fi
+OR_QUERY="$QUERY"
 
 [ ! -d "$SESSION_DIR" ] && { echo "Error: No Claude sessions found" >&2; exit 1; }
 
@@ -174,18 +160,8 @@ to_pattern() {
   echo "$1" | sed 's/_/./g'
 }
 
-# Detect if query has parentheses (complex mode) or AND/OR/NOT operators (simple mode)
-has_parentheses() {
-  [[ "$1" =~ \( ]] || [[ "$1" =~ \) ]]
-}
-
-# Check if query uses boolean operators
-has_boolean_operators() {
-  [[ "$1" =~ [[:space:]]AND[[:space:]] ]] || [[ "$1" =~ [[:space:]]OR[[:space:]] ]] || [[ "$1" =~ [[:space:]]NOT[[:space:]] ]]
-}
-
-# Legacy mode: space-separated terms become OR, then REQUIRE/EXCLUDE filters
-run_legacy_search() {
+# Search: space-separated terms become OR, then REQUIRE/EXCLUDE filters
+run_search() {
   read -ra OR_TERMS <<< "$OR_QUERY"
   read -ra REQUIRE_TERMS <<< "$REQUIRE_QUERY"
   read -ra EXCLUDE_TERMS <<< "$EXCLUDE_QUERY"
@@ -216,37 +192,9 @@ run_legacy_search() {
   eval "$CMD" 2>/dev/null || true
 }
 
-# Determine search mode and execute
+# Execute search
 TIMING_SEARCH_START=$(date +%s.%N)
-
-if [ -n "$OR_QUERY" ]; then
-  # Legacy mode (--require or --exclude was specified)
-  RESULTS=$(run_legacy_search | sort -u || true)
-elif has_parentheses "$QUERY" || has_boolean_operators "$QUERY"; then
-  # New dual-mode: use ripgrep pipeline for queries with boolean operators or parentheses
-  # Extract terms from query (handle parentheses, AND, OR, NOT)
-  # Apply AND logic across all terms
-
-  # Extract all terms, removing operators and parentheses
-  query_clean=$(echo "$QUERY" | sed -E 's/[\(\)]+/ /g; s/(AND|OR|NOT)/ /g')
-  read -ra terms <<< "$query_clean"
-
-  # Filter the index - all terms must match (conservative AND approach)
-  # Build initial ripgrep pipeline with first term
-  CMD="rg -i '$(to_pattern "${terms[0]}")' '$INDEX_FILE'"
-
-  # Chain additional filters for remaining terms
-  for ((i=1; i<${#terms[@]}; i++)); do
-    if [ -n "${terms[$i]}" ]; then
-      CMD="$CMD | rg -i '$(to_pattern "${terms[$i]}")'"
-    fi
-  done
-
-  RESULTS=$(eval "$CMD" 2>/dev/null | sort -u || true)
-else
-  # Single term search
-  RESULTS=$(rg -i "$(to_pattern "$QUERY")" "$INDEX_FILE" 2>/dev/null | sort -u || true)
-fi
+RESULTS=$(run_search | sort -u || true)
 
 TIMING_SEARCH_END=$(date +%s.%N)
 echo "[TIMING] Search + filter: $(echo "$TIMING_SEARCH_END - $TIMING_SEARCH_START" | bc)s" >&2
@@ -297,21 +245,12 @@ fi
 if [ -z "$RESULTS" ]; then
   echo "No matches found."
   echo ""
-  if [ -n "$OR_QUERY" ]; then
-    echo "Query: OR($OR_QUERY) REQUIRE($REQUIRE_QUERY)${EXCLUDE_QUERY:+ EXCLUDE($EXCLUDE_QUERY)}"
-    echo ""
-    echo "Tips:"
-    echo "  • Add more OR synonyms to broaden search"
-    echo "  • Use fewer --require terms if too restrictive"
-    echo "  • Use underscore for phrases: reset_windows"
-  else
-    echo "Query: $QUERY"
-    echo ""
-    echo "Tips:"
-    echo "  • Try simpler terms to broaden search"
-    echo "  • Use OR to find alternative terms: (chrome OR browser)"
-    echo "  • Use underscore for phrases: reset_windows"
-  fi
+  echo "Query: OR($OR_QUERY) REQUIRE($REQUIRE_QUERY)${EXCLUDE_QUERY:+ EXCLUDE($EXCLUDE_QUERY)}"
+  echo ""
+  echo "Tips:"
+  echo "  • Add more OR synonyms to broaden search"
+  echo "  • Use fewer --require terms if too restrictive"
+  echo "  • Use underscore for phrases: reset_windows"
   exit 0
 fi
 
@@ -321,13 +260,8 @@ shorten_path() {
 }
 
 # Extract first term for formatting
-if [ -n "$OR_QUERY" ]; then
-  read -ra OR_TERMS <<< "$OR_QUERY"
-  FIRST_TERM="${OR_TERMS[0]}"
-else
-  # Extract first word from QUERY (skip boolean operators and parens)
-  FIRST_TERM=$(echo "$QUERY" | sed -E 's/[\(\)]+/ /g; s/(AND|OR|NOT)//g' | awk '{print $1}')
-fi
+read -ra OR_TERMS <<< "$OR_QUERY"
+FIRST_TERM="${OR_TERMS[0]}"
 
 # Normal search path: group by session, format output
 TIMING_FORMAT_START=$(date +%s.%N)
@@ -347,15 +281,19 @@ if [ -n "$RECALL_QUESTION" ]; then
     exit 0
   fi
 
-  # Build recall args in format "session-id:question"
-  RECALL_ARGS=""
+  # Build recall args array in format "session-id:question"
+  RECALL_ARGS=()
   while IFS= read -r sid; do
     [ -z "$sid" ] && continue
-    RECALL_ARGS="$RECALL_ARGS \"$sid:$RECALL_QUESTION\""
+    RECALL_ARGS+=("$sid:$RECALL_QUESTION")
   done <<< "$SESSION_IDS"
 
+  # Debug: show what we're calling
+  echo "[DEBUG] Calling recall.sh with ${#RECALL_ARGS[@]} arguments:" >&2
+  printf '  "%s"\n' "${RECALL_ARGS[@]}" >&2
+
   # Run parallel recall
-  eval "$SCRIPT_DIR/recall.sh $RECALL_ARGS"
+  "$SCRIPT_DIR/recall.sh" "${RECALL_ARGS[@]}"
 else
   echo "$OUTPUT"
 fi
