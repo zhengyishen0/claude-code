@@ -75,6 +75,9 @@ OR_QUERY="$QUERY"
 
 [ ! -d "$SESSION_DIR" ] && { echo "Error: No Claude sessions found" >&2; exit 1; }
 
+# Get current session to exclude from search results
+CURRENT_SESSION_ID="${CLAUDE_SESSION_ID:-}"
+
 # Build full index with jq
 # Index format: session_id \t timestamp \t type \t text \t project_path
 build_full_index() {
@@ -103,6 +106,8 @@ build_full_index() {
       select($text | test("^\\[[0-9]+/[0-9]+\\]\\s+[a-f0-9]{7}\\s+•") | not) |
       # Use filename (without path) as session ID - this naturally deduplicates compacted sessions
       ($filepath | split("/") | last | split(".jsonl") | first) as $session_id |
+      # Exclude current session from results
+      select($session_id != "'$CURRENT_SESSION_ID'") |
       [$session_id, .timestamp, .type, $text, .cwd // "unknown"] | @tsv
     ' 2>/dev/null > "$INDEX_FILE"
   echo "Index built: $(wc -l < "$INDEX_FILE" | tr -d ' ') messages" >&2
@@ -143,6 +148,8 @@ update_index() {
       select($text | test("^\\[[0-9]+/[0-9]+\\]\\s+[a-f0-9]{7}\\s+•") | not) |
       # Use filename (without path) as session ID - this naturally deduplicates compacted sessions
       ($filepath | split("/") | last | split(".jsonl") | first) as $session_id |
+      # Exclude current session from results
+      select($session_id != "'$CURRENT_SESSION_ID'") |
       [$session_id, .timestamp, .type, $text, .cwd // "unknown"] | @tsv
     ' 2>/dev/null >> "$INDEX_FILE" || true
 }
