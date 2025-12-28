@@ -393,11 +393,15 @@ is_coordinates() {
 
 capture_viewport_context() {
   # Capture viewport state before coordinate interaction
-  $CDP_CLI execute "JSON.stringify({
+  local result=$($CDP_CLI execute "JSON.stringify({
     scroll: {x: window.scrollX, y: window.scrollY},
     viewport: {width: window.innerWidth, height: window.innerHeight},
     hash: document.body.innerHTML.length
-  })" | python3 -c "import sys,json,base64; print(base64.b64encode(json.dumps(json.loads(sys.stdin.read())).encode()).decode())"
+  })" 2>/dev/null)
+
+  if [ $? -eq 0 ] && [ -n "$result" ]; then
+    echo "$result" | python3 -c "import sys,json,base64; data=sys.stdin.read().strip(); print(base64.b64encode(data.encode()).decode())" 2>/dev/null
+  fi
 }
 
 smart_wait_viewport() {
@@ -408,9 +412,21 @@ smart_wait_viewport() {
     return
   fi
 
-  # Decode context
-  local context=$(echo "$context_b64" | python3 -c "import sys,json,base64; print(json.loads(base64.b64decode(sys.stdin.read())))")
-  local prev_hash=$(echo "$context" | python3 -c "import sys,json; print(json.load(sys.stdin)['hash'])")
+  # Decode context and extract hash
+  local prev_hash=$(echo "$context_b64" | python3 -c "
+import sys, json, base64
+try:
+    data = base64.b64decode(sys.stdin.read().strip()).decode()
+    obj = json.loads(data)
+    print(obj.get('hash', 0))
+except:
+    print(0)
+" 2>/dev/null)
+
+  if [ -z "$prev_hash" ] || [ "$prev_hash" = "0" ]; then
+    cmd_wait > /dev/null 2>&1
+    return
+  fi
 
   # Wait for viewport to change
   local max_wait=30
