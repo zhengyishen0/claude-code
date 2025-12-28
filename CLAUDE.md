@@ -144,21 +144,17 @@ chrome-cli execute 'document.querySelector("button").click()'
 Universal entry: `claude-tools <tool> [command] [args...]`
 
 ### chrome
-Browser automation with React/SPA support + Vision-based automation (CDP)
+Browser automation with React/SPA support
 
 Run `claude-tools chrome` for full help.
 
-**Commands:** snapshot, inspect, open, wait, click, input, esc
-
-**Visual Commands (CDP):** screenshot, pointer (click/hover/drag)
+**Commands:** snapshot, inspect, open, wait, interact, sendkey, tabs, execute, profile
 
 **Key Principles:**
-1. **URL params first** - Always prefer direct URLs over clicking
-2. **Auto-feedback shows results** - `click` and `input` automatically show feedback
+1. **URL params first** - Always prefer direct URLs over interact commands
+2. **Auto-feedback shows results** - `interact` and `sendkey` automatically show what changed
 3. **Trust the tool** - Commands wait for stability before showing results
-4. **Use chrome tool commands** - Avoid `chrome-cli execute` unless truly needed
-5. **Manual chaining for advanced cases** - Override auto-behavior when needed
-6. **Vision automation** - Use screenshot + coordinates when CSS selectors aren't available
+4. **Use chrome tool commands** - Built-in commands handle automation needs
 
 ### documentation
 Get external documentation for libraries, commands, and APIs
@@ -175,18 +171,20 @@ Run `claude-tools documentation` for full help.
 5. **Topic filtering** - Get only relevant snippets, not entire documentation dumps
 
 ### environment
-Event log for persistent AI collaboration - track tasks, events, and notes with marker-based reading.
+Event log tool for persistent AI collaboration.
 
 Run `claude-tools environment` for full help.
 
 **Commands:** check, event
 
 **Key Principles:**
-1. **Marker-based reading** - Only returns unread events, tracks "read up to here"
-2. **Append-only log** - Events never deleted, accumulate over time
-3. **Simple text format** - Human-readable, grep-able, version-controllable
-4. **Two patterns** - Work items (with task-id:status) and events/notes (just description)
-5. **Self-contained** - Log file lives in tool directory
+1. **Marker-based reading** - Only returns unread events (after last marker)
+2. **Fully append-only** - Events and markers never deleted, only added
+3. **Read event tracking** - Each check adds: `[timestamp] [agent xxx] checked all N events above` (xxx is blank if no agent-id provided)
+4. **Audit trail** - Read events and multiple markers show complete processing history
+5. **Agent identification** - Optional agent-id (blank by default), automated agents should provide their ID
+6. **Simple text format** - Human-readable, grep-able
+7. **Self-contained** - Log file is in tool directory
 
 ### memory
 Cross-session knowledge sharing for Claude Code - search and consult previous sessions like a hive mind.
@@ -204,6 +202,20 @@ Run `claude-tools memory` for full help.
 6. **Cross-Project Recall** - Sessions from any project can be recalled; resolves original project directory automatically
 7. **Search + Recall** - Use `--recall` to search and ask in one step
 8. **Clear Boolean Logic** - `--require` (ALL must match) and `--exclude` (NONE can match) flags make intent explicit
+
+### proxy
+Automatically enable HTTP/HTTPS proxy when VPN is connected - no manual toggling needed!
+
+Run `claude-tools proxy` for full help.
+
+**Commands:** check, status, enable, disable, init, config
+
+**Key Principles:**
+1. **Zero overhead when disconnected** - Fast port check (~10ms) doesn't slow down terminal startup
+2. **Automatic activation** - Works for every new terminal instance without manual intervention
+3. **VPN-aware** - Only enables when proxy is actually reachable
+4. **Project-local config** - Configuration stored in repo, can be gitignored or shared with team
+5. **Manual override available** - Use `enable`/`disable` commands for one-off changes
 
 ### screenshot
 Background window capture for macOS with automatic dual-version output
