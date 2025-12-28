@@ -204,14 +204,9 @@ echo "[TIMING] Search + filter: $(echo "$TIMING_SEARCH_END - $TIMING_SEARCH_STAR
 
 # Post-process: Exclude current session and messages at/before recall outputs
 if [ -n "$RESULTS" ]; then
-  # Strategy 1: Exclude entire current session (tracked by PreToolUse hook via SSE port)
-  CURRENT_SESSION=""
-  if [ -n "$CLAUDE_CODE_SSE_PORT" ] && [ -f "$HOME/.claude/session-ports/$CLAUDE_CODE_SSE_PORT.txt" ]; then
-    CURRENT_SESSION=$(cat "$HOME/.claude/session-ports/$CLAUDE_CODE_SSE_PORT.txt")
-  fi
-
-  if [ -n "$CURRENT_SESSION" ]; then
-    RESULTS=$(echo "$RESULTS" | grep -v "^$CURRENT_SESSION	" || true)
+  # Strategy 1: Exclude entire current session (set by SessionStart hook)
+  if [ -n "$CLAUDE_CODE_SESSION_ID" ]; then
+    RESULTS=$(echo "$RESULTS" | grep -v "^$CLAUDE_CODE_SESSION_ID	" || true)
   fi
 
   # Strategy 2: Find query sessions (messages indicating memory search/recall usage)
