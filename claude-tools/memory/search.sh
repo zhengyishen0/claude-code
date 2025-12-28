@@ -1,6 +1,6 @@
 #!/bin/bash
-# Search Claude sessions with incremental indexing
-# Syntax: memory search "OR terms" --require "required terms" [--exclude "excluded terms"] [--recall "question"]
+# Search Claude sessions
+# Syntax: memory search "OR terms" [--require "required terms"] [--exclude "excluded terms"] [--recall "question"]
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,10 +11,11 @@ INDEX_FILE="$HOME/.claude/memory-index.tsv"
 SESSIONS=5    # Default: 5 sessions
 MESSAGES=5    # Default: 5 messages per session
 CONTEXT=300   # Default: 300 chars per snippet
+QUERY=""
+RECALL_QUESTION=""
 OR_QUERY=""
 REQUIRE_QUERY=""
 EXCLUDE_QUERY=""
-RECALL_QUESTION=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -47,17 +48,17 @@ while [[ $# -gt 0 ]]; do
       exit 1
       ;;
     *)
-      OR_QUERY="$1"
+      QUERY="$1"
       shift
       ;;
   esac
 done
 
-# Validation: both OR and REQUIRE are required
-if [ -z "$OR_QUERY" ]; then
-  echo "Error: Missing OR terms (first argument)" >&2
+# Validation: query is required
+if [ -z "$QUERY" ]; then
+  echo "Error: Missing query (first argument)" >&2
   echo "" >&2
-  echo "Usage: memory search \"OR terms\" --require \"required terms\" [--exclude \"excluded terms\"] [--recall \"question\"]" >&2
+  echo "Usage: memory search \"OR terms\" [--require \"required terms\"] [--exclude \"excluded terms\"] [--recall \"question\"]" >&2
   echo "" >&2
   echo "Examples:" >&2
   echo "  memory search \"asus laptop\" --require \"spec\"" >&2
@@ -65,16 +66,7 @@ if [ -z "$OR_QUERY" ]; then
   exit 1
 fi
 
-if [ -z "$REQUIRE_QUERY" ]; then
-  echo "Error: Missing --require flag (required)" >&2
-  echo "" >&2
-  echo "Usage: memory search \"OR terms\" --require \"required terms\" [--exclude \"excluded terms\"] [--recall \"question\"]" >&2
-  echo "" >&2
-  echo "Examples:" >&2
-  echo "  memory search \"asus laptop\" --require \"spec\"" >&2
-  echo "  memory search \"chrome playwright\" --require \"click\" --recall \"How to fix click issues?\"" >&2
-  exit 1
-fi
+OR_QUERY="$QUERY"
 
 [ ! -d "$SESSION_DIR" ] && { echo "Error: No Claude sessions found" >&2; exit 1; }
 
@@ -168,37 +160,42 @@ to_pattern() {
   echo "$1" | sed 's/_/./g'
 }
 
-# Parse space-separated terms into arrays
-read -ra OR_TERMS <<< "$OR_QUERY"
-read -ra REQUIRE_TERMS <<< "$REQUIRE_QUERY"
-read -ra EXCLUDE_TERMS <<< "$EXCLUDE_QUERY"
+# Search: space-separated terms become OR, then REQUIRE/EXCLUDE filters
+run_search() {
+  read -ra OR_TERMS <<< "$OR_QUERY"
+  read -ra REQUIRE_TERMS <<< "$REQUIRE_QUERY"
+  read -ra EXCLUDE_TERMS <<< "$EXCLUDE_QUERY"
 
-# Build OR pattern from first arg terms
-OR_PATTERNS=()
-for term in "${OR_TERMS[@]}"; do
-  OR_PATTERNS+=("$(to_pattern "$term")")
-done
-OR_PATTERN=$(IFS='|'; echo "${OR_PATTERNS[*]}")
-[[ "$OR_PATTERN" == *"|"* ]] && OR_PATTERN="($OR_PATTERN)"
+  # Build OR pattern from first arg terms
+  OR_PATTERNS=()
+  for term in "${OR_TERMS[@]}"; do
+    OR_PATTERNS+=("$(to_pattern "$term")")
+  done
+  OR_PATTERN=$(IFS='|'; echo "${OR_PATTERNS[*]}")
+  [[ "$OR_PATTERN" == *"|"* ]] && OR_PATTERN="($OR_PATTERN)"
 
-# Build search pipeline: OR first, then REQUIRE filters (each term must match), then EXCLUDE filters
-CMD="rg -i '$OR_PATTERN' '$INDEX_FILE'"
+  # Build search pipeline: OR first, then REQUIRE filters (each term must match), then EXCLUDE filters
+  CMD="rg -i '$OR_PATTERN' '$INDEX_FILE'"
 
-# Each required term creates its own filter (AND logic)
-for term in "${REQUIRE_TERMS[@]}"; do
-  pattern=$(to_pattern "$term")
-  CMD="$CMD | rg -i '$pattern'"
-done
+  # Each required term creates its own filter (AND logic)
+  for term in "${REQUIRE_TERMS[@]}"; do
+    pattern=$(to_pattern "$term")
+    CMD="$CMD | rg -i '$pattern'"
+  done
 
-# Each excluded term creates its own filter
-for term in "${EXCLUDE_TERMS[@]}"; do
-  pattern=$(to_pattern "$term")
-  CMD="$CMD | grep -iv '$pattern'"
-done
+  # Each excluded term creates its own filter
+  for term in "${EXCLUDE_TERMS[@]}"; do
+    pattern=$(to_pattern "$term")
+    CMD="$CMD | grep -iv '$pattern'"
+  done
 
-# Search, dedup, group by session
+  eval "$CMD" 2>/dev/null || true
+}
+
+# Execute search
 TIMING_SEARCH_START=$(date +%s.%N)
-RESULTS=$(eval "$CMD" 2>/dev/null | sort -u || true)
+RESULTS=$(run_search | sort -u || true)
+
 TIMING_SEARCH_END=$(date +%s.%N)
 echo "[TIMING] Search + filter: $(echo "$TIMING_SEARCH_END - $TIMING_SEARCH_START" | bc)s" >&2
 
@@ -252,10 +249,12 @@ shorten_path() {
   echo "$1" | sed "s|^$HOME|~|"
 }
 
+# Extract first term for formatting
+read -ra OR_TERMS <<< "$OR_QUERY"
+FIRST_TERM="${OR_TERMS[0]}"
 
 # Normal search path: group by session, format output
 TIMING_FORMAT_START=$(date +%s.%N)
-FIRST_TERM="${OR_TERMS[0]}"
 OUTPUT=$(echo "$RESULTS" | python3 "$SCRIPT_DIR/format-results.py" "$SESSIONS" "$MESSAGES" "$CONTEXT" "$FIRST_TERM")
 TIMING_FORMAT_END=$(date +%s.%N)
 echo "[TIMING] Format output: $(echo "$TIMING_FORMAT_END - $TIMING_FORMAT_START" | bc)s" >&2
@@ -272,15 +271,19 @@ if [ -n "$RECALL_QUESTION" ]; then
     exit 0
   fi
 
-  # Build recall args in format "session-id:question"
-  RECALL_ARGS=""
+  # Build recall args array in format "session-id:question"
+  RECALL_ARGS=()
   while IFS= read -r sid; do
     [ -z "$sid" ] && continue
-    RECALL_ARGS="$RECALL_ARGS \"$sid:$RECALL_QUESTION\""
+    RECALL_ARGS+=("$sid:$RECALL_QUESTION")
   done <<< "$SESSION_IDS"
 
+  # Debug: show what we're calling
+  echo "[DEBUG] Calling recall.sh with ${#RECALL_ARGS[@]} arguments:" >&2
+  printf '  "%s"\n' "${RECALL_ARGS[@]}" >&2
+
   # Run parallel recall
-  eval "$SCRIPT_DIR/recall.sh $RECALL_ARGS"
+  "$SCRIPT_DIR/recall.sh" "${RECALL_ARGS[@]}"
 else
   echo "$OUTPUT"
 fi

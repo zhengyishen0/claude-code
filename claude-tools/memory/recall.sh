@@ -3,8 +3,16 @@
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MEMORY_STATE_DIR="$HOME/.claude/memory-state"
 INDEX_FILE="$HOME/.claude/memory-index.tsv"
+CLAUDE_FAST="/Users/zhengyishen/.local/bin/claude-fast"
+
+# Use gdate if available (brew install coreutils), otherwise use date
+if command -v gdate >/dev/null 2>&1; then
+  get_time_ms() { gdate +%s%3N; }
+else
+  # Fallback: use Python for millisecond precision
+  get_time_ms() { python3 -c "import time; print(int(time.time() * 1000))"; }
+fi
 
 # Get project directory from index (5th column)
 # Index format: session_id \t timestamp \t type \t text \t project_path
@@ -26,35 +34,14 @@ get_session_date() {
   }'
 }
 
-# Get fork session ID for a session
-get_fork_id() {
-  local session_id="$1"
-  local state_file="$MEMORY_STATE_DIR/$session_id.fork"
-
-  if [ -f "$state_file" ]; then
-    cat "$state_file"
-  fi
-}
-
-# Save fork session ID
-save_fork_id() {
-  local session_id="$1"
-  local fork_id="$2"
-
-  mkdir -p "$MEMORY_STATE_DIR"
-  echo "$fork_id" > "$MEMORY_STATE_DIR/$session_id.fork"
-}
-
-# Shorten path (replace $HOME with ~)
-shorten_path() {
-  echo "$1" | sed "s|^$HOME|~|"
-}
-
 # Recall a single session (compact mode)
 recall_session() {
   local session_id="$1"
   local question="$2"
-  local resume_fork="${3:-false}"
+  local show_timing="${3:-false}"
+
+  # Timing: Start overhead measurement
+  local start_overhead=$(get_time_ms)
 
   # Get project directory from index
   local project_dir=$(get_project_from_index "$session_id")
@@ -83,51 +70,40 @@ Rules:
 
 Question: $question"
 
-  # Check for existing fork (only if --resume)
-  local fork_id=""
-  if [ "$resume_fork" = "true" ]; then
-    fork_id=$(get_fork_id "$session_id")
+  # Timing: End overhead, start API call
+  local end_overhead=$(get_time_ms)
+  local start_api=$(get_time_ms)
+
+  # Create fork with JSON output using claude-fast (v2.0.45)
+  # Uses older version without performance regression (~3-4s vs 60+s with current claude)
+  local output
+  output=$("$CLAUDE_FAST" --model haiku --resume "$session_id" --fork-session -p "$formatted_prompt" --output-format json --allowedTools "Read,Grep,Glob" 2>/dev/null)
+
+  # Timing: End API call
+  local end_api=$(get_time_ms)
+
+  # Extract and display the result text only
+  local result_text=$(echo "$output" | jq -r '.result // empty')
+  if [ -n "$result_text" ]; then
+    echo "$result_text"
   fi
 
-  if [ -n "$fork_id" ]; then
-    # Resume existing fork (silent)
-    (cd "$project_dir" && claude --resume "$fork_id" -p "$formatted_prompt" --allowedTools "Read,Grep,Glob" --model haiku 2>/dev/null)
-  else
-    # Create fork with JSON output to capture new session ID
-    local output
-    output=$(cd "$project_dir" && claude --resume "$session_id" --fork-session -p "$formatted_prompt" --output-format json --allowedTools "Read,Grep,Glob" --model haiku 2>/dev/null)
-
-    # Extract and display the result text only
-    local result_text=$(echo "$output" | jq -r '.result // empty')
-    if [ -n "$result_text" ]; then
-      echo "$result_text"
-    fi
-
-    # Save fork session ID silently
-    local new_fork_id=$(echo "$output" | jq -r '.session_id // empty')
-    if [ -n "$new_fork_id" ]; then
-      save_fork_id "$session_id" "$new_fork_id"
-    fi
+  # Show timing if requested
+  if [ "$show_timing" = "true" ]; then
+    local overhead_ms=$((end_overhead - start_overhead))
+    local api_ms=$((end_api - start_api))
+    local total_ms=$((end_api - start_overhead))
+    echo "" >&2
+    echo "⏱ Timing:" >&2
+    echo "  Overhead: ${overhead_ms}ms" >&2
+    echo "  API call: ${api_ms}ms" >&2
+    echo "  Total:    ${total_ms}ms" >&2
   fi
 }
 
 # Batch recall with parallel execution
 batch_recall() {
-  local resume_fork="false"
-  local queries=()
-
-  # Parse args
-  for arg in "$@"; do
-    case "$arg" in
-      --resume|-r)
-        resume_fork="true"
-        ;;
-      *)
-        queries+=("$arg")
-        ;;
-    esac
-  done
-
+  local queries=("$@")
   local total=${#queries[@]}
 
   if [ $total -eq 0 ]; then
@@ -140,7 +116,7 @@ batch_recall() {
     local query="${queries[0]}"
     local session_id="${query%%:*}"
     local question="${query#*:}"
-    recall_session "$session_id" "$question" "$resume_fork"
+    recall_session "$session_id" "$question" "true"
   else
     # Multiple queries - run in parallel
     # First, show the question once at the top
@@ -154,6 +130,9 @@ batch_recall() {
     local session_ids=()
     local index=0
 
+    # Timing: Start parallel batch
+    local start_batch=$(get_time_ms)
+
     # Start all sessions in parallel
     for query in "${queries[@]}"; do
       ((index++))
@@ -164,7 +143,12 @@ batch_recall() {
       session_ids+=("$session_id")
 
       (
-        recall_session "$session_id" "$question" "$resume_fork" 2>&1
+        local start_individual=$(get_time_ms)
+        recall_session "$session_id" "$question" "false" 2>&1
+        local end_individual=$(get_time_ms)
+        local individual_ms=$((end_individual - start_individual))
+        echo "" >&2
+        echo "[Recall timing for $session_id: ${individual_ms}ms]" >&2
       ) > "$temp_file" 2>&1 &
 
       pids+=($!)
@@ -172,6 +156,10 @@ batch_recall() {
 
     # Wait for all
     wait "${pids[@]}"
+
+    # Timing: End parallel batch
+    local end_batch=$(get_time_ms)
+    local batch_ms=$((end_batch - start_batch))
 
     # Print results in order with compact headers, filtering out "no info" responses
     index=0
@@ -195,6 +183,9 @@ batch_recall() {
       fi
     done
 
+    # Show batch timing
+    echo "⏱ Batch timing: ${batch_ms}ms for ${total} parallel recalls" >&2
+
     rm -f "${temp_files[@]}"
   fi
 }
@@ -202,7 +193,7 @@ batch_recall() {
 # Main
 case "${1:-}" in
   --help|-h|help)
-    echo "Usage: memory recall [--resume] \"<session-id>:<question>\" [...]"
+    echo "Usage: memory recall \"<session-id>:<question>\" [...]"
     echo "Run 'memory --help' for full documentation"
     ;;
   *)
