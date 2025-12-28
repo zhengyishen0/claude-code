@@ -144,17 +144,18 @@ chrome-cli execute 'document.querySelector("button").click()'
 Universal entry: `claude-tools <tool> [command] [args...]`
 
 ### chrome
-Browser automation with React/SPA support
+Browser automation with React/SPA support + Vision-based automation (CDP)
 
 Run `claude-tools chrome` for full help.
 
-**Commands:** snapshot, inspect, open, wait, interact, sendkey, tabs, execute, profile
+**Commands:** snapshot, inspect, open, wait, click, input, hover, drag, sendkey, tabs, execute, screenshot, profile
 
 **Key Principles:**
-1. **URL params first** - Always prefer direct URLs over interact commands
-2. **Auto-feedback shows results** - `interact` and `sendkey` automatically show what changed
-3. **Trust the tool** - Commands wait for stability before showing results
-4. **Use chrome tool commands** - Built-in commands handle automation needs
+1. **URL params first** - Always prefer direct URLs over click commands
+2. **Auto-feedback shows results** - All interaction commands automatically show what changed
+3. **Smart dispatch** - `click`/`hover`/`drag` work with both selectors and coordinates
+4. **Trust the tool** - Commands wait for stability before showing results
+5. **Vision automation** - Use screenshot + coordinates when CSS selectors aren't available
 
 ### documentation
 Get external documentation for libraries, commands, and APIs

@@ -368,22 +368,113 @@ smart_wait_with_context() {
 }
 
 # ============================================================================
-# Command: interact
+# Smart Dispatch Helpers
 # ============================================================================
-cmd_interact() {
+
+is_coordinates() {
+  local arg1="$1"
+  local arg2="$2"
+  local arg3="$3"
+  local arg4="$4"
+
+  # Two numeric args (click/hover)
+  if [[ "$arg1" =~ ^[0-9]+$ ]] && [[ "$arg2" =~ ^[0-9]+$ ]] && [ -z "$arg3" ]; then
+    return 0
+  fi
+
+  # Four numeric args (drag)
+  if [[ "$arg1" =~ ^[0-9]+$ ]] && [[ "$arg2" =~ ^[0-9]+$ ]] && \
+     [[ "$arg3" =~ ^[0-9]+$ ]] && [[ "$arg4" =~ ^[0-9]+$ ]]; then
+    return 0
+  fi
+
+  return 1
+}
+
+capture_viewport_context() {
+  # Capture viewport state before coordinate interaction
+  $CDP_CLI execute "JSON.stringify({
+    scroll: {x: window.scrollX, y: window.scrollY},
+    viewport: {width: window.innerWidth, height: window.innerHeight},
+    hash: document.body.innerHTML.length
+  })" | python3 -c "import sys,json,base64; print(base64.b64encode(json.dumps(json.loads(sys.stdin.read())).encode()).decode())"
+}
+
+smart_wait_viewport() {
+  local context_b64="$1"
+
+  if [ -z "$context_b64" ]; then
+    cmd_wait > /dev/null 2>&1
+    return
+  fi
+
+  # Decode context
+  local context=$(echo "$context_b64" | python3 -c "import sys,json,base64; print(json.loads(base64.b64decode(sys.stdin.read())))")
+  local prev_hash=$(echo "$context" | python3 -c "import sys,json; print(json.load(sys.stdin)['hash'])")
+
+  # Wait for viewport to change
+  local max_wait=30
+  local count=0
+
+  while [ $count -lt $max_wait ]; do
+    sleep 0.1
+    count=$((count + 1))
+
+    local current_hash=$($CDP_CLI execute "document.body.innerHTML.length" 2>/dev/null || echo "0")
+
+    if [ "$current_hash" != "$prev_hash" ]; then
+      cmd_wait > /dev/null 2>&1
+      return 0
+    fi
+  done
+
+  cmd_wait > /dev/null 2>&1
+}
+
+# ============================================================================
+# Command: click
+# ============================================================================
+cmd_click() {
   ensure_chrome_running || return 1
 
+  # Smart dispatch: coordinates vs selector
+  if is_coordinates "$@"; then
+    cmd_click_coordinates "$@"
+  else
+    cmd_click_selector "$@"
+  fi
+}
+
+cmd_click_coordinates() {
+  local x=$1
+  local y=$2
+
+  # Capture context before click
+  local context_before=$(capture_viewport_context)
+
+  # Perform click via CDP
+  local result=$($CDP_CLI click "$x" "$y")
+  local exit_code=$?
+
+  echo "$result"
+
+  if [ $exit_code -eq 0 ]; then
+    # Auto-feedback
+    smart_wait_viewport "$context_before"
+    cmd_snapshot
+  fi
+
+  return $exit_code
+}
+
+cmd_click_selector() {
+  # Reuse interact.js logic
   local SELECTOR=""
-  local INPUT_VALUE=""
   local INDEX=""
 
   # Parse arguments
   while [ $# -gt 0 ]; do
     case "$1" in
-      --input)
-        INPUT_VALUE="$2"
-        shift 2
-        ;;
       --index)
         INDEX="$2"
         shift 2
@@ -401,34 +492,28 @@ cmd_interact() {
   done
 
   if [ -z "$SELECTOR" ]; then
-    echo "Usage: interact 'selector or text' [--input 'value'] [--index N]" >&2
+    echo "Usage: click 'selector or text' [--index N]" >&2
+    echo "       click X Y (coordinates)" >&2
     return 1
   fi
 
-  # Escape values for JavaScript
+  # Escape for JavaScript
   SELECTOR_ESC=$(printf '%s' "$SELECTOR" | sed "s/'/\\\\'/g")
 
-  # Build JavaScript in a temp file to avoid bash escaping issues
+  # Build JavaScript
   local temp_js=$(mktemp)
-
-  # Write variable definitions
   echo "var INTERACT_SELECTOR='$SELECTOR_ESC';" > "$temp_js"
   echo "var INTERACT_INPUT=undefined;" >> "$temp_js"
   echo "var INTERACT_INDEX=undefined;" >> "$temp_js"
-
-  if [ -n "$INPUT_VALUE" ]; then
-    VALUE_ESC=$(printf '%s' "$INPUT_VALUE" | sed "s/'/\\\\'/g")
-    echo "INTERACT_INPUT='$VALUE_ESC';" >> "$temp_js"
-  fi
 
   if [ -n "$INDEX" ]; then
     echo "INTERACT_INDEX=$INDEX;" >> "$temp_js"
   fi
 
-  # Append interact.js content
+  # Append interact.js (reuse existing logic)
   cat "$SCRIPT_DIR/js/interact.js" >> "$temp_js"
 
-  # Execute and cleanup
+  # Execute
   result=$($CDP_CLI execute "$(cat "$temp_js")")
   rm -f "$temp_js"
 
@@ -450,18 +535,227 @@ cmd_interact() {
     return 0
   fi
 
-  # Auto-run wait and snapshot (only for successful interactions)
+  # Auto-feedback (only for successful clicks)
   if [ "$status" = "OK" ]; then
-    # Tier 1: Smart contextual wait (if context available)
     if [ -n "$context" ]; then
       smart_wait_with_context "$context"
-    # Tier 2: General fallback
     else
       cmd_wait > /dev/null 2>&1
     fi
-
-    # Auto-snapshot (smart diff by default)
     cmd_snapshot
+  fi
+}
+
+# ============================================================================
+# Command: input
+# ============================================================================
+cmd_input() {
+  ensure_chrome_running || return 1
+
+  local SELECTOR=""
+  local VALUE=""
+  local INDEX=""
+
+  # Check for coordinates (not supported)
+  if is_coordinates "$@"; then
+    echo "Error: input requires a selector, coordinates not supported" >&2
+    echo "Usage: input 'selector or text' 'value' [--index N]" >&2
+    return 1
+  fi
+
+  # Parse arguments
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --index)
+        INDEX="$2"
+        shift 2
+        ;;
+      *)
+        if [ -z "$SELECTOR" ]; then
+          SELECTOR="$1"
+          shift
+        elif [ -z "$VALUE" ]; then
+          VALUE="$1"
+          shift
+        else
+          echo "Unknown argument: $1" >&2
+          return 1
+        fi
+        ;;
+    esac
+  done
+
+  if [ -z "$SELECTOR" ] || [ -z "$VALUE" ]; then
+    echo "Usage: input 'selector or text' 'value' [--index N]" >&2
+    return 1
+  fi
+
+  # Escape for JavaScript
+  SELECTOR_ESC=$(printf '%s' "$SELECTOR" | sed "s/'/\\\\'/g")
+  VALUE_ESC=$(printf '%s' "$VALUE" | sed "s/'/\\\\'/g")
+
+  # Build JavaScript
+  local temp_js=$(mktemp)
+  echo "var INTERACT_SELECTOR='$SELECTOR_ESC';" > "$temp_js"
+  echo "var INTERACT_INPUT='$VALUE_ESC';" >> "$temp_js"
+  echo "var INTERACT_INDEX=undefined;" >> "$temp_js"
+
+  if [ -n "$INDEX" ]; then
+    echo "INTERACT_INDEX=$INDEX;" >> "$temp_js"
+  fi
+
+  # Append interact.js
+  cat "$SCRIPT_DIR/js/interact.js" >> "$temp_js"
+
+  # Execute
+  result=$($CDP_CLI execute "$(cat "$temp_js")")
+  rm -f "$temp_js"
+
+  # Parse and handle result (same as click_selector)
+  status=$(echo "$result" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','UNKNOWN'))" 2>/dev/null || echo "UNKNOWN")
+  message=$(echo "$result" | python3 -c "import sys,json; print(json.load(sys.stdin).get('message',''))" 2>/dev/null || echo "$result")
+  context=$(echo "$result" | python3 -c "import sys,json; import base64; ctx=json.load(sys.stdin).get('context'); print(base64.b64encode(json.dumps(ctx).encode()).decode() if ctx else '')" 2>/dev/null || echo "")
+
+  echo "$status: $message"
+
+  if [ "$status" = "FAIL" ] || [ "$status" = "ERROR" ]; then
+    return 1
+  fi
+
+  if [ "$status" = "DISAMBIGUATE" ]; then
+    return 0
+  fi
+
+  if [ "$status" = "OK" ]; then
+    if [ -n "$context" ]; then
+      smart_wait_with_context "$context"
+    else
+      cmd_wait > /dev/null 2>&1
+    fi
+    cmd_snapshot
+  fi
+}
+
+# ============================================================================
+# Command: hover
+# ============================================================================
+cmd_hover() {
+  ensure_chrome_running || return 1
+
+  # Smart dispatch: coordinates vs selector
+  if is_coordinates "$@"; then
+    cmd_hover_coordinates "$@"
+  else
+    # Selector mode not fully implemented yet
+    echo "Note: Hover by selector not fully implemented yet. Use coordinates: hover X Y" >&2
+    return 1
+  fi
+}
+
+cmd_hover_coordinates() {
+  local x=$1
+  local y=$2
+
+  # Capture context before hover
+  local context_before=$(capture_viewport_context)
+
+  # Perform hover via CDP
+  local result=$($CDP_CLI hover "$x" "$y")
+  local exit_code=$?
+
+  echo "$result"
+
+  if [ $exit_code -eq 0 ]; then
+    # Auto-feedback
+    smart_wait_viewport "$context_before"
+    cmd_snapshot
+  fi
+
+  return $exit_code
+}
+
+# ============================================================================
+# Command: drag
+# ============================================================================
+cmd_drag() {
+  ensure_chrome_running || return 1
+
+  # Only coordinates supported initially
+  if ! is_coordinates "$@"; then
+    echo "Error: drag requires 4 coordinates (x1 y1 x2 y2)" >&2
+    echo "Usage: drag X1 Y1 X2 Y2" >&2
+    return 1
+  fi
+
+  local x1=$1
+  local y1=$2
+  local x2=$3
+  local y2=$4
+
+  # Capture context before drag
+  local context_before=$(capture_viewport_context)
+
+  # Perform drag via CDP
+  local result=$($CDP_CLI drag "$x1" "$y1" "$x2" "$y2")
+  local exit_code=$?
+
+  echo "$result"
+
+  if [ $exit_code -eq 0 ]; then
+    # Auto-feedback
+    smart_wait_viewport "$context_before"
+    cmd_snapshot
+  fi
+
+  return $exit_code
+}
+
+# ============================================================================
+# Command: interact (DEPRECATED - use click or input)
+# ============================================================================
+cmd_interact() {
+  echo "⚠ Warning: 'interact' is deprecated. Use 'click' or 'input' instead." >&2
+
+  # Detect --input flag and route appropriately
+  local has_input_flag=0
+  for arg in "$@"; do
+    if [ "$arg" = "--input" ]; then
+      has_input_flag=1
+      break
+    fi
+  done
+
+  if [ $has_input_flag -eq 1 ]; then
+    # Convert: interact "selector" --input "value" → input "selector" "value"
+    local selector=""
+    local value=""
+    local index=""
+
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --input)
+          value="$2"
+          shift 2
+          ;;
+        --index)
+          index="$2"
+          shift 2
+          ;;
+        *)
+          selector="$1"
+          shift
+          ;;
+      esac
+    done
+
+    if [ -n "$index" ]; then
+      cmd_input "$selector" "$value" --index "$index"
+    else
+      cmd_input "$selector" "$value"
+    fi
+  else
+    # Forward to click
+    cmd_click "$@"
   fi
 }
 
@@ -793,9 +1087,13 @@ MODES:
 COMMANDS:
   Primary:
     open URL          Navigate to URL, discover structure, show content
-    interact SELECTOR Click or input element, show results
-      --input VALUE   Set input value instead of clicking
+    click SELECTOR    Click element by selector or coordinates
       --index N       Select Nth match when multiple elements found
+    click X Y         Click at pixel coordinates (vision-based)
+    input SELECTOR VALUE  Set input value (React-compatible)
+      --index N       Select Nth match when multiple elements found
+    hover X Y         Hover at pixel coordinates
+    drag X1 Y1 X2 Y2  Drag from coordinates to coordinates
 
   Secondary:
     profile [NAME]    Manage credential profiles for auth
@@ -858,9 +1156,9 @@ PROFILE WORKFLOW:
 EXAMPLES:
   # Standard automation
   $TOOL_NAME open "https://example.com"
-  $TOOL_NAME interact "Submit"
-  $TOOL_NAME interact "#email" --input "user@example.com"
-  $TOOL_NAME interact "Load More"
+  $TOOL_NAME click "Submit"
+  $TOOL_NAME input "#email" "user@example.com"
+  $TOOL_NAME click "Load More"
   $TOOL_NAME tabs
   $TOOL_NAME tabs close 0
   $TOOL_NAME execute "document.title"
@@ -868,7 +1166,9 @@ EXAMPLES:
 
   # Vision-based automation (no CSS selectors needed!)
   $TOOL_NAME screenshot              # AI sees page, identifies coordinates
-  $TOOL_NAME pointer click 600 130   # Click button at those coordinates
+  $TOOL_NAME click 600 130            # Click at coordinates (with auto-feedback)
+  $TOOL_NAME hover 400 300            # Hover at coordinates
+  $TOOL_NAME drag 100 200 300 400    # Drag from one point to another
 
   # Profile automation
   $TOOL_NAME --profile personal open "https://gmail.com"
@@ -891,6 +1191,10 @@ execute_single() {
     inspect)    cmd_inspect "$@" ;;
     open)       cmd_open "$@" ;;
     wait)       cmd_wait "$@" ;;
+    click)      cmd_click "$@" ;;
+    input)      cmd_input "$@" ;;
+    hover)      cmd_hover "$@" ;;
+    drag)       cmd_drag "$@" ;;
     interact)   cmd_interact "$@" ;;
     sendkey)    cmd_sendkey "$@" ;;
     tabs)       cmd_tabs "$@" ;;
@@ -913,7 +1217,7 @@ execute_single() {
 
 # Execute single command
 case "$1" in
-  snapshot|inspect|open|wait|interact|sendkey|tabs|execute|esc|screenshot|pointer|profile)
+  snapshot|inspect|open|wait|click|input|hover|drag|interact|sendkey|tabs|execute|esc|screenshot|pointer|profile)
     cmd="$1"
     shift
     execute_single "$cmd" "$@"
