@@ -383,8 +383,17 @@ if [ -n "$RECALL_QUESTION" ]; then
   echo "[DEBUG] Calling recall.sh with ${#RECALL_ARGS[@]} arguments:" >&2
   printf '  "%s"\n' "${RECALL_ARGS[@]}" >&2
 
-  # Run parallel recall
-  "$SCRIPT_DIR/recall.sh" "${RECALL_ARGS[@]}"
+  # Run parallel recall and capture output
+  RECALL_OUTPUT=$("$SCRIPT_DIR/recall.sh" "${RECALL_ARGS[@]}")
+
+  # Check if recall returned fallback marker (no good answers)
+  if echo "$RECALL_OUTPUT" | grep -q "^RECALL_FALLBACK$"; then
+    echo "⚠️  No relevant answers from past sessions. Showing search results instead:" >&2
+    echo "" >&2
+    echo "$OUTPUT"
+  else
+    echo "$RECALL_OUTPUT"
+  fi
 else
   echo "$OUTPUT"
 fi

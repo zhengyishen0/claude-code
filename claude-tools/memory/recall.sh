@@ -107,10 +107,11 @@ Question: $question"
   fi
 }
 
-# Batch recall with parallel execution
+# Batch recall with parallel execution and timeout
 batch_recall() {
   local queries=("$@")
   local total=${#queries[@]}
+  local timeout=15000  # 15 second timeout in milliseconds
 
   if [ $total -eq 0 ]; then
     echo "Error: No queries provided" >&2
@@ -160,37 +161,102 @@ batch_recall() {
       pids+=($!)
     done
 
-    # Wait for all
-    wait "${pids[@]}"
+    # Wait with timeout - kill slow processes after timeout
+    local elapsed=0
+    local check_interval=100  # Check every 100ms
+    local all_done=false
+
+    while [ $elapsed -lt $timeout ] && [ "$all_done" = false ]; do
+      all_done=true
+      for pid in "${pids[@]}"; do
+        if kill -0 "$pid" 2>/dev/null; then
+          all_done=false
+          break
+        fi
+      done
+
+      if [ "$all_done" = false ]; then
+        sleep 0.1
+        elapsed=$((elapsed + check_interval))
+      fi
+    done
+
+    # Kill any remaining processes that exceeded timeout
+    for pid in "${pids[@]}"; do
+      if kill -0 "$pid" 2>/dev/null; then
+        kill -9 "$pid" 2>/dev/null || true
+      fi
+    done
 
     # Timing: End parallel batch
     local end_batch=$(get_time_ms)
     local batch_ms=$((end_batch - start_batch))
 
-    # Print results in order with compact headers, filtering out "no info" responses
+    # Count different categories of responses
     index=0
-    local shown=0
+    local no_info=0
+    local timeout_error=0
+    local good_session_ids=()
+    local good_contents=()
+    local good_dates=()
+
     for temp_file in "${temp_files[@]}"; do
       ((index++))
       local session_id="${session_ids[$((index-1))]}"
       local short_id="${session_id:0:7}"
       local session_date=$(get_session_date "$session_id")
 
-      if [ -f "$temp_file" ]; then
+      if [ -f "$temp_file" ] && [ -s "$temp_file" ]; then
         local content=$(cat "$temp_file")
-        # Skip responses indicating no useful information
+        # Check if it's a "no info" response
         if echo "$content" | grep -qiE "(I don't have (enough )?information|Could you clarify|I'm not sure about|don't have.*(details|info)|cannot find|no information about|haven't researched)"; then
-          continue
+          ((no_info++))
+        # Check if it's an error
+        elif echo "$content" | grep -qiE "^Error:"; then
+          ((timeout_error++))
+        else
+          # It's a good response - store for later display
+          good_session_ids+=("$short_id")
+          good_contents+=("$content")
+          good_dates+=("$session_date")
         fi
-        ((shown++))
-        echo "[$shown/$total] $short_id • $session_date"
-        echo "$content"
-        echo ""
+      else
+        # No output file or empty = timeout
+        ((timeout_error++))
       fi
     done
 
-    # Show batch timing
-    echo "⏱ Batch timing: ${batch_ms}ms for ${total} parallel recalls" >&2
+    local total_good=${#good_session_ids[@]}
+
+    # If we have good responses, show them with correct numbering
+    if [ $total_good -gt 0 ]; then
+      for i in "${!good_session_ids[@]}"; do
+        local num=$((i + 1))
+        echo "[$num/$total_good] ${good_session_ids[$i]} • ${good_dates[$i]}"
+        echo "${good_contents[$i]}"
+        echo ""
+      done
+
+      # Show summary of filtered sessions
+      local summary_parts=()
+      if [ $no_info -gt 0 ]; then
+        summary_parts+=("$no_info no info")
+      fi
+      if [ $timeout_error -gt 0 ]; then
+        summary_parts+=("$timeout_error timeout/error")
+      fi
+
+      if [ ${#summary_parts[@]} -gt 0 ]; then
+        local summary=$(IFS=', '; echo "${summary_parts[*]}")
+        echo "($summary)" >&2
+      fi
+
+      echo "⏱ Batch timing: ${batch_ms}ms for ${total} parallel recalls" >&2
+    else
+      # No good responses - signal fallback
+      echo "RECALL_FALLBACK"
+      echo "⏱ No relevant answers from recall (${batch_ms}ms, $no_info no info, $timeout_error timeout/error)" >&2
+    fi
 
     rm -f "${temp_files[@]}"
   fi
