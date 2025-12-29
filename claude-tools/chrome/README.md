@@ -449,6 +449,27 @@ chrome --profile amazon-buyer-2 ...  # Agent 2
 
 **Important:** If you only have ONE account, you CANNOT run parallel agents. Profile locking prevents this.
 
+**Why AI Agents Can't Share Accounts:**
+
+AI agents lack coordination capabilities:
+- No shared memory across agents
+- No inter-agent communication
+- No awareness of other agents' tasks
+- Can't "wait politely" or "check if cart has my items"
+
+Shared server-side state causes chaos:
+- Same shopping cart, order history, session state, preferences
+- Agent A adds laptop to cart, Agent B sees it and removes it (thinks it's an error)
+- Result: Agents interfere with each other's work, leading to task failures
+
+**Design principle:** Prevent conflicts at the tool level (profile locking), don't rely on AI coordination.
+
+**Port Assignment:**
+- Each profile automatically gets unique CDP port (9222-9299 range)
+- Ports assigned based on profile name hash
+- Registry tracks active profiles: `~/.claude/chrome/port-registry`
+- Supports up to 78 concurrent profiles
+
 **Examples:**
 ```bash
 profile                           # List: work, personal
