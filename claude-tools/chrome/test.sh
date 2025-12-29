@@ -42,12 +42,11 @@ info() {
 # Setup test environment
 setup() {
   # Clean up any leftover test profiles from previous runs
-  rm -rf "$HOME/.claude/profiles/github-alice"
-  rm -rf "$HOME/.claude/profiles/github-bob"
-  rm -rf "$HOME/.claude/profiles/slack-alice"
-  rm -rf "$HOME/.claude/profiles/github_alice"
-  rm -rf "$HOME/.claude/profiles/github_bob"
-  rm -rf "$HOME/.claude/profiles/slack_alice"
+  # Use wildcards to catch all variants (github-*, github_*, slack-*, slack_*)
+  rm -rf "$HOME/.claude/profiles"/github-*
+  rm -rf "$HOME/.claude/profiles"/github_*
+  rm -rf "$HOME/.claude/profiles"/slack-*
+  rm -rf "$HOME/.claude/profiles"/slack_*
   rm -f "$HOME/.claude/chrome/port-registry"
 
   mkdir -p "$TEST_DIR"
@@ -60,12 +59,11 @@ cleanup() {
   rm -rf "$TEST_DIR"
 
   # Clean up any test profiles that might have been created
-  rm -rf "$HOME/.claude/profiles/github-alice"
-  rm -rf "$HOME/.claude/profiles/github-bob"
-  rm -rf "$HOME/.claude/profiles/slack-alice"
-  rm -rf "$HOME/.claude/profiles/github_alice"
-  rm -rf "$HOME/.claude/profiles/github_bob"
-  rm -rf "$HOME/.claude/profiles/slack_alice"
+  # Use wildcards to catch all variants (github-*, github_*, slack-*, slack_*)
+  rm -rf "$HOME/.claude/profiles"/github-*
+  rm -rf "$HOME/.claude/profiles"/github_*
+  rm -rf "$HOME/.claude/profiles"/slack-*
+  rm -rf "$HOME/.claude/profiles"/slack_*
 
   # Clean up test registry
   rm -f "$HOME/.claude/chrome/port-registry"

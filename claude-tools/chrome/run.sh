@@ -498,6 +498,18 @@ wait_for_cdp() {
 
 # Launch Chrome if not already running
 ensure_chrome_running() {
+  # Profile locking: Assign port FIRST if using a named profile
+  # This must happen before cdp_is_running() check to use the correct port
+  if [ -n "$PROFILE" ]; then
+    local assigned_port=$(assign_port_for_profile "$PROFILE")
+    if [ $? -ne 0 ]; then
+      # Profile is locked, error already displayed by assign_port_for_profile
+      return 1
+    fi
+    CDP_PORT=$assigned_port
+    export CDP_PORT  # Re-export so child processes see the new port
+  fi
+
   if cdp_is_running; then
     return 0
   fi
