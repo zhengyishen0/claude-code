@@ -267,6 +267,127 @@ prompt_fuzzy_match() {
 }
 
 # ============================================================================
+# Chrome.app Integration
+# ============================================================================
+
+# Get all Chrome.app profile directories
+get_chrome_app_profiles() {
+  local chrome_dir="$HOME/Library/Application Support/Google/Chrome"
+  if [ ! -d "$chrome_dir" ]; then
+    return 1
+  fi
+
+  # Find all profile directories (Default, Profile 1, Profile 2, etc.)
+  for dir in "$chrome_dir"/*/; do
+    if [ -d "$dir" ]; then
+      local basename=$(basename "$dir")
+      if [[ "$basename" == "Default" ]] || [[ "$basename" =~ ^Profile\ [0-9]+$ ]]; then
+        echo "$dir"
+      fi
+    fi
+  done
+  return 0
+}
+
+# Format time ago (seconds to human readable)
+format_time_ago() {
+  local seconds=$1
+
+  if [ $seconds -lt 60 ]; then
+    echo "just now"
+  elif [ $seconds -lt 3600 ]; then
+    local mins=$((seconds / 60))
+    echo "${mins}m ago"
+  elif [ $seconds -lt 86400 ]; then
+    local hours=$((seconds / 3600))
+    echo "${hours}h ago"
+  else
+    local days=$((seconds / 86400))
+    echo "${days}d ago"
+  fi
+}
+
+# Detect active accounts from Chrome.app profile
+# Output format: domain|last_access_time|visit_count
+detect_chrome_accounts() {
+  local profile_path="$1"
+  local target_service="$2"  # Service name to filter by (gmail, amazon, etc.)
+
+  local cookies_db="$profile_path/Cookies"
+  local history_db="$profile_path/History"
+
+  if [ ! -f "$cookies_db" ]; then
+    return 1
+  fi
+
+  # Get current time in Chrome's time format (microseconds since 1601-01-01)
+  local now_chrome=$(python3 -c "from datetime import datetime; epoch_1601 = datetime(1601, 1, 1); now = datetime.now(); print(int((now - epoch_1601).total_seconds() * 1000000))")
+
+  # Seven days ago in Chrome time
+  local seven_days_ago=$((now_chrome - 7 * 24 * 60 * 60 * 1000000))
+
+  # Query cookies for target service domains
+  # Filter to unexpired cookies accessed in last 7 days or most recent
+  local cookie_query="
+    SELECT DISTINCT host_key, MAX(last_access_utc) as last_access
+    FROM cookies
+    WHERE expires_utc > $now_chrome
+      AND last_access_utc > 0
+    GROUP BY host_key
+    ORDER BY last_access DESC
+  "
+
+  # Get domains with cookies
+  local domains=()
+  while IFS='|' read -r domain last_access; do
+    # Strip leading dot from domain
+    domain=$(echo "$domain" | sed 's/^\.//')
+
+    # Check if domain matches target service using domain-mappings.json
+    local mappings="$SCRIPT_DIR/domain-mappings.json"
+    local service=""
+    if [ -f "$mappings" ]; then
+      service=$(jq -r ".[\"$domain\"] // empty" "$mappings" 2>/dev/null)
+    fi
+
+    # If no mapping, try TLD stripping fallback
+    if [ -z "$service" ]; then
+      service=$(echo "$domain" | sed -E 's/^www\.//; s/\.(com|co\.uk|de|ca|fr|jp|org|net|io|app|dev)$//' | tr '.' '-')
+    fi
+
+    # Skip if not matching target service
+    if [ "$service" != "$target_service" ]; then
+      continue
+    fi
+
+    # Get visit count from History database
+    local visit_count=0
+    if [ -f "$history_db" ]; then
+      visit_count=$(sqlite3 "$history_db" "
+        SELECT COUNT(*)
+        FROM urls
+        WHERE url LIKE '%://%$domain%'
+        " 2>/dev/null || echo "0")
+    fi
+
+    # Calculate seconds ago
+    local seconds_ago=$(python3 -c "print(int(($now_chrome - $last_access) / 1000000))")
+
+    # Only include if accessed in last 7 days OR most recent
+    if [ $last_access -gt $seven_days_ago ] || [ ${#domains[@]} -eq 0 ]; then
+      domains+=("$domain|$seconds_ago|$visit_count")
+    fi
+  done < <(sqlite3 "$cookies_db" "$cookie_query" 2>/dev/null)
+
+  if [ ${#domains[@]} -eq 0 ]; then
+    return 1
+  fi
+
+  printf '%s\n' "${domains[@]}"
+  return 0
+}
+
+# ============================================================================
 # Port registry and profile locking
 # ============================================================================
 
@@ -277,6 +398,15 @@ PORT_REGISTRY="$HOME/.claude/chrome/port-registry"
 init_registry() {
   mkdir -p "$(dirname "$PORT_REGISTRY")"
   touch "$PORT_REGISTRY"
+}
+
+# Get deterministic port for profile (based on name hash)
+# Returns: port number in range 9222-9299
+get_profile_port() {
+  local profile="$1"
+  local hash=$(echo -n "$profile" | cksum | cut -d' ' -f1)
+  local port=$((9222 + hash % 78))
+  echo "$port"
 }
 
 # Check if a profile is currently in use
@@ -347,7 +477,7 @@ assign_port_for_profile() {
 
   # Profile is available, find a port
   # First, check if this profile had a previous port assignment (reuse it)
-  local preferred_port=$((9222 + $(echo -n "$profile" | cksum | cut -d' ' -f1) % 78))
+  local preferred_port=$(get_profile_port "$profile")
 
   # Check if preferred port is available
   if ! grep -q ":$preferred_port:" "$PORT_REGISTRY" 2>/dev/null; then
@@ -1513,20 +1643,102 @@ cmd_profile() {
 
     import)
       local url="$1"
-      if [ -z "$url" ]; then
-        echo "Usage: profile import <url>" >&2
+      local chrome_dir="$HOME/Library/Application Support/Google/Chrome"
+
+      # Check if Chrome.app is installed
+      if [ ! -d "$chrome_dir/Default" ]; then
+        echo ""
+        echo "ERROR: Chrome.app Default profile not found" >&2
+        echo ""
+        echo "Chrome.app must be installed and used at least once" >&2
+        echo "before profile import can work." >&2
+        echo ""
         return 1
       fi
 
-      # Detect service
-      local service=$(get_service_name "$url")
+      # Determine which services to scan
+      local target_services=()
+      local mappings="$SCRIPT_DIR/domain-mappings.json"
 
-      echo "Importing profiles for $service from Chrome.app..."
-      echo ""
+      if [ -z "$url" ]; then
+        # No URL - scan ALL services
+        echo ""
+        echo "Scanning Chrome.app for all available accounts..."
+        echo ""
+
+        while IFS= read -r service; do
+          target_services+=("$service")
+        done < <(jq -r '.[] | select(. != null)' "$mappings" 2>/dev/null | sort -u)
+      else
+        # Specific URL - single service
+        local service=$(get_service_name "$url")
+        target_services=("$service")
+
+        echo ""
+        echo "Scanning Chrome.app for <$service> accounts..."
+        echo ""
+      fi
+
+      # Scan Chrome.app profiles for each service
+      local found_any=false
+      local seen_services=()  # Track services we've shown to avoid duplicates
+
+      for service in "${target_services[@]}"; do
+        # Skip if we've already shown this service (deduplication)
+        local already_shown=false
+        for seen in "${seen_services[@]}"; do
+          if [ "$seen" = "$service" ]; then
+            already_shown=true
+            break
+          fi
+        done
+
+        if [ "$already_shown" = true ]; then
+          continue
+        fi
+
+        # Detect accounts for this service
+        local accounts=$(detect_chrome_accounts "$chrome_dir/Default" "$service")
+
+        if [ -n "$accounts" ]; then
+          found_any=true
+          seen_services+=("$service")
+
+          # Count accounts
+          local count=$(echo "$accounts" | wc -l | tr -d ' ')
+
+          echo "Found $count account(s) for <$service>:"
+
+          # Show each account with time and visit info
+          while IFS='|' read -r domain seconds_ago visit_count; do
+            local time_str=$(format_time_ago "$seconds_ago")
+            echo "  - $domain ($time_str, $visit_count visits)"
+          done <<< "$accounts"
+
+          echo ""
+        fi
+      done
+
+      if [ "$found_any" = false ]; then
+        if [ -z "$url" ]; then
+          echo "No accounts found in Chrome.app Default profile."
+          echo ""
+          echo "Make sure you're logged into services in Chrome.app first,"
+          echo "then try importing again."
+        else
+          echo "No <$service> accounts found in Chrome.app Default profile."
+          echo ""
+          echo "Make sure you're logged into $service in Chrome.app first,"
+          echo "then try importing again."
+        fi
+        echo ""
+        return 1
+      fi
+
       echo "⚠️  Note: Cookie import is not yet implemented."
-      echo "   Please use 'profile create' instead for manual login."
+      echo "   Use this output to identify which accounts exist, then run:"
+      echo "   'profile create <service> <account>' to create profiles manually."
       echo ""
-      return 1
       ;;
 
     enable)
