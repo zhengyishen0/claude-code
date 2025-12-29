@@ -12,9 +12,6 @@ CDP_PORT=${CDP_PORT:-9222}
 CDP_HOST=${CDP_HOST:-localhost}
 CHROME_APP="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
-# Default profile location
-DEFAULT_PROFILE="$HOME/.claude/chrome/default"
-
 # Export for cdp-cli.js
 export CDP_PORT CDP_HOST
 
@@ -36,6 +33,143 @@ expand_profile_path() {
     local normalized=$(normalize_profile_name "$profile")
     echo "$HOME/.claude/profiles/$normalized"
   fi
+}
+
+# ============================================================================
+# Port registry and profile locking
+# ============================================================================
+
+# Port registry file location
+PORT_REGISTRY="$HOME/.claude/chrome/port-registry"
+
+# Initialize registry directory
+init_registry() {
+  mkdir -p "$(dirname "$PORT_REGISTRY")"
+  touch "$PORT_REGISTRY"
+}
+
+# Check if a profile is currently in use
+# Returns: 0 if in use, 1 if available
+# Sets: EXISTING_PORT, EXISTING_PID, EXISTING_START_TIME
+is_profile_in_use() {
+  local profile="$1"
+  init_registry
+
+  # Check registry for this profile
+  local entry=$(grep "^$profile:" "$PORT_REGISTRY" 2>/dev/null | head -1)
+  if [ -z "$entry" ]; then
+    return 1  # Not in registry = available
+  fi
+
+  # Parse entry: profile:port:pid:start_time
+  EXISTING_PORT=$(echo "$entry" | cut -d: -f2)
+  EXISTING_PID=$(echo "$entry" | cut -d: -f3)
+  EXISTING_START_TIME=$(echo "$entry" | cut -d: -f4)
+
+  # Verify process is still running
+  if ! ps -p "$EXISTING_PID" > /dev/null 2>&1; then
+    # Stale entry, clean it up
+    sed -i '' "/^$profile:/d" "$PORT_REGISTRY" 2>/dev/null || true
+    return 1  # Available
+  fi
+
+  # Verify Chrome is actually listening on that port
+  if ! lsof -i ":$EXISTING_PORT" -sTCP:LISTEN > /dev/null 2>&1; then
+    # Process exists but Chrome not running, clean up
+    sed -i '' "/^$profile:/d" "$PORT_REGISTRY" 2>/dev/null || true
+    return 1  # Available
+  fi
+
+  return 0  # In use
+}
+
+# Assign port for profile (with locking)
+# Returns: port number on success, exits with error if profile locked
+assign_port_for_profile() {
+  local profile="$1"
+  init_registry
+
+  # Check if profile is already in use
+  if is_profile_in_use "$profile"; then
+    # Calculate how long ago it started
+    local now=$(date +%s)
+    local elapsed=$((now - EXISTING_START_TIME))
+    local elapsed_min=$((elapsed / 60))
+    local elapsed_sec=$((elapsed % 60))
+
+    # Show error message
+    echo "" >&2
+    echo "ERROR: Profile '$profile' is already in use" >&2
+    echo "" >&2
+    echo "Details:" >&2
+    echo "  Process ID: $EXISTING_PID" >&2
+    echo "  CDP Port: $EXISTING_PORT" >&2
+    if [ $elapsed_min -gt 0 ]; then
+      echo "  Running for: ${elapsed_min}m ${elapsed_sec}s" >&2
+    else
+      echo "  Running for: ${elapsed_sec}s" >&2
+    fi
+    echo "" >&2
+
+    return 1
+  fi
+
+  # Profile is available, find a port
+  # First, check if this profile had a previous port assignment (reuse it)
+  local preferred_port=$((9222 + $(echo -n "$profile" | cksum | cut -d' ' -f1) % 78))
+
+  # Check if preferred port is available
+  if ! grep -q ":$preferred_port:" "$PORT_REGISTRY" 2>/dev/null; then
+    if ! lsof -i ":$preferred_port" -sTCP:LISTEN > /dev/null 2>&1; then
+      # Preferred port is free, use it
+      local start_time=$(date +%s)
+      echo "$profile:$preferred_port:$$:$start_time" >> "$PORT_REGISTRY"
+      echo "$preferred_port"
+      return 0
+    fi
+  fi
+
+  # Preferred port taken, find next available
+  for port in $(seq 9222 9299); do
+    # Skip if in registry
+    if grep -q ":$port:" "$PORT_REGISTRY" 2>/dev/null; then
+      continue
+    fi
+
+    # Skip if port in use by something else
+    if lsof -i ":$port" -sTCP:LISTEN > /dev/null 2>&1; then
+      continue
+    fi
+
+    # Port is available!
+    local start_time=$(date +%s)
+    echo "$profile:$port:$$:$start_time" >> "$PORT_REGISTRY"
+    echo "$port"
+    return 0
+  done
+
+  # No ports available (all 78 ports in use!)
+  echo "" >&2
+  echo "ERROR: No available CDP ports (9222-9299 all in use)" >&2
+  echo "" >&2
+  echo "Currently active profiles:" >&2
+  cat "$PORT_REGISTRY" | while IFS=: read prof port pid start; do
+    if ps -p "$pid" > /dev/null 2>&1; then
+      echo "  $prof (port $port, PID $pid)" >&2
+    fi
+  done >&2
+  echo "" >&2
+  echo "Please close some Chrome instances and try again." >&2
+  echo "" >&2
+
+  return 1
+}
+
+# Release profile (cleanup registry entry)
+release_profile() {
+  local profile="$1"
+  init_registry
+  sed -i '' "/^$profile:/d" "$PORT_REGISTRY" 2>/dev/null || true
 }
 
 # ============================================================================
@@ -67,20 +201,19 @@ ensure_chrome_running() {
     return 0
   fi
 
-  # Determine profile path
-  local profile_path="$PROFILE_PATH"
-  if [ -z "$profile_path" ]; then
-    profile_path="$DEFAULT_PROFILE"
-  fi
-  mkdir -p "$profile_path"
-
   # Build Chrome args
   local chrome_args=(
     --remote-debugging-port=$CDP_PORT
-    --user-data-dir="$profile_path"
     --no-first-run
     --no-default-browser-check
   )
+
+  # Add user-data-dir if profile is specified
+  if [ -n "$PROFILE_PATH" ]; then
+    mkdir -p "$PROFILE_PATH"
+    chrome_args+=(--user-data-dir="$PROFILE_PATH")
+  fi
+  # If no profile (--debug mode only), use system Chrome (no --user-data-dir)
 
   # Headless mode: --profile without --debug
   if [ -n "$PROFILE" ] && [ "$DEBUG_MODE" = false ]; then
@@ -120,6 +253,44 @@ while [[ "$1" == --* ]]; do
       ;;
   esac
 done
+
+# Validate --profile requirement
+# Commands that don't need --profile: help, profile (for managing profiles)
+COMMAND="$1"
+if [ -z "$PROFILE" ] && [ "$DEBUG_MODE" = false ]; then
+  # No --profile and not in --debug mode
+  # Only allow profile management and help commands
+  if [ "$COMMAND" != "profile" ] && [ "$COMMAND" != "help" ] && [ "$COMMAND" != "--help" ] && [ "$COMMAND" != "-h" ] && [ -n "$COMMAND" ]; then
+    echo "" >&2
+    echo "ERROR: --profile flag is required for automation" >&2
+    echo "" >&2
+    echo "The chrome tool requires --profile to prevent accidental use of your personal Chrome." >&2
+    echo "" >&2
+    echo "Options:" >&2
+    echo "  1. Use a profile:  chrome --profile <name> $COMMAND ..." >&2
+    echo "  2. Debug mode:     chrome --debug $COMMAND ...  (uses your Chrome for manual testing)" >&2
+    echo "  3. Create profile: chrome profile <name> [url]" >&2
+    echo "" >&2
+    exit 1
+  fi
+fi
+
+# Assign CDP port based on profile (with locking)
+if [ -n "$PROFILE" ]; then
+  # Normalize profile name for registry
+  NORMALIZED_PROFILE=$(normalize_profile_name "$PROFILE")
+
+  # Assign port (will fail if profile is locked)
+  ASSIGNED_PORT=$(assign_port_for_profile "$NORMALIZED_PROFILE")
+  if [ $? -ne 0 ]; then
+    # Profile is locked, error message already shown
+    exit 1
+  fi
+
+  # Override CDP_PORT with assigned port
+  CDP_PORT="$ASSIGNED_PORT"
+  export CDP_PORT
+fi
 
 # ============================================================================
 # Configuration
@@ -1092,13 +1263,15 @@ $TOOL_NAME - Browser automation with CDP (Chrome DevTools Protocol)
 Usage: $TOOL_NAME [OPTIONS] <command> [args...]
 
 OPTIONS:
-  --profile NAME    Use named profile (headless mode by default)
-  --debug           Force headed mode even with --profile (for debugging)
+  --profile NAME    Use named profile (REQUIRED for automation)
+  --debug           Use headed mode (visible window)
 
 MODES:
-  Default           Headed Chrome (visible window)
-  --profile NAME    Headless Chrome with saved credentials
-  --profile --debug Headed Chrome with saved credentials
+  --profile NAME        Headless automation with saved credentials
+  --profile NAME --debug Headed automation with saved credentials (for debugging)
+  --debug               Headed mode using system Chrome (manual testing only)
+
+IMPORTANT: --profile is required for automation to prevent accidental use of your personal Chrome.
 
 COMMANDS (use in order of preference):
 

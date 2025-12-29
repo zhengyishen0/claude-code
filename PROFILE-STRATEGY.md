@@ -1,5 +1,167 @@
 # Chrome Profile Security & Best Practices
 
+## Profile Design for AI Agents
+
+### Profile Granularity: Account-Level (Recommended)
+
+Each profile should represent a **single account on a single service**, not a user or scenario.
+
+**✅ Good (Account-Level):**
+```
+gmail-alice@gmail.com              # Or renamed to: gmail-personal
+gmail-alice@company.com            # Or renamed to: gmail-work
+github-bot@company.com             # Or renamed to: github-company-bot
+amazon-testbuyer1@gmail.com        # Or renamed to: amazon-buyer-1
+amazon-testbuyer2@gmail.com        # Or renamed to: amazon-buyer-2
+shopify-admin@test.com             # Or renamed to: shopify-admin-test
+```
+
+**❌ Avoid (User-Level):**
+```
+alice    # Too broad - can't handle multiple Gmail accounts
+bob      # Too broad - no service isolation
+```
+
+**❌ Avoid (Scenario-Level):**
+```
+work     # What if you need multiple Gmail accounts for work?
+personal # Same problem - multiple accounts per service
+```
+
+**Why account-level?**
+- Maximum flexibility - each login is isolated
+- No naming conflicts between services
+- Clear mapping: one profile = one account = one set of credentials
+
+### Profile Naming Convention
+
+**Format:** `<app/domain>-<login-identifier>`
+
+One profile = one account on one service. By default, use the actual login credential (email/username/phone).
+
+**Default naming (recommended):**
+```bash
+# Use the actual login identifier
+profile gmail-alice@gmail.com https://gmail.com
+profile gmail-work@company.com https://gmail.com
+profile amazon-alice@gmail.com https://amazon.com
+profile github-alice123 https://github.com
+profile shopify-+1234567890 https://shopify.com
+```
+
+**Why use actual login identifier?**
+- Unambiguous - you know exactly which account
+- No confusion with multiple accounts on same service
+- Easy to remember which credentials to use
+
+**Rename for convenience (optional):**
+```bash
+# Rename to friendly names after creation
+profile rename gmail-alice@gmail.com gmail-personal
+profile rename gmail-work@company.com gmail-work
+profile rename amazon-alice@gmail.com amazon-alice
+
+# Use the friendly name
+chrome --profile gmail-personal open "https://gmail.com"
+```
+
+**Guidelines:**
+- Service/domain comes first (for grouping and clarity)
+- Login identifier second (email, username, or phone)
+- Automatic normalization: lowercase, spaces→underscores, special chars removed
+- Rename to friendly names if desired (keeps profiles organized)
+
+### Multi-Agent Concurrent Access
+
+**Profile locking prevents conflicts between AI agents.**
+
+Profiles are automatically locked when in use. Only one agent/session can use a profile at a time.
+
+**Problem without locking:**
+```bash
+# Agent A: Shopping for laptop
+chrome --profile amazon-personal ...
+# Adds laptop to cart on Amazon's servers
+
+# Agent B: Shopping for book (parallel!)
+chrome --profile amazon-personal ...
+# Sees laptop in cart, thinks "error, I should only have book"
+# Removes laptop from cart
+
+# Agent A: Goes to checkout
+# Laptop is gone! Task failed!
+```
+
+**Solution: Profile locking (automatic)**
+```bash
+# Agent A starts first
+chrome --profile amazon-personal open "https://amazon.com"
+# ✓ Profile locked
+
+# Agent B tries to use same profile
+chrome --profile amazon-personal open "https://amazon.com"
+# ✗ ERROR: Profile 'amazon-personal' is already in use
+#
+#   Details:
+#     Process ID: 12345
+#     CDP Port: 9222
+#     Running for: 5m 23s
+```
+
+**For parallel work: Use separate accounts**
+```bash
+# Setup: Create multiple test accounts (different Amazon accounts!)
+profile amazon-buyer1@test.com https://amazon.com
+profile amazon-buyer2@test.com https://amazon.com
+profile amazon-buyer3@test.com https://amazon.com
+
+# Optional: Rename for convenience
+profile rename amazon-buyer1@test.com amazon-buyer-1
+profile rename amazon-buyer2@test.com amazon-buyer-2
+profile rename amazon-buyer3@test.com amazon-buyer-3
+
+# Use: Each agent gets dedicated account
+chrome --profile amazon-buyer-1 ...  # Agent 1 (no conflicts)
+chrome --profile amazon-buyer-2 ...  # Agent 2 (no conflicts)
+chrome --profile amazon-buyer-3 ...  # Agent 3 (no conflicts)
+```
+
+**Important:** If you only have ONE Amazon account, you CANNOT run parallel agents on it. Profile locking prevents this. You must create additional test accounts.
+
+### Why AI Agents Can't Share Accounts
+
+**AI agents lack coordination capabilities:**
+- No shared memory across agents
+- No inter-agent communication
+- No awareness of other agents' tasks
+- Can't "wait politely" or "check if cart has my items"
+
+**Shared server-side state causes chaos:**
+- Same shopping cart
+- Same order history
+- Same session state
+- Same preferences
+
+**Result:** Agents interfere with each other's work, leading to task failures.
+
+**Design principle:** Prevent conflicts at the tool level (profile locking), don't rely on AI coordination.
+
+### Port Assignment
+
+Each profile automatically gets a unique CDP port (9222-9299 range):
+- Ports are assigned based on profile name hash
+- Registry tracks active profiles: `~/.claude/chrome/port-registry`
+- Automatic cleanup when Chrome exits
+- Supports up to 78 concurrent profiles
+
+**Port registry format:**
+```
+profile-name:port:pid:start-time
+amazon-buyer-1:9222:12345:1704067200
+amazon-buyer-2:9223:12346:1704067210
+gmail-work:9224:12347:1704067220
+```
+
 ## Security Considerations
 
 ### Profile Data = Active Sessions

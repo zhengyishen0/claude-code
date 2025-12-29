@@ -5,8 +5,15 @@ Browser automation with React/SPA support
 ## Usage
 
 ```bash
-claude-tools chrome <command> [args...]
+claude-tools chrome --profile <name> <command> [args...]
 ```
+
+**Important:** The `--profile` flag is required for all automation commands to prevent accidental use of your personal Chrome.
+
+**Modes:**
+- `--profile <name>`: Headless automation with saved credentials (default)
+- `--profile <name> --debug`: Headed mode for debugging (visible window)
+- `--debug`: Manual testing using system Chrome (no profile)
 
 ## Commands
 
@@ -401,6 +408,46 @@ profile rename OLD NEW   # Rename a profile
 - Each profile has separate cookies/sessions
 - Headless by default, headed with `profile <name>`
 - Use `--profile <name>` flag on other commands
+- **Profile locking:** Only one session can use a profile at a time
+
+**Profile Locking:**
+Profiles are automatically locked when in use to prevent conflicts between multiple agents or sessions:
+
+```bash
+# Session 1 (Agent A)
+chrome --profile amazon-account open "https://amazon.com"
+# ✓ Profile locked, assigned CDP port 9222
+
+# Session 2 (Agent B) - tries to use same profile
+chrome --profile amazon-account open "https://amazon.com"
+# ✗ ERROR: Profile 'amazon-account' is already in use
+#
+#   Details:
+#     Process ID: 12345
+#     CDP Port: 9222
+#     Running for: 5m 23s
+```
+
+**For parallel agents:** Create separate profiles with different accounts:
+```bash
+# Setup: Create profiles for parallel work (different Amazon accounts!)
+profile amazon-buyer1@test.com https://amazon.com
+profile amazon-buyer2@test.com https://amazon.com
+
+# Optional: Rename for convenience
+profile rename amazon-buyer1@test.com amazon-buyer-1
+profile rename amazon-buyer2@test.com amazon-buyer-2
+
+# Use: Each agent gets dedicated account (no conflicts)
+chrome --profile amazon-buyer-1 ...  # Agent 1
+chrome --profile amazon-buyer-2 ...  # Agent 2
+```
+
+**Naming convention:** `<app/domain>-<login-identifier>` (e.g., `gmail-alice@gmail.com`, `amazon-username`)
+- Use actual login credential by default (unambiguous)
+- Rename to friendly names if desired (e.g., `gmail-personal`)
+
+**Important:** If you only have ONE account, you CANNOT run parallel agents. Profile locking prevents this.
 
 **Examples:**
 ```bash
