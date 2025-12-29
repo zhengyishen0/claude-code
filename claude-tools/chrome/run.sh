@@ -260,9 +260,27 @@ detect_chrome_accounts() {
 
   # Get domains with cookies
   local domains=()
+  local seen_domains=()  # Track already seen domains to avoid duplicates
+
   while IFS='|' read -r domain last_access; do
     # Strip leading dot from domain
     domain=$(echo "$domain" | sed 's/^\.//')
+
+    # Check for duplicate domain AFTER normalization (skip if already seen)
+    local already_seen=false
+    for seen in "${seen_domains[@]}"; do
+      if [ "$seen" = "$domain" ]; then
+        already_seen=true
+        break
+      fi
+    done
+
+    if [ "$already_seen" = true ]; then
+      continue
+    fi
+
+    # Mark domain as seen
+    seen_domains+=("$domain")
 
     # Check if domain matches target service using domain-mappings.json
     local mappings="$SCRIPT_DIR/domain-mappings.json"
@@ -307,6 +325,153 @@ detect_chrome_accounts() {
   printf '%s\n' "${domains[@]}"
   return 0
 }
+
+# ============================================================================
+# Port registry and profile locking
+# ============================================================================
+
+# Port registry file location
+PORT_REGISTRY="$HOME/.claude/chrome/port-registry"
+
+# Initialize registry directory
+init_registry() {
+  mkdir -p "$(dirname "$PORT_REGISTRY")"
+  touch "$PORT_REGISTRY"
+}
+
+# Get deterministic port for profile (based on name hash)
+# Returns: port number in range 9222-9299
+get_profile_port() {
+  local profile="$1"
+  local hash=$(echo -n "$profile" | cksum | cut -d' ' -f1)
+  local port=$((9222 + hash % 78))
+  echo "$port"
+}
+
+# Check if a profile is currently in use
+# Returns: 0 if in use, 1 if available
+# Sets: EXISTING_PORT, EXISTING_PID, EXISTING_START_TIME
+is_profile_in_use() {
+  local profile="$1"
+  init_registry
+
+  # Check registry for this profile
+  local entry=$(grep "^$profile:" "$PORT_REGISTRY" 2>/dev/null | head -1)
+  if [ -z "$entry" ]; then
+    return 1  # Not in registry = available
+  fi
+
+  # Parse entry: profile:port:pid:start_time
+  EXISTING_PORT=$(echo "$entry" | cut -d: -f2)
+  EXISTING_PID=$(echo "$entry" | cut -d: -f3)
+  EXISTING_START_TIME=$(echo "$entry" | cut -d: -f4)
+
+  # Verify process is still running
+  if ! ps -p "$EXISTING_PID" > /dev/null 2>&1; then
+    # Stale entry, clean it up
+    sed -i '' "/^$profile:/d" "$PORT_REGISTRY" 2>/dev/null || true
+    return 1  # Available
+  fi
+
+  # Verify Chrome is actually listening on that port
+  if ! lsof -i ":$EXISTING_PORT" -sTCP:LISTEN > /dev/null 2>&1; then
+    # Process exists but Chrome not running, clean up
+    sed -i '' "/^$profile:/d" "$PORT_REGISTRY" 2>/dev/null || true
+    return 1  # Available
+  fi
+
+  return 0  # In use
+}
+
+# Assign port for profile (with locking)
+# Returns: port number on success, exits with error if profile locked
+assign_port_for_profile() {
+  local profile="$1"
+  init_registry
+
+  # Check if profile is already in use
+  if is_profile_in_use "$profile"; then
+    # Calculate how long ago it started
+    local now=$(date +%s)
+    local elapsed=$((now - EXISTING_START_TIME))
+    local elapsed_min=$((elapsed / 60))
+    local elapsed_sec=$((elapsed % 60))
+
+    # Show error message
+    echo "" >&2
+    echo "ERROR: Profile '$profile' is already in use" >&2
+    echo "" >&2
+    echo "Details:" >&2
+    echo "  Process ID: $EXISTING_PID" >&2
+    echo "  CDP Port: $EXISTING_PORT" >&2
+    if [ $elapsed_min -gt 0 ]; then
+      echo "  Running for: ${elapsed_min}m ${elapsed_sec}s" >&2
+    else
+      echo "  Running for: ${elapsed_sec}s" >&2
+    fi
+    echo "" >&2
+
+    return 1
+  fi
+
+  # Profile is available, find a port
+  # First, check if this profile had a previous port assignment (reuse it)
+  local preferred_port=$(get_profile_port "$profile")
+
+  # Check if preferred port is available
+  if ! grep -q ":$preferred_port:" "$PORT_REGISTRY" 2>/dev/null; then
+    if ! lsof -i ":$preferred_port" -sTCP:LISTEN > /dev/null 2>&1; then
+      # Preferred port is free, use it
+      local start_time=$(date +%s)
+      echo "$profile:$preferred_port:$$:$start_time" >> "$PORT_REGISTRY"
+      echo "$preferred_port"
+      return 0
+    fi
+  fi
+
+  # Preferred port taken, find next available
+  for port in $(seq 9222 9299); do
+    # Skip if in registry
+    if grep -q ":$port:" "$PORT_REGISTRY" 2>/dev/null; then
+      continue
+    fi
+
+    # Skip if port in use by something else
+    if lsof -i ":$port" -sTCP:LISTEN > /dev/null 2>&1; then
+      continue
+    fi
+
+    # Port is available!
+    local start_time=$(date +%s)
+    echo "$profile:$port:$$:$start_time" >> "$PORT_REGISTRY"
+    echo "$port"
+    return 0
+  done
+
+  # No ports available (all 78 ports in use!)
+  echo "" >&2
+  echo "ERROR: No available CDP ports (9222-9299 all in use)" >&2
+  echo "" >&2
+  echo "Currently active profiles:" >&2
+  cat "$PORT_REGISTRY" | while IFS=: read prof port pid start; do
+    if ps -p "$pid" > /dev/null 2>&1; then
+      echo "  $prof (port $port, PID $pid)" >&2
+    fi
+  done >&2
+  echo "" >&2
+  echo "Please close some Chrome instances and try again." >&2
+  echo "" >&2
+
+  return 1
+}
+
+# Release profile (cleanup registry entry)
+release_profile() {
+  local profile="$1"
+  init_registry
+  sed -i '' "/^$profile:/d" "$PORT_REGISTRY" 2>/dev/null || true
+}
+
 
 # ============================================================================
 # CDP connection management
@@ -1401,14 +1566,90 @@ cmd_profile() {
 
     import)
       local url="$1"
-      if [ -z "$url" ]; then
-        echo "Usage: profile import URL" >&2
-        echo "" >&2
-        echo "Example:" >&2
-        echo "  $TOOL_NAME profile import https://mail.google.com" >&2
+      local chrome_dir="$HOME/Library/Application Support/Google/Chrome"
+
+      # Check if Chrome.app is installed
+      if [ ! -d "$chrome_dir/Default" ]; then
+        echo ""
+        echo "ERROR: Chrome.app Default profile not found" >&2
+        echo ""
+        echo "Chrome.app must be installed and used at least once" >&2
+        echo "before profile import can work." >&2
+        echo ""
         return 1
       fi
 
+      # Mode 1: Import ALL (discovery only - no URL provided)
+      if [ -z "$url" ]; then
+        local target_services=()
+        local mappings="$SCRIPT_DIR/domain-mappings.json"
+
+        echo ""
+        echo "Scanning Chrome.app for all available accounts..."
+        echo ""
+
+        while IFS= read -r service; do
+          target_services+=("$service")
+        done < <(jq -r '.[] | select(. != null)' "$mappings" 2>/dev/null | sort -u)
+
+        # Scan Chrome.app Default profile for each service
+        local found_any=false
+        local seen_services=()  # Track services we've shown to avoid duplicates
+
+        for service in "${target_services[@]}"; do
+          # Skip if we've already shown this service (deduplication)
+          local already_shown=false
+          for seen in "${seen_services[@]}"; do
+            if [ "$seen" = "$service" ]; then
+              already_shown=true
+              break
+            fi
+          done
+
+          if [ "$already_shown" = true ]; then
+            continue
+          fi
+
+          # Detect accounts for this service
+          local accounts=$(detect_chrome_accounts "$chrome_dir/Default" "$service")
+
+          if [ -n "$accounts" ]; then
+            found_any=true
+            seen_services+=("$service")
+
+            # Count accounts
+            local count=$(echo "$accounts" | wc -l | tr -d ' ')
+
+            echo "Found $count account(s) for <$service>:"
+
+            # Show each account with time and visit info
+            while IFS='|' read -r domain seconds_ago visit_count; do
+              local time_str=$(format_time_ago "$seconds_ago")
+              echo "  - $domain ($time_str, $visit_count visits)"
+            done <<< "$accounts"
+
+            echo ""
+          fi
+        done
+
+        if [ "$found_any" = false ]; then
+          echo "No accounts found in Chrome.app Default profile."
+          echo ""
+          echo "Make sure you're logged into services in Chrome.app first,"
+          echo "then try importing again."
+          echo ""
+          return 1
+        fi
+
+        echo ""
+        echo "Next steps:"
+        echo "  Use 'profile import URL' to import credentials for a specific service."
+        echo "  Example: profile import https://github.com"
+        echo ""
+        return 0
+      fi
+
+      # Mode 2: Import specific service with full cookie copy
       local service=$(get_service_name "$url")
 
       echo "Scanning Chrome.app profiles for <$service> accounts..."

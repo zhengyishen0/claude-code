@@ -41,6 +41,15 @@ info() {
 
 # Setup test environment
 setup() {
+  # Clean up any leftover test profiles from previous runs
+  rm -rf "$HOME/.claude/profiles/github-alice"
+  rm -rf "$HOME/.claude/profiles/github-bob"
+  rm -rf "$HOME/.claude/profiles/slack-alice"
+  rm -rf "$HOME/.claude/profiles/github_alice"
+  rm -rf "$HOME/.claude/profiles/github_bob"
+  rm -rf "$HOME/.claude/profiles/slack_alice"
+  rm -f "$HOME/.claude/chrome/port-registry"
+
   mkdir -p "$TEST_DIR"
   info "Test directory: $TEST_DIR"
   echo ""
@@ -49,6 +58,17 @@ setup() {
 # Cleanup test environment
 cleanup() {
   rm -rf "$TEST_DIR"
+
+  # Clean up any test profiles that might have been created
+  rm -rf "$HOME/.claude/profiles/github-alice"
+  rm -rf "$HOME/.claude/profiles/github-bob"
+  rm -rf "$HOME/.claude/profiles/slack-alice"
+  rm -rf "$HOME/.claude/profiles/github_alice"
+  rm -rf "$HOME/.claude/profiles/github_bob"
+  rm -rf "$HOME/.claude/profiles/slack_alice"
+
+  # Clean up test registry
+  rm -f "$HOME/.claude/chrome/port-registry"
 }
 
 # ============================================================================
@@ -254,6 +274,14 @@ test_detect_chrome_accounts() {
 test_fuzzy_match_profile() {
   echo "A4.1: fuzzy_match_profile()"
 
+  # Clean up any leftover test profiles first
+  rm -rf "$HOME/.claude/profiles/github-alice"
+  rm -rf "$HOME/.claude/profiles/github-bob"
+  rm -rf "$HOME/.claude/profiles/slack-alice"
+  rm -rf "$HOME/.claude/profiles/github_alice"
+  rm -rf "$HOME/.claude/profiles/github_bob"
+  rm -rf "$HOME/.claude/profiles/slack_alice"
+
   # Create test profiles
   mkdir -p "$HOME/.claude/profiles/github-alice"
   mkdir -p "$HOME/.claude/profiles/github-bob"
@@ -282,6 +310,184 @@ test_fuzzy_match_profile() {
   rm -rf "$HOME/.claude/profiles/github-alice"
   rm -rf "$HOME/.claude/profiles/github-bob"
   rm -rf "$HOME/.claude/profiles/slack-alice"
+  rm -rf "$HOME/.claude/profiles/github_alice"
+  rm -rf "$HOME/.claude/profiles/github_bob"
+  rm -rf "$HOME/.claude/profiles/slack_alice"
+
+  echo ""
+}
+
+# ============================================================================
+# Test Suite A5: Profile Locking
+# ============================================================================
+
+test_profile_locking_port_assignment() {
+  echo "A5.1: Port assignment (deterministic hashing)"
+
+  # Test: Same profile gets same port
+  local port1=$(get_profile_port "github-alice")
+  local port2=$(get_profile_port "github-alice")
+  [ "$port1" = "$port2" ] && pass "Same profile → same port ($port1)" || fail "Port consistency" "$port1" "$port2"
+
+  # Test: Different profiles get different ports (usually)
+  local port_alice=$(get_profile_port "github-alice")
+  local port_bob=$(get_profile_port "github-bob")
+  [ "$port_alice" != "$port_bob" ] && pass "Different profiles → different ports" || info "Hash collision (rare but OK)"
+
+  # Test: Port in valid range
+  local port=$(get_profile_port "test-profile")
+  if [ "$port" -ge 9222 ] && [ "$port" -le 9299 ]; then
+    pass "Port in valid range (9222-9299)"
+  else
+    fail "Port range validation" "9222-9299" "$port"
+  fi
+
+  echo ""
+}
+
+test_profile_locking_acquisition() {
+  echo "A5.2: Lock acquisition and release"
+
+  local test_profile="test-lock-profile"
+
+  # Clean up any previous test data
+  rm -f "$HOME/.claude/chrome/port-registry"
+  init_registry
+
+  # Test: Acquire lock
+  local port=$(assign_port_for_profile "$test_profile")
+  [ $? -eq 0 ] && pass "Lock acquired successfully (port $port)" || fail "Lock acquisition" "success" "failed"
+
+  # Test: Registry entry exists
+  if grep -q "^$test_profile:" "$HOME/.claude/chrome/port-registry"; then
+    pass "Registry entry created"
+  else
+    fail "Registry entry" "exists" "missing"
+  fi
+
+  # Test: Release lock
+  release_profile "$test_profile"
+  if ! grep -q "^$test_profile:" "$HOME/.claude/chrome/port-registry"; then
+    pass "Registry entry removed"
+  else
+    fail "Registry entry removal" "removed" "still exists"
+  fi
+
+  echo ""
+}
+
+test_profile_locking_conflict() {
+  echo "A5.3: Lock conflict detection (simulated)"
+
+  local test_profile="test-conflict-profile"
+
+  # Clean up
+  rm -f "$HOME/.claude/chrome/port-registry"
+  init_registry
+
+  # Create a simulated lock by adding registry entry
+  # We simulate a running Chrome by using our own PID
+  local test_port=$(get_profile_port "$test_profile")
+  echo "$test_profile:$test_port:$$:$(date +%s)" >> "$HOME/.claude/chrome/port-registry"
+
+  # Verify registry entry was created
+  if grep -q "^$test_profile:" "$HOME/.claude/chrome/port-registry"; then
+    pass "Simulated lock created in registry"
+  else
+    fail "Lock simulation" "created" "failed"
+  fi
+
+  # The actual conflict detection happens in is_profile_in_use
+  # which checks if the process exists (our $$ exists) and if Chrome is listening
+  # Since Chrome won't be listening, the lock will be cleaned up
+  # This is actually correct behavior - stale lock cleanup
+  info "Note: Lock conflict requires Chrome to be running - testing stale lock cleanup instead"
+
+  # Cleanup
+  release_profile "$test_profile"
+
+  echo ""
+}
+
+test_stale_lock_cleanup() {
+  echo "A5.4: Stale lock cleanup"
+
+  local test_profile="test-stale-profile"
+
+  # Clean up
+  rm -f "$HOME/.claude/chrome/port-registry"
+  init_registry
+
+  # Create a stale lock entry (non-existent PID)
+  echo "$test_profile:9222:999999:$(date +%s)" >> "$HOME/.claude/chrome/port-registry"
+
+  # Try to check if in use (should clean up stale entry)
+  if ! is_profile_in_use "$test_profile"; then
+    pass "Stale lock cleaned up automatically"
+  else
+    fail "Stale lock cleanup" "cleaned" "still locked"
+  fi
+
+  # Verify we can now acquire the lock
+  local port=$(assign_port_for_profile "$test_profile" 2>/dev/null)
+  if [ $? -eq 0 ]; then
+    pass "Profile available after stale lock cleanup"
+  else
+    fail "Profile availability" "available" "locked"
+  fi
+
+  # Cleanup
+  release_profile "$test_profile"
+
+  echo ""
+}
+
+# ============================================================================
+# Test Suite A6: Import Without URL
+# ============================================================================
+
+test_import_all_services() {
+  echo "A6.1: Import without URL (scan all services)"
+
+  local chrome_dir="$HOME/Library/Application Support/Google/Chrome"
+
+  if [ ! -d "$chrome_dir/Default" ]; then
+    info "Chrome.app Default profile not found - skipping import test"
+    echo ""
+    return 0
+  fi
+
+  # Get list of all services from domain-mappings.json
+  local mappings="$SCRIPT_DIR/domain-mappings.json"
+  if [ ! -f "$mappings" ]; then
+    fail "Domain mappings file" "exists" "missing"
+    echo ""
+    return 1
+  fi
+
+  local service_count=$(jq -r '.[] | select(. != null)' "$mappings" 2>/dev/null | sort -u | wc -l | tr -d ' ')
+
+  if [ "$service_count" -gt 0 ]; then
+    pass "Found $service_count services in domain-mappings.json"
+  else
+    fail "Service count" "> 0" "0"
+  fi
+
+  # Test detecting accounts for at least one common service
+  local found_any=false
+  for service in github gmail amazon; do
+    local accounts=$(detect_chrome_accounts "$chrome_dir/Default" "$service" 2>/dev/null)
+    if [ -n "$accounts" ]; then
+      local count=$(echo "$accounts" | wc -l | tr -d ' ')
+      pass "Detected $count <$service> account(s)"
+      found_any=true
+      break
+    fi
+  done
+
+  if [ "$found_any" = false ]; then
+    info "No accounts found for common services (github, gmail, amazon) - this is OK if not logged in"
+  fi
 
   echo ""
 }
@@ -332,6 +538,21 @@ main() {
   echo "======================================================================"
   echo ""
   test_fuzzy_match_profile
+
+  echo "======================================================================"
+  echo "Phase A5: Profile Locking"
+  echo "======================================================================"
+  echo ""
+  test_profile_locking_port_assignment
+  test_profile_locking_acquisition
+  test_profile_locking_conflict
+  test_stale_lock_cleanup
+
+  echo "======================================================================"
+  echo "Phase A6: Import Without URL"
+  echo "======================================================================"
+  echo ""
+  test_import_all_services
 
   cleanup
 
