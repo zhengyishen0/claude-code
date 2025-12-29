@@ -60,14 +60,22 @@ if [ -z "$QUERY" ]; then
   echo "" >&2
   echo "Usage: memory search QUERY [--require TERMS] [--exclude TERMS] [--recall QUESTION]" >&2
   echo "" >&2
-  echo "Query:" >&2
+  echo "Query Strategy:" >&2
   echo "  Space-separated OR terms, use --require for AND, --exclude for NOT" >&2
-  echo "    Example: memory search \"authentication jwt\" --require \"implement\"" >&2
-  echo "    (Finds messages about authentication OR jwt that also mention implement)" >&2
+  echo "  💡 TIP: Use --require to focus results on specific implementations" >&2
   echo "" >&2
   echo "Examples:" >&2
-  echo "  memory search \"asus laptop\" --require \"spec\"" >&2
-  echo "  memory search \"authentication jwt\" --require \"implement\" --recall \"How was it implemented?\"" >&2
+  echo "  # Broad query (may return many sessions)" >&2
+  echo "  memory search \"chrome automation\"" >&2
+  echo "" >&2
+  echo "  # Focused query (better quality)" >&2
+  echo "  memory search \"chrome\" --require \"CDP headless\"" >&2
+  echo "" >&2
+  echo "  # With recall question" >&2
+  echo "  memory search \"authentication\" --require \"implement\" --recall \"How was auth implemented?\"" >&2
+  echo "" >&2
+  echo "  # Exclude noise" >&2
+  echo "  memory search \"error handling\" --exclude \"example mention\"" >&2
   exit 1
 fi
 
@@ -108,6 +116,8 @@ build_full_index() {
       ($filepath | split("/") | last | split(".jsonl") | first) as $session_id |
       # Exclude current session from results
       select($session_id != "'$CURRENT_SESSION_ID'") |
+      # Exclude agent sessions (automated explore agent responses)
+      select($session_id | startswith("agent-") | not) |
       [$session_id, .timestamp, .type, $text, .cwd // "unknown"] | @tsv
     ' 2>/dev/null > "$INDEX_FILE"
   echo "Index built: $(wc -l < "$INDEX_FILE" | tr -d ' ') messages" >&2
@@ -150,6 +160,8 @@ update_index() {
       ($filepath | split("/") | last | split(".jsonl") | first) as $session_id |
       # Exclude current session from results
       select($session_id != "'$CURRENT_SESSION_ID'") |
+      # Exclude agent sessions (automated explore agent responses)
+      select($session_id | startswith("agent-") | not) |
       [$session_id, .timestamp, .type, $text, .cwd // "unknown"] | @tsv
     ' 2>/dev/null >> "$INDEX_FILE" || true
 }
