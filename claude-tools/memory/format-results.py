@@ -45,6 +45,9 @@ def main():
         'session_id': 'count'  # Count of matches
     }).rename(columns={'session_id': 'count'})
 
+    # Filter: require minimum 5 matches to avoid trivial mentions
+    session_stats = session_stats[session_stats['count'] >= 5]
+
     # Sort by relevance (match count) first, then by recency (timestamp)
     # This prioritizes sessions with more matches as they're likely more relevant
     session_stats = session_stats.sort_values(['count', 'timestamp'], ascending=[False, False])

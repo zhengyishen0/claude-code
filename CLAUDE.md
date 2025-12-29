@@ -195,14 +195,14 @@ Run `claude-tools memory` for full help.
 **Commands:** search, recall
 
 **Key Principles:**
-1. **Incremental Indexing** - Full index on first run (~12s), incremental updates after (~0.5s)
-2. **Clean Output** - Filters noise (tool results, IDE events, system messages)
-3. **Grouped Results** - Messages grouped by session, sorted by recency
-4. **Fresh Fork by Default** - Each recall creates a fresh fork for consistent, independent answers; use `--resume` for follow-up questions
-5. **Parallel Recall** - Multiple sessions can be consulted in parallel
-6. **Cross-Project Recall** - Sessions from any project can be recalled; resolves original project directory automatically
-7. **Search + Recall** - Use `--recall` to search and ask in one step
-8. **Clear Boolean Logic** - `--require` (ALL must match) and `--exclude` (NONE can match) flags make intent explicit
+1. **Pipe-Based Query Syntax** - Intuitive OR/AND logic: `"a1|a2|a3 b1|b2"` means (a1 OR a2 OR a3) AND (b1 OR b2)
+2. **Incremental Indexing** - Full index on first run (~12s), incremental updates after (~0.5s)
+3. **Clean Output** - Filters noise (tool results, IDE events, system messages, agent sessions)
+4. **Quality Filtering** - 5-match threshold removes trivial mentions while preserving relevant sessions
+5. **Grouped Results** - Messages grouped by session, sorted by match count then recency
+6. **Fast Search** - ~0.5s average query time with informative 300-char snippets
+7. **Fresh Fork by Default** - Each recall creates a fresh fork for consistent, independent answers; use `--resume` for follow-up questions
+8. **Cross-Project Recall** - Sessions from any project can be recalled; resolves original project directory automatically
 
 ### proxy
 Automatically enable HTTP/HTTPS proxy when VPN is connected - no manual toggling needed!

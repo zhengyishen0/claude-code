@@ -13,9 +13,6 @@ MESSAGES=5    # Default: 5 messages per session
 CONTEXT=300   # Default: 300 chars per snippet
 QUERY=""
 RECALL_QUESTION=""
-OR_QUERY=""
-REQUIRE_QUERY=""
-EXCLUDE_QUERY=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -29,14 +26,6 @@ while [[ $# -gt 0 ]]; do
       ;;
     --context)
       CONTEXT="$2"
-      shift 2
-      ;;
-    --require)
-      REQUIRE_QUERY="$2"
-      shift 2
-      ;;
-    --exclude)
-      EXCLUDE_QUERY="$2"
       shift 2
       ;;
     --recall|-r)
@@ -58,20 +47,33 @@ done
 if [ -z "$QUERY" ]; then
   echo "Error: Missing query (first argument)" >&2
   echo "" >&2
-  echo "Usage: memory search QUERY [--require TERMS] [--exclude TERMS] [--recall QUESTION]" >&2
+  echo "Usage: memory search \"<query>\" [--recall QUESTION]" >&2
   echo "" >&2
-  echo "Query:" >&2
-  echo "  Space-separated OR terms, use --require for AND, --exclude for NOT" >&2
-  echo "    Example: memory search \"authentication jwt\" --require \"implement\"" >&2
-  echo "    (Finds messages about authentication OR jwt that also mention implement)" >&2
+  echo "Query Syntax:" >&2
+  echo "  | (pipe)  = OR within group" >&2
+  echo "  (space)  = AND between groups" >&2
+  echo "" >&2
+  echo "Format: \"a1|a2|a3 b1|b2|b3 c1|c2\"" >&2
+  echo "Means:  (a1 OR a2 OR a3) AND (b1 OR b2 OR b3) AND (c1 OR c2)" >&2
   echo "" >&2
   echo "Examples:" >&2
-  echo "  memory search \"asus laptop\" --require \"spec\"" >&2
-  echo "  memory search \"authentication jwt\" --require \"implement\" --recall \"How was it implemented?\"" >&2
+  echo "  # Chrome automation implementation" >&2
+  echo "  memory search \"chrome|browser|automation implement|build|create\"" >&2
+  echo "  → (chrome OR browser OR automation) AND (implement OR build OR create)" >&2
+  echo "" >&2
+  echo "  # Authentication with JWT/OAuth" >&2
+  echo "  memory search \"JWT|OAuth|authentication implement\"" >&2
+  echo "  → (JWT OR OAuth OR authentication) AND implement" >&2
+  echo "" >&2
+  echo "  # Error fixing (not discussion)" >&2
+  echo "  memory search \"error|bug fix|solve|patch\"" >&2
+  echo "  → (error OR bug) AND (fix OR solve OR patch)" >&2
+  echo "" >&2
+  echo "  # Simple single-word query (no pipes needed)" >&2
+  echo "  memory search \"chrome\"" >&2
+  echo "  → chrome" >&2
   exit 1
 fi
-
-OR_QUERY="$QUERY"
 
 [ ! -d "$SESSION_DIR" ] && { echo "Error: No Claude sessions found" >&2; exit 1; }
 
@@ -108,6 +110,8 @@ build_full_index() {
       ($filepath | split("/") | last | split(".jsonl") | first) as $session_id |
       # Exclude current session from results
       select($session_id != "'$CURRENT_SESSION_ID'") |
+      # Exclude agent sessions (automated explore agent responses)
+      select($session_id | startswith("agent-") | not) |
       [$session_id, .timestamp, .type, $text, .cwd // "unknown"] | @tsv
     ' 2>/dev/null > "$INDEX_FILE"
   echo "Index built: $(wc -l < "$INDEX_FILE" | tr -d ' ') messages" >&2
@@ -150,6 +154,8 @@ update_index() {
       ($filepath | split("/") | last | split(".jsonl") | first) as $session_id |
       # Exclude current session from results
       select($session_id != "'$CURRENT_SESSION_ID'") |
+      # Exclude agent sessions (automated explore agent responses)
+      select($session_id | startswith("agent-") | not) |
       [$session_id, .timestamp, .type, $text, .cwd // "unknown"] | @tsv
     ' 2>/dev/null >> "$INDEX_FILE" || true
 }
@@ -172,34 +178,37 @@ to_pattern() {
   echo "$1" | sed 's/_/./g'
 }
 
-# Search: space-separated terms become OR, then REQUIRE/EXCLUDE filters
+# Search with pipe format: "a1|a2|a3 b1|b2" means (a1 OR a2 OR a3) AND (b1 OR b2)
 run_search() {
+  # Split query by spaces to get AND groups
+  read -ra AND_GROUPS <<< "$QUERY"
 
-  read -ra OR_TERMS <<< "$OR_QUERY"
-  read -ra REQUIRE_TERMS <<< "$REQUIRE_QUERY"
-  read -ra EXCLUDE_TERMS <<< "$EXCLUDE_QUERY"
+  # Start with initial match-all pattern
+  CMD="cat '$INDEX_FILE'"
 
-  # Build OR pattern from first arg terms
-  OR_PATTERNS=()
-  for term in "${OR_TERMS[@]}"; do
-    OR_PATTERNS+=("$(to_pattern "$term")")
-  done
-  OR_PATTERN=$(IFS='|'; echo "${OR_PATTERNS[*]}")
-  [[ "$OR_PATTERN" == *"|"* ]] && OR_PATTERN="($OR_PATTERN)"
+  # Process each AND group
+  for group in "${AND_GROUPS[@]}"; do
+    # Split group by pipes to get OR terms
+    IFS='|' read -ra OR_TERMS <<< "$group"
 
-  # Build search pipeline: OR first, then REQUIRE filters (each term must match), then EXCLUDE filters
-  CMD="rg -i '$OR_PATTERN' '$INDEX_FILE'"
+    # Build OR pattern for this group
+    OR_PATTERNS=()
+    for term in "${OR_TERMS[@]}"; do
+      OR_PATTERNS+=("$(to_pattern "$term")")
+    done
 
-  # Each required term creates its own filter (AND logic)
-  for term in "${REQUIRE_TERMS[@]}"; do
-    pattern=$(to_pattern "$term")
-    CMD="$CMD | rg -i '$pattern'"
-  done
+    # Combine OR terms into a pattern
+    if [ ${#OR_PATTERNS[@]} -eq 1 ]; then
+      # Single term, no parentheses needed
+      PATTERN="${OR_PATTERNS[0]}"
+    else
+      # Multiple terms, use (term1|term2|term3) format
+      PATTERN=$(IFS='|'; echo "${OR_PATTERNS[*]}")
+      PATTERN="($PATTERN)"
+    fi
 
-  # Each excluded term creates its own filter
-  for term in "${EXCLUDE_TERMS[@]}"; do
-    pattern=$(to_pattern "$term")
-    CMD="$CMD | grep -iv '$pattern'"
+    # Add this AND filter to the pipeline
+    CMD="$CMD | rg -i '$PATTERN'"
   done
 
   eval "$CMD" 2>/dev/null || true
@@ -215,11 +224,11 @@ echo "[TIMING] Search + filter: $(echo "$TIMING_SEARCH_END - $TIMING_SEARCH_STAR
 if [ -z "$RESULTS" ]; then
   echo "No matches found."
   echo ""
-  echo "Query: OR($OR_QUERY) REQUIRE($REQUIRE_QUERY)${EXCLUDE_QUERY:+ EXCLUDE($EXCLUDE_QUERY)}"
+  echo "Query: $QUERY"
   echo ""
   echo "Tips:"
-  echo "  • Add more OR synonyms to broaden search"
-  echo "  • Use fewer --require terms if too restrictive"
+  echo "  • Add more OR synonyms: chrome|browser|firefox"
+  echo "  • Reduce AND groups if too restrictive"
   echo "  • Use underscore for phrases: reset_windows"
   exit 0
 fi
@@ -229,9 +238,9 @@ shorten_path() {
   echo "$1" | sed "s|^$HOME|~|"
 }
 
-# Extract first term for formatting
-read -ra OR_TERMS <<< "$OR_QUERY"
-FIRST_TERM="${OR_TERMS[0]}"
+# Extract first term for formatting (from first AND group, first OR term)
+FIRST_GROUP="${QUERY%% *}"  # Get first space-separated group
+FIRST_TERM="${FIRST_GROUP%%|*}"  # Get first pipe-separated term
 
 # Normal search path: group by session, format output
 TIMING_FORMAT_START=$(date +%s.%N)
