@@ -212,39 +212,6 @@ RESULTS=$(run_search | sort -u || true)
 TIMING_SEARCH_END=$(date +%s.%N)
 echo "[TIMING] Search + filter: $(echo "$TIMING_SEARCH_END - $TIMING_SEARCH_START" | bc)s" >&2
 
-# Post-process: Exclude messages at/before recall outputs
-if [ -n "$RESULTS" ]; then
-  # Find query sessions (messages indicating memory search/recall usage)
-  # Look for patterns like "I'll search memory", "memory search", "Did you remember"
-  # Format: session_id \t timestamp \t type \t text
-  RECALL_CUTOFFS=$(echo "$RESULTS" | awk -F'\t' '$4 ~ /(I'\''ll search|memory search|Did you remember.*talked about|go back to a memory|memory recall)/ {print $1 "\t" $2}' | sort -u || true)
-
-  if [ -n "$RECALL_CUTOFFS" ]; then
-    # Build exclusion filter: for each session with recall, exclude messages at/before that timestamp
-    FILTERED_RESULTS=""
-    while IFS= read -r line; do
-      SESSION=$(echo "$line" | cut -f1)
-      TIMESTAMP=$(echo "$line" | cut -f2)
-
-      # Find cutoff timestamp for this session
-      CUTOFF=$(echo "$RECALL_CUTOFFS" | awk -F'\t' -v sess="$SESSION" '$1 == sess {print $2; exit}')
-
-      if [ -n "$CUTOFF" ]; then
-        # Exclude if timestamp <= cutoff
-        LINE_TS=$(echo "$line" | cut -f2)
-        if [[ "$LINE_TS" > "$CUTOFF" ]]; then
-          FILTERED_RESULTS="$FILTERED_RESULTS$line"$'\n'
-        fi
-      else
-        # No recall in this session, keep all messages
-        FILTERED_RESULTS="$FILTERED_RESULTS$line"$'\n'
-      fi
-    done <<< "$RESULTS"
-
-    RESULTS="$FILTERED_RESULTS"
-  fi
-fi
-
 if [ -z "$RESULTS" ]; then
   echo "No matches found."
   echo ""
