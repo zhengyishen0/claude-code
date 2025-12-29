@@ -339,9 +339,27 @@ detect_chrome_accounts() {
 
   # Get domains with cookies
   local domains=()
+  local seen_domains=()  # Track already seen domains to avoid duplicates
+
   while IFS='|' read -r domain last_access; do
     # Strip leading dot from domain
     domain=$(echo "$domain" | sed 's/^\.//')
+
+    # Check for duplicate domain AFTER normalization (skip if already seen)
+    local already_seen=false
+    for seen in "${seen_domains[@]}"; do
+      if [ "$seen" = "$domain" ]; then
+        already_seen=true
+        break
+      fi
+    done
+
+    if [ "$already_seen" = true ]; then
+      continue
+    fi
+
+    # Mark domain as seen
+    seen_domains+=("$domain")
 
     # Check if domain matches target service using domain-mappings.json
     local mappings="$SCRIPT_DIR/domain-mappings.json"
@@ -1735,9 +1753,10 @@ cmd_profile() {
         return 1
       fi
 
-      echo "⚠️  Note: Cookie import is not yet implemented."
-      echo "   Use this output to identify which accounts exist, then run:"
-      echo "   'profile create <service> <account>' to create profiles manually."
+      echo ""
+      echo "Next steps:"
+      echo "  Use 'profile create <url>' to create profiles for these accounts."
+      echo "  Example: profile create https://github.com"
       echo ""
       ;;
 
