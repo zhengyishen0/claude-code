@@ -24,7 +24,7 @@ export CDP_PORT CDP_HOST
 
 # Normalize profile name: lowercase, underscores, alphanumeric only
 normalize_profile_name() {
-  echo "$1" | tr '[:upper:]' '[:lower:]' | tr -s ' -.' '_' | sed 's/[^a-z0-9_]//g'
+  echo "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g' | tr -s '_'
 }
 
 # Expand profile name to full path
@@ -36,6 +36,276 @@ expand_profile_path() {
     local normalized=$(normalize_profile_name "$profile")
     echo "$HOME/.claude/profiles/$normalized"
   fi
+}
+
+# Get service name from URL using domain mappings
+get_service_name() {
+  local url="$1"
+  local domain=$(echo "$url" | sed -E 's|https?://([^/]+).*|\1|')
+
+  # Check domain mappings file
+  local mappings="$SCRIPT_DIR/domain-mappings.json"
+  if [ -f "$mappings" ]; then
+    local service=$(jq -r ".[\"$domain\"] // empty" "$mappings" 2>/dev/null)
+    if [ -n "$service" ]; then
+      echo "$service"
+      return 0
+    fi
+  fi
+
+  # Fallback: strip TLD and normalize
+  local service=$(echo "$domain" | sed -E 's/^www\.//; s/\.(com|co\.uk|de|ca|fr|jp|org|net|io|app|dev)$//' | tr '.' '-')
+  echo "$service"
+}
+
+# Write profile metadata JSON
+write_profile_metadata() {
+  local profile_path="$1"
+  local service="$2"
+  local account="$3"
+  local source="$4"
+  local source_type="$5"
+  local source_path="${6:-}"
+
+  local meta_file="$profile_path/.profile-meta.json"
+  local now=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+  cat > "$meta_file" << EOF
+{
+  "display": "<$service> $account ($source)",
+  "service": "$service",
+  "account": "$account",
+  "source": "$source",
+  "source_type": "$source_type",
+  "source_path": "$source_path",
+  "created": "$now",
+  "last_used": "$now",
+  "status": "enabled"
+}
+EOF
+}
+
+# Read specific field from profile metadata
+read_profile_metadata() {
+  local profile_path="$1"
+  local field="$2"
+  local meta_file="$profile_path/.profile-meta.json"
+
+  if [ ! -f "$meta_file" ]; then
+    return 1
+  fi
+
+  jq -r ".$field // empty" "$meta_file" 2>/dev/null
+}
+
+# Update metadata field
+update_profile_metadata() {
+  local profile_path="$1"
+  local field="$2"
+  local value="$3"
+  local meta_file="$profile_path/.profile-meta.json"
+
+  if [ ! -f "$meta_file" ]; then
+    return 1
+  fi
+
+  local tmp_file=$(mktemp)
+  jq ".$field = \"$value\"" "$meta_file" > "$tmp_file" && mv "$tmp_file" "$meta_file"
+}
+
+# Find profiles matching search string (fuzzy match)
+fuzzy_match_profile() {
+  local search="$1"
+  local matches=()
+
+  if [ ! -d "$HOME/.claude/profiles" ]; then
+    return 1
+  fi
+
+  local search_normalized=$(echo "$search" | tr '[:upper:]' '[:lower:]')
+
+  for dir in "$HOME/.claude/profiles"/*; do
+    if [ ! -d "$dir" ]; then
+      continue
+    fi
+
+    local basename=$(basename "$dir")
+    local basename_lower=$(echo "$basename" | tr '[:upper:]' '[:lower:]')
+
+    if [[ "$basename_lower" == *"$search_normalized"* ]]; then
+      matches+=("$basename")
+    fi
+  done
+
+  if [ ${#matches[@]} -eq 0 ]; then
+    return 1
+  fi
+
+  printf '%s\n' "${matches[@]}"
+  return 0
+}
+
+# Interactive fuzzy match selection
+prompt_fuzzy_match() {
+  local search="$1"
+  local matches=()
+
+  while IFS= read -r match; do
+    matches+=("$match")
+  done < <(fuzzy_match_profile "$search")
+
+  if [ ${#matches[@]} -eq 0 ]; then
+    return 1
+  fi
+
+  echo "" >&2
+  echo "Profile '$search' not found." >&2
+  echo "" >&2
+  echo "Did you mean:" >&2
+
+  local i=1
+  for match in "${matches[@]}"; do
+    local display=$(read_profile_metadata "$HOME/.claude/profiles/$match" "display")
+    if [ -n "$display" ]; then
+      echo "  [$i] $display" >&2
+    else
+      echo "  [$i] $match" >&2
+    fi
+    i=$((i + 1))
+  done
+  echo "" >&2
+
+  echo -n "Select [1-${#matches[@]}] or Ctrl+C to cancel: " >&2
+  read selection
+
+  if ! [[ "$selection" =~ ^[0-9]+$ ]] || [ "$selection" -lt 1 ] || [ "$selection" -gt ${#matches[@]} ]; then
+    echo "Invalid selection" >&2
+    return 1
+  fi
+
+  echo "${matches[$((selection - 1))]}"
+  return 0
+}
+
+# ============================================================================
+# Chrome.app import helpers
+# ============================================================================
+
+# Get all Chrome.app profiles
+get_chrome_app_profiles() {
+  local chrome_dir="$HOME/Library/Application Support/Google/Chrome"
+  if [ ! -d "$chrome_dir" ]; then
+    return 1
+  fi
+
+  # Find all profile directories (Default, Profile 1, Profile 2, etc.)
+  for dir in "$chrome_dir"/*/; do
+    if [ -d "$dir" ]; then
+      local basename=$(basename "$dir")
+      if [[ "$basename" == "Default" ]] || [[ "$basename" =~ ^Profile\ [0-9]+$ ]]; then
+        echo "$dir"
+      fi
+    fi
+  done
+  return 0
+}
+
+# Format time ago (seconds to human readable)
+format_time_ago() {
+  local seconds=$1
+
+  if [ $seconds -lt 60 ]; then
+    echo "just now"
+  elif [ $seconds -lt 3600 ]; then
+    local mins=$((seconds / 60))
+    echo "${mins}m ago"
+  elif [ $seconds -lt 86400 ]; then
+    local hours=$((seconds / 3600))
+    echo "${hours}h ago"
+  else
+    local days=$((seconds / 86400))
+    echo "${days}d ago"
+  fi
+}
+
+# Detect active accounts from Chrome.app profile
+# Output format: domain|last_access_time|visit_count
+detect_chrome_accounts() {
+  local profile_path="$1"
+  local target_service="$2"  # Service name to filter by (gmail, amazon, etc.)
+
+  local cookies_db="$profile_path/Cookies"
+  local history_db="$profile_path/History"
+
+  if [ ! -f "$cookies_db" ]; then
+    return 1
+  fi
+
+  # Get current time in Chrome's time format (microseconds since 1601-01-01)
+  local now_chrome=$(python3 -c "from datetime import datetime; epoch_1601 = datetime(1601, 1, 1); now = datetime.now(); print(int((now - epoch_1601).total_seconds() * 1000000))")
+
+  # Seven days ago in Chrome time
+  local seven_days_ago=$((now_chrome - 7 * 24 * 60 * 60 * 1000000))
+
+  # Query cookies for target service domains
+  # Filter to unexpired cookies accessed in last 7 days or most recent
+  local cookie_query="
+    SELECT DISTINCT host_key, MAX(last_access_utc) as last_access
+    FROM cookies
+    WHERE expires_utc > $now_chrome
+      AND last_access_utc > 0
+    GROUP BY host_key
+    ORDER BY last_access DESC
+  "
+
+  # Get domains with cookies
+  local domains=()
+  while IFS='|' read -r domain last_access; do
+    # Strip leading dot from domain
+    domain=$(echo "$domain" | sed 's/^\.//')
+
+    # Check if domain matches target service using domain-mappings.json
+    local mappings="$SCRIPT_DIR/domain-mappings.json"
+    local service=""
+    if [ -f "$mappings" ]; then
+      service=$(jq -r ".[\"$domain\"] // empty" "$mappings" 2>/dev/null)
+    fi
+
+    # If no mapping, try TLD stripping fallback
+    if [ -z "$service" ]; then
+      service=$(echo "$domain" | sed -E 's/^www\.//; s/\.(com|co\.uk|de|ca|fr|jp|org|net|io|app|dev)$//' | tr '.' '-')
+    fi
+
+    # Skip if not matching target service
+    if [ "$service" != "$target_service" ]; then
+      continue
+    fi
+
+    # Get visit count from History database
+    local visit_count=0
+    if [ -f "$history_db" ]; then
+      visit_count=$(sqlite3 "$history_db" "
+        SELECT COUNT(*)
+        FROM urls
+        WHERE url LIKE '%://%$domain%'
+        " 2>/dev/null || echo "0")
+    fi
+
+    # Calculate seconds ago
+    local seconds_ago=$(python3 -c "print(int(($now_chrome - $last_access) / 1000000))")
+
+    # Only include if accessed in last 7 days OR most recent
+    if [ $last_access -gt $seven_days_ago ] || [ ${#domains[@]} -eq 0 ]; then
+      domains+=("$domain|$seconds_ago|$visit_count")
+    fi
+  done < <(sqlite3 "$cookies_db" "$cookie_query" 2>/dev/null)
+
+  if [ ${#domains[@]} -eq 0 ]; then
+    return 1
+  fi
+
+  printf '%s\n' "${domains[@]}"
+  return 0
 }
 
 # ============================================================================
@@ -994,92 +1264,404 @@ cmd_pointer() {
 # ============================================================================
 cmd_profile() {
   local subcommand="$1"
+  shift
 
+  # Default: list profiles
   if [ -z "$subcommand" ]; then
-    echo "Available profiles:"
-    if [ -d "$HOME/.claude/profiles" ]; then
+    subcommand="list"
+  fi
+
+  case "$subcommand" in
+    list)
+      if [ ! -d "$HOME/.claude/profiles" ] || [ -z "$(ls -A "$HOME/.claude/profiles" 2>/dev/null)" ]; then
+        echo "No profiles found"
+        echo ""
+        echo "Create a profile:"
+        echo "  $TOOL_NAME profile create URL"
+        echo ""
+        echo "Import from Chrome.app:"
+        echo "  $TOOL_NAME profile import URL"
+        return 0
+      fi
+
+      echo "Profiles:"
+      echo ""
+
       for dir in "$HOME/.claude/profiles"/*; do
-        if [ -d "$dir" ]; then
-          echo "  $(basename "$dir")"
+        if [ ! -d "$dir" ]; then
+          continue
+        fi
+
+        local basename=$(basename "$dir")
+        local display=$(read_profile_metadata "$dir" "display")
+        local status=$(read_profile_metadata "$dir" "status")
+
+        if [ -n "$display" ]; then
+          if [ "$status" = "disabled" ]; then
+            echo "  $display [DISABLED]"
+          else
+            echo "  $display"
+          fi
+          echo "    Filename: $basename"
+        else
+          # No metadata - old profile format
+          echo "  $basename (no metadata)"
+        fi
+        echo ""
+      done
+      ;;
+
+    create)
+      local url="$1"
+      if [ -z "$url" ]; then
+        echo "Usage: profile create URL" >&2
+        echo "" >&2
+        echo "Example:" >&2
+        echo "  $TOOL_NAME profile create https://mail.google.com" >&2
+        return 1
+      fi
+
+      local service=$(get_service_name "$url")
+
+      echo "Creating profile for <$service>..."
+      echo ""
+
+      # Show existing profiles for this service
+      if [ -d "$HOME/.claude/profiles" ]; then
+        local service_profiles=()
+        for dir in "$HOME/.claude/profiles"/*; do
+          if [ -d "$dir" ]; then
+            local prof_service=$(read_profile_metadata "$dir" "service")
+            if [ "$prof_service" = "$service" ]; then
+              local prof_account=$(read_profile_metadata "$dir" "account")
+              if [ -n "$prof_account" ]; then
+                service_profiles+=("$prof_account")
+              fi
+            fi
+          fi
+        done
+
+        if [ ${#service_profiles[@]} -gt 0 ]; then
+          echo "Existing <$service> profiles:"
+          for acc in "${service_profiles[@]}"; do
+            echo "  - $acc"
+          done
+          echo ""
+        fi
+      fi
+
+      echo -n "Account identifier (email/username): "
+      read account
+
+      if [ -z "$account" ]; then
+        echo "Error: Account identifier cannot be empty" >&2
+        return 1
+      fi
+
+      local normalized_account=$(echo "$account" | tr '[:upper:]' '[:lower:]' | tr -s ' @.:-' '_' | sed 's/[^a-z0-9_]//g')
+      local profile_name="${service}-${normalized_account}"
+      local profile_path="$HOME/.claude/profiles/$profile_name"
+
+      if [ -d "$profile_path" ]; then
+        echo "Error: Profile '$profile_name' already exists" >&2
+        return 1
+      fi
+
+      mkdir -p "$profile_path/Default"
+
+      # Kill any existing Chrome on CDP port
+      if cdp_is_running; then
+        echo "Closing existing Chrome session..."
+        cmd_close > /dev/null
+        sleep 1
+      fi
+
+      echo ""
+      echo "Opening headed browser for login..."
+      echo "Login as: $account"
+      echo "Close the browser when done."
+      echo ""
+
+      "$CHROME_APP" \
+        --remote-debugging-port=$CDP_PORT \
+        --user-data-dir="$profile_path" \
+        --no-first-run \
+        --no-default-browser-check \
+        "$url"
+
+      write_profile_metadata "$profile_path" "$service" "$account" "manual" "manual"
+
+      echo ""
+      echo "✓ Profile created: <$service> $account (manual)"
+      echo "  Filename: $profile_name"
+      echo ""
+      echo "Use with:"
+      echo "  $TOOL_NAME --profile $profile_name open URL"
+      ;;
+
+    import)
+      local url="$1"
+      if [ -z "$url" ]; then
+        echo "Usage: profile import URL" >&2
+        echo "" >&2
+        echo "Example:" >&2
+        echo "  $TOOL_NAME profile import https://mail.google.com" >&2
+        return 1
+      fi
+
+      local service=$(get_service_name "$url")
+
+      echo "Scanning Chrome.app profiles for <$service> accounts..."
+      echo ""
+
+      # Get all Chrome.app profiles
+      local chrome_profiles=()
+      while IFS= read -r profile_path; do
+        chrome_profiles+=("$profile_path")
+      done < <(get_chrome_app_profiles)
+
+      if [ ${#chrome_profiles[@]} -eq 0 ]; then
+        echo "Error: No Chrome.app profiles found" >&2
+        echo "" >&2
+        echo "Chrome.app profile directory not found at:" >&2
+        echo "  $HOME/Library/Application Support/Google/Chrome" >&2
+        return 1
+      fi
+
+      # Scan all profiles for accounts matching this service
+      local accounts_by_profile=()
+      local profile_names=()
+
+      for chrome_profile in "${chrome_profiles[@]}"; do
+        local profile_name=$(basename "$chrome_profile")
+        local accounts=()
+
+        # Detect accounts for this service in this Chrome.app profile
+        while IFS='|' read -r domain seconds_ago visit_count; do
+          accounts+=("$domain|$seconds_ago|$visit_count")
+        done < <(detect_chrome_accounts "$chrome_profile" "$service")
+
+        # Only include profiles with accounts
+        if [ ${#accounts[@]} -gt 0 ]; then
+          profile_names+=("$profile_name")
+          accounts_by_profile+=("$(IFS=$'\n'; echo "${accounts[*]}")")
         fi
       done
-    else
-      echo "  (none)"
-    fi
-    return 0
-  fi
 
-  if [ "$subcommand" = "rename" ]; then
-    local old_name="$2"
-    local new_name="$3"
+      if [ ${#profile_names[@]} -eq 0 ]; then
+        echo "No <$service> accounts found in Chrome.app profiles" >&2
+        echo "" >&2
+        echo "Make sure you're logged into $service in Chrome.app first" >&2
+        return 1
+      fi
 
-    if [ -z "$old_name" ] || [ -z "$new_name" ]; then
-      echo "Usage: profile rename OLD_NAME NEW_NAME" >&2
+      # Display profiles and accounts
+      local option_num=1
+      local option_to_profile=()
+      local option_to_account=()
+
+      for i in "${!profile_names[@]}"; do
+        echo "Profile: ${profile_names[$i]}"
+
+        # Split accounts for this profile
+        local accounts_str="${accounts_by_profile[$i]}"
+        while IFS='|' read -r domain seconds_ago visit_count; do
+          local time_str=$(format_time_ago "$seconds_ago")
+
+          # Extract subdomain for workspace services (Slack, Notion, etc.)
+          local account_label="$service account"
+          if [[ "$domain" =~ ^([^.]+)\.(slack|notion)\.com$ ]]; then
+            local workspace="${BASH_REMATCH[1]}"
+            account_label="$service account ($workspace.${BASH_REMATCH[2]}.com)"
+          fi
+
+          echo "  [$option_num] $account_label ($time_str, $visit_count visits)"
+          option_to_profile+=("${profile_names[$i]}")
+          option_to_account+=("$domain")
+          option_num=$((option_num + 1))
+        done <<< "$accounts_str"
+
+        echo ""
+      done
+
+      # Prompt user to select account
+      echo -n "Select account [1-$((option_num - 1))] or Ctrl+C to cancel: "
+      read selection
+
+      if ! [[ "$selection" =~ ^[0-9]+$ ]] || [ "$selection" -lt 1 ] || [ "$selection" -ge $option_num ]; then
+        echo "Invalid selection" >&2
+        return 1
+      fi
+
+      local selected_profile="${option_to_profile[$((selection - 1))]}"
+      local selected_domain="${option_to_account[$((selection - 1))]}"
+      local source_path="$HOME/Library/Application Support/Google/Chrome/$selected_profile"
+
+      echo ""
+      echo "Selected: <$service> from Chrome.app profile '$selected_profile'"
+      echo "Domain: $selected_domain"
+      echo ""
+
+      # Prompt for account identifier
+      echo -n "Account identifier (email/username): "
+      read account
+
+      if [ -z "$account" ]; then
+        echo "Error: Account identifier cannot be empty" >&2
+        return 1
+      fi
+
+      local normalized_account=$(echo "$account" | tr '[:upper:]' '[:lower:]' | tr -s ' @.:-' '_' | sed 's/[^a-z0-9_]//g')
+      local profile_name="${service}-${normalized_account}"
+      local dest_path="$HOME/.claude/profiles/$profile_name"
+
+      if [ -d "$dest_path" ]; then
+        echo "Error: Profile '$profile_name' already exists" >&2
+        return 1
+      fi
+
+      echo ""
+      echo "Copying Chrome.app profile..."
+
+      # Copy entire Chrome.app profile
+      mkdir -p "$HOME/.claude/profiles"
+      cp -r "$source_path" "$dest_path"
+
+      # Write metadata
+      write_profile_metadata "$dest_path" "$service" "$account" "Chrome.app/$selected_profile" "chrome_app" "$source_path"
+
+      echo "✓ Profile imported: <$service> $account (Chrome.app/$selected_profile)"
+      echo "  Filename: $profile_name"
+      echo ""
+
+      # Warn about multi-account services
+      if [[ "$service" == "gmail" ]] || [[ "$service" == "google"* ]]; then
+        echo "NOTE: Chrome.app profile may contain multiple Google accounts."
+        echo "      All accounts were copied. Primary account: $account"
+        echo ""
+      fi
+
+      echo "Use with:"
+      echo "  $TOOL_NAME --profile $profile_name open URL"
+      ;;
+
+    enable)
+      local name="$1"
+      if [ -z "$name" ]; then
+        echo "Usage: profile enable NAME" >&2
+        return 1
+      fi
+
+      local profile_path="$HOME/.claude/profiles/$name"
+
+      # Try fuzzy match if exact match doesn't exist
+      if [ ! -d "$profile_path" ]; then
+        local matched_name=$(prompt_fuzzy_match "$name")
+        if [ $? -ne 0 ] || [ -z "$matched_name" ]; then
+          echo "Error: Profile '$name' not found" >&2
+          return 1
+        fi
+        name="$matched_name"
+        profile_path="$HOME/.claude/profiles/$name"
+      fi
+
+      local status=$(read_profile_metadata "$profile_path" "status")
+      if [ "$status" = "enabled" ]; then
+        echo "Profile '$name' is already enabled"
+        return 0
+      fi
+
+      update_profile_metadata "$profile_path" "status" "enabled"
+      echo "✓ Profile '$name' enabled"
+      ;;
+
+    disable)
+      local name="$1"
+      if [ -z "$name" ]; then
+        echo "Usage: profile disable NAME" >&2
+        return 1
+      fi
+
+      local profile_path="$HOME/.claude/profiles/$name"
+
+      # Try fuzzy match if exact match doesn't exist
+      if [ ! -d "$profile_path" ]; then
+        local matched_name=$(prompt_fuzzy_match "$name")
+        if [ $? -ne 0 ] || [ -z "$matched_name" ]; then
+          echo "Error: Profile '$name' not found" >&2
+          return 1
+        fi
+        name="$matched_name"
+        profile_path="$HOME/.claude/profiles/$name"
+      fi
+
+      local status=$(read_profile_metadata "$profile_path" "status")
+      if [ "$status" = "disabled" ]; then
+        echo "Profile '$name' is already disabled"
+        return 0
+      fi
+
+      update_profile_metadata "$profile_path" "status" "disabled"
+      echo "✓ Profile '$name' disabled"
+      ;;
+
+    rename)
+      local old_name="$1"
+      local new_name="$2"
+
+      if [ -z "$old_name" ] || [ -z "$new_name" ]; then
+        echo "Usage: profile rename OLD_NAME NEW_NAME" >&2
+        return 1
+      fi
+
+      local old_normalized=$(normalize_profile_name "$old_name")
+      local new_normalized=$(normalize_profile_name "$new_name")
+      local old_path="$HOME/.claude/profiles/$old_normalized"
+      local new_path="$HOME/.claude/profiles/$new_normalized"
+
+      if [ ! -d "$old_path" ]; then
+        echo "Error: Profile '$old_normalized' does not exist" >&2
+        return 1
+      fi
+
+      if [ -d "$new_path" ]; then
+        echo "Error: Profile '$new_normalized' already exists" >&2
+        return 1
+      fi
+
+      mv "$old_path" "$new_path"
+
+      # Update metadata display if it exists
+      if [ -f "$new_path/.profile-meta.json" ]; then
+        local old_display=$(read_profile_metadata "$new_path" "display")
+        if [ -n "$old_display" ]; then
+          # Keep service and source, just update account part
+          local service=$(read_profile_metadata "$new_path" "service")
+          local source=$(read_profile_metadata "$new_path" "source")
+          local new_account=$(echo "$new_name" | sed "s/^${service}-//")
+          update_profile_metadata "$new_path" "account" "$new_account"
+          update_profile_metadata "$new_path" "display" "<$service> $new_account ($source)"
+        fi
+      fi
+
+      echo "✓ Profile renamed: $old_normalized -> $new_normalized"
+      ;;
+
+    *)
+      echo "Unknown profile subcommand: $subcommand" >&2
+      echo "" >&2
+      echo "Usage: profile <command> [args...]" >&2
+      echo "" >&2
+      echo "Commands:" >&2
+      echo "  list                List all profiles (default)" >&2
+      echo "  create URL          Create new profile by logging in" >&2
+      echo "  import URL          Import credentials from Chrome.app" >&2
+      echo "  enable NAME         Enable a profile" >&2
+      echo "  disable NAME        Disable a profile" >&2
+      echo "  rename OLD NEW      Rename a profile" >&2
       return 1
-    fi
-
-    local old_normalized=$(normalize_profile_name "$old_name")
-    local new_normalized=$(normalize_profile_name "$new_name")
-    local old_path="$HOME/.claude/profiles/$old_normalized"
-    local new_path="$HOME/.claude/profiles/$new_normalized"
-
-    if [ ! -d "$old_path" ]; then
-      echo "Error: Profile '$old_normalized' does not exist" >&2
-      return 1
-    fi
-
-    if [ -d "$new_path" ]; then
-      echo "Error: Profile '$new_normalized' already exists" >&2
-      return 1
-    fi
-
-    mv "$old_path" "$new_path"
-    echo "Profile renamed: $old_normalized -> $new_normalized"
-    return 0
-  fi
-
-  # Default: open profile for login (always headed)
-  local profile_name="$subcommand"
-  local url="$2"
-
-  local normalized=$(normalize_profile_name "$profile_name")
-  local profile_path=$(expand_profile_path "$profile_name")
-
-  mkdir -p "$profile_path"
-
-  # Kill any existing Chrome on CDP port
-  if cdp_is_running; then
-    echo "Closing existing Chrome session..."
-    cmd_close > /dev/null
-    sleep 1
-  fi
-
-  echo "Opening profile '$normalized' for login..."
-  if [ -n "$url" ]; then
-    echo "Navigate to: $url"
-  fi
-  echo "Login as needed. Close the browser when done."
-  echo ""
-
-  # Launch headed Chrome for manual login
-  if [ -n "$url" ]; then
-    "$CHROME_APP" \
-      --remote-debugging-port=$CDP_PORT \
-      --user-data-dir="$profile_path" \
-      --no-first-run \
-      --no-default-browser-check \
-      "$url"
-  else
-    "$CHROME_APP" \
-      --remote-debugging-port=$CDP_PORT \
-      --user-data-dir="$profile_path" \
-      --no-first-run \
-      --no-default-browser-check
-  fi
-
-  echo ""
-  echo "Profile '$normalized' ready for use."
-  echo "  Use: $TOOL_NAME --profile $normalized open URL"
+      ;;
+  esac
 }
 
 # ============================================================================
