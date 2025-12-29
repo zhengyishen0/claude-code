@@ -182,6 +182,90 @@ list_chrome_app_profiles() {
   echo "$profiles"
 }
 
+# Fuzzy match profile name
+# Returns array of matching profile basenames
+fuzzy_match_profile() {
+  local search="$1"
+  local matches=()
+
+  if [ ! -d "$HOME/.claude/profiles" ]; then
+    return 1
+  fi
+
+  # Normalize search term
+  local search_normalized=$(echo "$search" | tr '[:upper:]' '[:lower:]')
+
+  # Find profiles that contain the search term
+  for dir in "$HOME/.claude/profiles"/*; do
+    if [ ! -d "$dir" ]; then
+      continue
+    fi
+
+    local basename=$(basename "$dir")
+    local basename_lower=$(echo "$basename" | tr '[:upper:]' '[:lower:]')
+
+    # Check if basename contains search term
+    if [[ "$basename_lower" == *"$search_normalized"* ]]; then
+      matches+=("$basename")
+    fi
+  done
+
+  # Return matches
+  if [ ${#matches[@]} -eq 0 ]; then
+    return 1
+  fi
+
+  printf '%s\n' "${matches[@]}"
+  return 0
+}
+
+# Prompt user to select from fuzzy matches
+prompt_fuzzy_match() {
+  local search="$1"
+  local matches=()
+
+  # Get matches
+  while IFS= read -r match; do
+    matches+=("$match")
+  done < <(fuzzy_match_profile "$search")
+
+  if [ ${#matches[@]} -eq 0 ]; then
+    return 1
+  fi
+
+  echo "" >&2
+  echo "Profile '$search' not found." >&2
+  echo "" >&2
+  echo "Did you mean:" >&2
+
+  local i=1
+  for match in "${matches[@]}"; do
+    # Show display name if metadata exists
+    local display=$(read_profile_metadata "$HOME/.claude/profiles/$match" "display")
+    if [ -n "$display" ]; then
+      echo "  [$i] $display" >&2
+    else
+      echo "  [$i] $match" >&2
+    fi
+    i=$((i + 1))
+  done
+  echo "" >&2
+
+  # Prompt for selection
+  echo -n "Select [1-${#matches[@]}] or Ctrl+C to cancel: " >&2
+  read selection
+
+  # Validate selection
+  if ! [[ "$selection" =~ ^[0-9]+$ ]] || [ "$selection" -lt 1 ] || [ "$selection" -gt ${#matches[@]} ]; then
+    echo "Invalid selection" >&2
+    return 1
+  fi
+
+  # Return selected profile name
+  echo "${matches[$((selection - 1))]}"
+  return 0
+}
+
 # ============================================================================
 # Port registry and profile locking
 # ============================================================================
@@ -1454,14 +1538,20 @@ cmd_profile() {
 
       local profile_path="$HOME/.claude/profiles/$name"
 
+      # Try exact match first
       if [ ! -d "$profile_path" ]; then
-        echo "Error: Profile '$name' not found" >&2
-        # TODO: Add fuzzy matching here
-        return 1
+        # Try fuzzy matching
+        local matched=$(prompt_fuzzy_match "$name")
+        if [ $? -ne 0 ] || [ -z "$matched" ]; then
+          return 1
+        fi
+        name="$matched"
+        profile_path="$HOME/.claude/profiles/$name"
       fi
 
       update_profile_metadata "$profile_path" "status" "enabled"
       local display=$(read_profile_metadata "$profile_path" "display")
+      echo ""
       echo "✓ Enabled: $display"
       ;;
 
@@ -1474,14 +1564,20 @@ cmd_profile() {
 
       local profile_path="$HOME/.claude/profiles/$name"
 
+      # Try exact match first
       if [ ! -d "$profile_path" ]; then
-        echo "Error: Profile '$name' not found" >&2
-        # TODO: Add fuzzy matching here
-        return 1
+        # Try fuzzy matching
+        local matched=$(prompt_fuzzy_match "$name")
+        if [ $? -ne 0 ] || [ -z "$matched" ]; then
+          return 1
+        fi
+        name="$matched"
+        profile_path="$HOME/.claude/profiles/$name"
       fi
 
       update_profile_metadata "$profile_path" "status" "disabled"
       local display=$(read_profile_metadata "$profile_path" "display")
+      echo ""
       echo "✓ Disabled: $display"
       ;;
 
