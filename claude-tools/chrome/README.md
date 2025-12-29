@@ -399,86 +399,124 @@ execute --file extract-data.js                        # Execute multi-line scrip
 Manage browser profiles for authentication
 
 ```bash
-profile                  # List all profiles
-profile <name> [url]     # Open headed browser for login
-profile rename OLD NEW   # Rename a profile
+profile list                # List all profiles
+profile create <url>        # Create profile with manual login
+profile import <url>        # Import from Chrome.app (not yet implemented)
+profile enable <name>       # Enable profile
+profile disable <name>      # Disable profile
+profile rename <old> <new>  # Rename profile
 ```
 
-**Behavior:**
-- Each profile has separate cookies/sessions
-- Headless by default, headed with `profile <name>`
-- Use `--profile <name>` flag on other commands
-- **Profile locking:** Only one session can use a profile at a time
+**Profile Display Format:** `<service> account (source)`
+
+Examples:
+- `<gmail> alice@gmail.com (manual)`
+- `<amazon> testbuyer (Default)` (if imported from Chrome.app Default profile)
+
+**Creating Profiles:**
+
+```bash
+# Create new profile
+chrome profile create https://gmail.com
+
+# Prompts for account identifier
+Account identifier (email/username): alice@gmail.com
+
+# Opens headed browser for manual login
+# Close browser when done
+
+# Creates profile with filename: gmail-alice_gmail_com
+✓ Profile created: <gmail> alice@gmail.com (manual)
+```
+
+**Listing Profiles:**
+
+```bash
+chrome profile list
+
+<gmail> alice@gmail.com (manual)
+<gmail> bob@work.com (manual)
+<amazon> testbuyer (manual) [DISABLED]
+
+Total: 3 profiles (2 enabled, 1 disabled)
+```
+
+**Managing Profiles:**
+
+```bash
+# Disable a profile
+chrome profile disable gmail-alice_gmail_com
+✓ Disabled: <gmail> alice@gmail.com (manual)
+
+# Enable a profile
+chrome profile enable gmail-alice_gmail_com
+✓ Enabled: <gmail> alice@gmail.com (manual)
+
+# Rename a profile
+chrome profile rename gmail-alice_gmail_com gmail-personal
+✓ Renamed: gmail-alice_gmail_com → gmail-personal
+  Display: <gmail> personal (manual)
+```
+
+**Profile Naming:**
+
+Filenames use format: `service-account_normalized`
+- Service auto-detected from URL
+- Account provided by user
+- Special characters normalized: `@` → `_`, `.` → `_`, etc.
+
+Examples:
+- Input: `alice@gmail.com` → Filename: `gmail-alice_gmail_com`
+- Input: `+1234567890` → Filename: `amazon-_1234567890`
 
 **Profile Locking:**
-Profiles are automatically locked when in use to prevent conflicts between multiple agents or sessions:
+
+Only one session can use a profile at a time (prevents multi-agent conflicts):
 
 ```bash
 # Session 1 (Agent A)
-chrome --profile amazon-account open "https://amazon.com"
+chrome --profile gmail-alice_gmail_com open "https://gmail.com"
 # ✓ Profile locked, assigned CDP port 9222
 
 # Session 2 (Agent B) - tries to use same profile
-chrome --profile amazon-account open "https://amazon.com"
-# ✗ ERROR: Profile 'amazon-account' is already in use
-#
-#   Details:
-#     Process ID: 12345
-#     CDP Port: 9222
-#     Running for: 5m 23s
+chrome --profile gmail-alice_gmail_com open "https://gmail.com"
+# ✗ ERROR: Profile 'gmail-alice_gmail_com' is already in use
+#   Details: Process ID: 12345, CDP Port: 9222, Running for: 5m 23s
 ```
 
-**For parallel agents:** Create separate profiles with different accounts:
+**For Parallel Agents:**
+
+Create separate profiles with different accounts:
+
 ```bash
-# Setup: Create profiles for parallel work (different Amazon accounts!)
-profile amazon-buyer1@test.com https://amazon.com
-profile amazon-buyer2@test.com https://amazon.com
+# Create multiple accounts (different Gmail accounts!)
+chrome profile create https://gmail.com   # alice@gmail.com
+chrome profile create https://gmail.com   # bob@work.com
 
-# Optional: Rename for convenience
-profile rename amazon-buyer1@test.com amazon-buyer-1
-profile rename amazon-buyer2@test.com amazon-buyer-2
-
-# Use: Each agent gets dedicated account (no conflicts)
-chrome --profile amazon-buyer-1 ...  # Agent 1
-chrome --profile amazon-buyer-2 ...  # Agent 2
+# Use different profiles for each agent
+chrome --profile gmail-alice_gmail_com ...  # Agent 1
+chrome --profile gmail-bob_work_com ...     # Agent 2
 ```
-
-**Naming convention:** `<app/domain>-<login-identifier>` (e.g., `gmail-alice@gmail.com`, `amazon-username`)
-- Use actual login credential by default (unambiguous)
-- Rename to friendly names if desired (e.g., `gmail-personal`)
 
 **Important:** If you only have ONE account, you CANNOT run parallel agents. Profile locking prevents this.
 
 **Why AI Agents Can't Share Accounts:**
 
 AI agents lack coordination capabilities:
-- No shared memory across agents
-- No inter-agent communication
-- No awareness of other agents' tasks
-- Can't "wait politely" or "check if cart has my items"
+- No shared memory, no inter-agent communication
+- Can't "wait politely" or check "if cart has my items"
 
 Shared server-side state causes chaos:
-- Same shopping cart, order history, session state, preferences
-- Agent A adds laptop to cart, Agent B sees it and removes it (thinks it's an error)
-- Result: Agents interfere with each other's work, leading to task failures
+- Same shopping cart, order history, session state
+- Agent A adds laptop → Agent B sees it, removes it (thinks error) → Task failure
 
-**Design principle:** Prevent conflicts at the tool level (profile locking), don't rely on AI coordination.
+**Design principle:** Prevent conflicts at tool level (profile locking), don't rely on AI coordination.
 
 **Port Assignment:**
-- Each profile automatically gets unique CDP port (9222-9299 range)
-- Ports assigned based on profile name hash
-- Registry tracks active profiles: `~/.claude/chrome/port-registry`
+- Each profile gets unique CDP port (9222-9299)
+- Auto-assigned based on profile name hash
+- Registry: `~/.claude/chrome/port-registry`
 - Supports up to 78 concurrent profiles
-
-**Examples:**
-```bash
-profile                           # List: work, personal
-profile work https://gmail.com    # Open headed Chrome for login
-# ... log in manually ...
-
-# Use the profile
-claude-tools chrome --profile work open "https://gmail.com"
-```
 
 ## Chaining Commands
 
