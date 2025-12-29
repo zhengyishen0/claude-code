@@ -41,6 +41,15 @@ info() {
 
 # Setup test environment
 setup() {
+  # Clean up any leftover test profiles from previous runs
+  rm -rf "$HOME/.claude/profiles/github-alice"
+  rm -rf "$HOME/.claude/profiles/github-bob"
+  rm -rf "$HOME/.claude/profiles/slack-alice"
+  rm -rf "$HOME/.claude/profiles/github_alice"
+  rm -rf "$HOME/.claude/profiles/github_bob"
+  rm -rf "$HOME/.claude/profiles/slack_alice"
+  rm -f "$HOME/.claude/chrome/port-registry"
+
   mkdir -p "$TEST_DIR"
   info "Test directory: $TEST_DIR"
   echo ""
@@ -49,6 +58,17 @@ setup() {
 # Cleanup test environment
 cleanup() {
   rm -rf "$TEST_DIR"
+
+  # Clean up any test profiles that might have been created
+  rm -rf "$HOME/.claude/profiles/github-alice"
+  rm -rf "$HOME/.claude/profiles/github-bob"
+  rm -rf "$HOME/.claude/profiles/slack-alice"
+  rm -rf "$HOME/.claude/profiles/github_alice"
+  rm -rf "$HOME/.claude/profiles/github_bob"
+  rm -rf "$HOME/.claude/profiles/slack_alice"
+
+  # Clean up test registry
+  rm -f "$HOME/.claude/chrome/port-registry"
 }
 
 # ============================================================================

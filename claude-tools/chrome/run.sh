@@ -21,7 +21,7 @@ export CDP_PORT CDP_HOST
 
 # Normalize profile name: lowercase, underscores, alphanumeric only
 normalize_profile_name() {
-  echo "$1" | tr '[:upper:]' '[:lower:]' | tr -s ' -.' '_' | sed 's/[^a-z0-9_]//g'
+  echo "$1" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/_/g' | tr -s '_' '_'
 }
 
 # Expand profile name to full path
