@@ -244,7 +244,7 @@ FIRST_TERM="${FIRST_GROUP%%|*}"  # Get first pipe-separated term
 
 # Normal search path: group by session, format output
 TIMING_FORMAT_START=$(date +%s.%N)
-OUTPUT=$(echo "$RESULTS" | python3 "$SCRIPT_DIR/format-results.py" "$SESSIONS" "$MESSAGES" "$CONTEXT" "$FIRST_TERM")
+OUTPUT=$(echo "$RESULTS" | uvx --with pandas python "$SCRIPT_DIR/format-results.py" "$SESSIONS" "$MESSAGES" "$CONTEXT" "$FIRST_TERM")
 TIMING_FORMAT_END=$(date +%s.%N)
 echo "[TIMING] Format output: $(echo "$TIMING_FORMAT_END - $TIMING_FORMAT_START" | bc)s" >&2
 echo "[TIMING] TOTAL: $(echo "$TIMING_FORMAT_END - $TIMING_START" | bc)s" >&2
