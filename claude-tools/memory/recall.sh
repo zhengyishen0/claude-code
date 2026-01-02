@@ -4,8 +4,10 @@ set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INDEX_FILE="$HOME/.claude/memory-index.tsv"
-# Use claude from PATH, or npx as fallback
-CLAUDE_CMD="${CLAUDE_CMD:-$(command -v claude || echo "npx @anthropic-ai/claude-code")}"
+# Use claude from PATH, or npx with specific version as fallback
+# Version 2.0.45 is faster in headless mode than later versions
+CLAUDE_VERSION="${CLAUDE_VERSION:-2.0.45}"
+CLAUDE_CMD="${CLAUDE_CMD:-$(command -v claude || echo "npx @anthropic-ai/claude-code@$CLAUDE_VERSION")}"
 
 # Use gdate if available (brew install coreutils), otherwise use date
 if command -v gdate >/dev/null 2>&1; then
