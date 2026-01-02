@@ -4,7 +4,8 @@ set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INDEX_FILE="$HOME/.claude/memory-index.tsv"
-CLAUDE_FAST="/Users/zhengyishen/.local/bin/claude-fast"
+# Use claude from PATH, or npx as fallback
+CLAUDE_CMD="${CLAUDE_CMD:-$(command -v claude || echo "npx @anthropic-ai/claude-code")}"
 
 # Use gdate if available (brew install coreutils), otherwise use date
 if command -v gdate >/dev/null 2>&1; then
@@ -79,11 +80,10 @@ Question: $question"
   local end_overhead=$(get_time_ms)
   local start_api=$(get_time_ms)
 
-  # Resume session with JSON output using claude-fast
-  # claude-fast is 1.3-2x faster than normal claude (4-11s vs 8-13s)
+  # Resume session with JSON output
   # Note: Adds recall Q&A to session history (not read-only)
   local output
-  output=$("$CLAUDE_FAST" --model haiku --resume "$session_id" -p "$formatted_prompt" --output-format json --allowedTools "Read,Grep,Glob" 2>/dev/null)
+  output=$($CLAUDE_CMD --model haiku --resume "$session_id" -p "$formatted_prompt" --output-format json --allowedTools "Read,Grep,Glob" 2>/dev/null)
 
   # Timing: End API call
   local end_api=$(get_time_ms)
