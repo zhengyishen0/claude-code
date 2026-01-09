@@ -65,6 +65,30 @@ claude-tools world query <type> [pattern]
 - `agent <session-id>` - All entries for a session
 - `recent [N]` - Last N entries (default 20)
 
+### respond
+Provide human response to a failed agent.
+
+```bash
+claude-tools world respond <session-id> <response>
+```
+
+**Example:**
+```bash
+claude-tools world respond abc123 "captcha solved: boats"
+```
+
+### supervisor
+Run Level 1 and Level 2 supervisors.
+
+```bash
+claude-tools world supervisor once     # Run both once
+claude-tools world supervisor daemon   # Run continuously
+claude-tools world supervisor level1   # Only state enforcement
+claude-tools world supervisor level2   # Only verification
+```
+
+See `supervisors/README.md` for details.
+
 ## Log Format
 
 ```

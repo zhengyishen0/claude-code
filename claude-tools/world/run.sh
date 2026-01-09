@@ -6,6 +6,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMMANDS_DIR="$SCRIPT_DIR/commands"
+SUPERVISORS_DIR="$SCRIPT_DIR/supervisors"
 
 show_help() {
     cat <<'EOF'
@@ -16,6 +17,8 @@ USAGE:
     world agent <status> <session-id> <output>    Log agent status
     world check [agent-id]                        Read new entries
     world query <type>                            Query the log
+    world respond <session-id> <response>         Human response to failed agent
+    world supervisor [command]                    Run supervisors
 
 EXAMPLES:
     # Log events
@@ -40,6 +43,14 @@ EXAMPLES:
     world query active             # Active agents
     world query pending            # Agents awaiting verification
     world query failed             # Failed agents
+
+    # Human-in-the-loop
+    world respond abc123 "captcha solved: boats"
+
+    # Run supervisors
+    world supervisor once          # Run once
+    world supervisor level1        # Only state enforcement
+    world supervisor level2        # Only verification
 
 FORMAT:
     Events:  [timestamp][event:source][identifier] output
@@ -70,6 +81,14 @@ case "${1:-}" in
     query)
         shift
         "$COMMANDS_DIR/query.sh" "$@"
+        ;;
+    respond)
+        shift
+        "$COMMANDS_DIR/respond.sh" "$@"
+        ;;
+    supervisor|supervisors)
+        shift
+        "$SUPERVISORS_DIR/run.sh" "$@"
         ;;
     help|-h|--help|"")
         show_help
