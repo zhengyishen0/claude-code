@@ -1,0 +1,12 @@
+# Large model files (download separately)
+*.mlpackage/
+*.mlmodel
+*.bin
+
+# Test outputs
+test_output/
+test_audio/
+
+# Python cache
+__pycache__/
+*.pyc
