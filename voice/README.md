@@ -116,21 +116,86 @@ Two modes of operation:
 1. **Preset voices**: Pre-enrolled voice fingerprints for known speakers
 2. **Automatic learning**: System learns new speakers during use
 
+### Handling Frame Limitations in Transcription
+
+**The Problem:** The transcription model (SenseVoice) has a fixed frame limit (250 or 500 frames ≈ 2.5-5 seconds), but VAD chunks can be much longer (30 seconds to 3 minutes).
+
+```
+VAD chunk:     |<-------- 45 seconds of speech -------->|
+Transcription: |<-- 5s -->|  (500 frames @ 10ms/frame)
+```
+
+**Solution: Sub-chunking within VAD boundaries**
+
+VAD tells us *when someone is speaking*, but we subdivide for transcription:
+
+```
+                        VAD Chunk (45 seconds of speech)
+┌──────────────────────────────────────────────────────────────────┐
+│ "Hello, how are you? I wanted to discuss the project timeline..." │
+└──────────────────────────────────────────────────────────────────┘
+                              ↓
+              Sub-chunk for transcription (5s windows)
+┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐
+│  Chunk 1 │ │  Chunk 2 │ │  Chunk 3 │ │  Chunk 4 │ │  Chunk 5 │
+└──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘
+     ↓            ↓            ↓            ↓            ↓
+                    Concatenate transcriptions
+```
+
+**Three strategies:**
+
+| Strategy | How it works | Pros | Cons |
+|----------|--------------|------|------|
+| **Fixed windows** | Split every 5s | Simple | May cut mid-word |
+| **Overlap windows** | 5s windows with 0.5s overlap | Avoids word cuts | Need deduplication |
+| **Pause-based** | Split at mini-pauses within VAD | Natural boundaries | More complex |
+
+**Recommended approach (overlap windows):**
+```python
+def transcribe_long_chunk(audio, max_frames=500):
+    """Split VAD chunk into transcription-sized pieces."""
+    frame_duration = 0.01  # 10ms per frame
+    max_duration = max_frames * frame_duration  # 5 seconds
+    overlap = 0.3  # 300ms overlap to avoid cutting words
+
+    transcripts = []
+    pos = 0
+    while pos < len(audio):
+        chunk = audio[pos:pos + max_duration]
+        transcript = transcribe(chunk)
+        transcripts.append(transcript)
+        pos += max_duration - overlap
+
+    return merge_transcripts(transcripts)  # Handle overlaps
+```
+
 ## Components
 
 ### Implemented
 
 | Component | Model | Size | Speed | Status |
 |-----------|-------|------|-------|--------|
-| Speech Separation | SepReformer (CoreML) | 80MB | 3.6x real-time | Done |
+| Speech Separation | SepReformer (CoreML) | 80MB | 3.6x real-time | ✅ Done |
+| VAD | Silero VAD (PyTorch) | ~2MB | Fast (CPU) | ✅ Done |
+| VAD | WebRTC VAD | ~100KB | Very Fast | ✅ Done |
+| VAD | Energy VAD | 0 | Instant | ✅ Done |
+| Speaker ID | ECAPA-TDNN (SpeechBrain) | ~20MB | Fast | ✅ Done |
+
+### VAD Backend Comparison
+
+| Backend | Size | Speed | Accuracy | CoreML | Best For |
+|---------|------|-------|----------|--------|----------|
+| **Silero** | ~2MB | Fast | High | ✅ Via ONNX | Default choice |
+| **WebRTC** | ~100KB | Very Fast | Medium | ❌ | Low-power devices |
+| **Energy** | 0 | Instant | Low | ✅ Native | Pre-filtering |
 
 ### Planned
 
 | Component | Model | Size | Notes |
 |-----------|-------|------|-------|
-| VAD | Silero VAD / FluidAudio | ~2MB | Per-stream detection |
-| Speaker ID | FluidAudio | TBD | Embedding-based matching |
-| Transcription | SenseVoice (CoreML) | ~200MB | Already converted |
+| Transcription | SenseVoice (CoreML) | ~200MB | Already converted in voice-input worktree |
+| VAD CoreML | Silero ONNX→CoreML | ~2MB | For iPhone deployment |
 
 ## Directory Structure
 
@@ -142,8 +207,12 @@ voice/
 │   ├── test_coreml_model.py    # Testing script
 │   └── models/
 │       └── SepReformer_Base.mlpackage  # 80MB CoreML model
-├── vad/                         # Voice Activity Detection (planned)
-├── speaker_id/                  # Speaker Identification (planned)
+├── vad/                         # Voice Activity Detection
+│   ├── __init__.py
+│   └── silero_vad.py           # VAD implementations (Silero, WebRTC, Energy)
+├── speaker_id/                  # Speaker Identification
+│   ├── __init__.py
+│   └── speaker_embeddings.py   # ECAPA-TDNN speaker embeddings
 └── transcription/               # Speech-to-Text (planned)
 ```
 
@@ -219,6 +288,53 @@ See `separation/convert_to_coreml.py` for the conversion script. Key steps:
 3. **Transcription Pipeline**: Connect SenseVoice for final transcription
 4. **End-to-end System**: Unified API for continuous voice processing
 5. **N-speaker Support**: Extend beyond 2 speakers with MossFormer2 or similar
+
+## Platform Support: iPhone Deployment
+
+### CoreML vs MLX
+
+| | CoreML | MLX |
+|--|--------|-----|
+| **iPhone** | ✅ Yes (native) | ❌ No (Mac only) |
+| **MacBook** | ✅ Yes | ✅ Yes |
+| **Neural Engine** | ✅ Uses ANE | ❌ GPU/CPU only |
+| **Our choice** | ✅ **Use this** | ❌ Not for iPhone |
+
+**CoreML is the correct choice** for cross-platform (Mac + iPhone) deployment.
+
+### Performance Comparison
+
+| Device | Neural Engine | RAM | Estimated Separation RTF |
+|--------|---------------|-----|--------------------------|
+| MacBook Pro M3 | 16-core | 18-36GB | **3.6x** real-time |
+| iPhone 17 Pro Max | 16-core | 8GB | **~2x** real-time (estimate) |
+| iPhone 15 Pro | 16-core | 8GB | **~1.5-2x** real-time |
+
+### iPhone Constraints & Solutions
+
+| Constraint | Impact | Solution |
+|------------|--------|----------|
+| **Memory** (8GB vs 36GB) | Models must fit | 80MB + 200MB = 280MB ✅ |
+| **Thermal throttling** | Slows after 30-60s | Process in bursts |
+| **Battery** | Always-on drains fast | Energy-efficient gating |
+
+### iPhone-Optimized Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     iPhone Voice Pipeline                        │
+├─────────────────────────────────────────────────────────────────┤
+│  1. ENERGY GATE        │ Tiny, always-on         │ ~0.1% CPU    │
+│  2. LIGHTWEIGHT VAD    │ Silero VAD (~2MB)       │ ~1% CPU      │
+│  3. SEPARATION         │ SepReformer (80MB)      │ Neural Engine│
+│  4. TRANSCRIPTION      │ SenseVoice (200MB)      │ Neural Engine│
+└─────────────────────────────────────────────────────────────────┘
+         ↑                           ↑
+    Always running              Only when speech detected
+    (low power)                 (burst processing)
+```
+
+**Key insight:** The energy gate and lightweight VAD run continuously with minimal power. Heavy models (separation, transcription) only activate when speech is detected, preserving battery life.
 
 ## References
 
