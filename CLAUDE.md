@@ -171,21 +171,20 @@ Run `claude-tools documentation` for full help.
 4. **No auth needed** - Only Context7 (library docs) requires API key, command and api work without authentication
 5. **Topic filtering** - Get only relevant snippets, not entire documentation dumps
 
-### environment
-Event log tool for persistent AI collaboration.
+### world
+Single source of truth for agent coordination
 
-Run `claude-tools environment` for full help.
+Run `claude-tools world` for full help.
 
-**Commands:** check, event
+**Commands:** event, agent, check, query, respond, supervisor
 
 **Key Principles:**
-1. **Marker-based reading** - Only returns unread events (after last marker)
-2. **Fully append-only** - Events and markers never deleted, only added
-3. **Read event tracking** - Each check adds: `[timestamp] [agent xxx] checked all N events above` (xxx is blank if no agent-id provided)
-4. **Audit trail** - Read events and multiple markers show complete processing history
-5. **Agent identification** - Optional agent-id (blank by default), automated agents should provide their ID
-6. **Simple text format** - Human-readable, grep-able
-7. **Self-contained** - Log file is in tool directory
+1. **Plain text** - Human readable, grep-able with `rg`
+2. **Append-only** - Never delete, only add
+3. **Two types** - Events (facts) and Agents (tracked projects)
+4. **Marker-based reading** - Only see new entries after last check
+5. **| need:** - Success criteria (start) or blocker requirement (failed)
+6. **Two-level supervision** - Level 1 (state enforcement) and Level 2 (AI verification)
 
 ### memory
 Cross-session knowledge sharing for Claude Code - search and consult previous sessions like a hive mind.
