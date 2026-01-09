@@ -13,7 +13,7 @@ import coremltools as ct
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent
-MODEL_PATH = SCRIPT_DIR / "SepReformer_Base.mlpackage"
+MODEL_PATH = SCRIPT_DIR / "models" / "SepReformer_Base.mlpackage"
 TEST_AUDIO_DIR = SCRIPT_DIR / "test_audio"
 OUTPUT_DIR = SCRIPT_DIR / "test_output"
 
