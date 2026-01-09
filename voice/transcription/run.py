@@ -31,11 +31,11 @@ is_recording = False
 model = None
 
 
-def load_model(frames: int):
+def load_model(frames: int, compiled: bool = True, itn: bool = True):
     """Load the transcription model."""
     global model
     from sensevoice_coreml import SenseVoiceCoreML
-    model = SenseVoiceCoreML(frames=frames)
+    model = SenseVoiceCoreML(frames=frames, compiled=compiled, itn=itn)
 
 
 def start_recording():
@@ -102,8 +102,12 @@ def on_release(key):
 
 def main():
     parser = argparse.ArgumentParser(description="Voice input with hold-to-record")
-    parser.add_argument("--frames", type=int, default=250,
-                       help="Frame count (150, 250, 500, etc). Default: 250")
+    parser.add_argument("--frames", type=int, default=500,
+                       help="Frame count (250 or 500). Default: 500")
+    parser.add_argument("--no-compiled", action="store_true",
+                       help="Use original .mlpackage instead of pre-compiled .mlmodelc")
+    parser.add_argument("--no-itn", action="store_true",
+                       help="Disable ITN (punctuation). Default: ITN enabled")
     args = parser.parse_args()
 
     print("=" * 50)
@@ -115,7 +119,7 @@ def main():
     print("  [Esc]         -> Quit")
     print()
 
-    load_model(args.frames)
+    load_model(args.frames, compiled=not args.no_compiled, itn=not args.no_itn)
 
     print("\nReady! Hold Option key to start recording...\n")
 

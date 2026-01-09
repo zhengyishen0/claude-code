@@ -38,15 +38,19 @@ class SenseVoiceCoreML:
     CHUNK_SECONDS = 14  # Slightly less than max to be safe
     OVERLAP_SECONDS = 1  # Overlap between chunks to avoid cutting words
 
-    def __init__(self, model_dir: str = None, frames: int = 250):
+    def __init__(self, model_dir: str = None, frames: int = 250, compiled: bool = True, itn: bool = False):
         """
         Initialize SenseVoice CoreML.
 
         Args:
             model_dir: Directory containing models/ and pytorch/ subdirs.
                       If None, uses the directory containing this file.
-            frames: Frame count for model (150, 250, 500, 750, 1000, 1500, 2000).
-                   250 is recommended for most use cases.
+            frames: Frame count for model (250 or 500).
+                   500 is recommended for best accuracy.
+            compiled: If True, use pre-compiled .mlmodelc (fast load ~0.2s).
+                     If False, use original .mlpackage (slow load ~13s).
+            itn: If True, use ITN model (with punctuation).
+                 If False, use non-ITN model (no punctuation).
         """
         if model_dir is None:
             self.model_dir = Path(__file__).parent
@@ -54,15 +58,28 @@ class SenseVoiceCoreML:
             self.model_dir = Path(model_dir)
 
         self.FIXED_FRAMES = frames
+        self.itn = itn
         # Update chunk settings based on frame count
         self.CHUNK_SECONDS = int(frames * 0.06) - 1  # ~60ms per frame, -1s safety
 
-        print(f"Loading SenseVoice CoreML ({frames} frames)...")
+        model_type = "compiled" if compiled else "original"
+        itn_label = ", ITN" if itn else ""
+        print(f"Loading SenseVoice CoreML ({frames} frames{itn_label}, {model_type})...")
         start = time.time()
 
-        # Load CoreML model
-        model_path = self.model_dir / "models" / f"sensevoice-{frames}.mlpackage"
-        self.model = ct.models.MLModel(str(model_path))
+        suffix = "-itn" if itn else ""
+        compiled_path = self.model_dir / "models" / f"sensevoice-{frames}{suffix}.mlmodelc"
+        package_path = self.model_dir / "models" / f"sensevoice-{frames}{suffix}.mlpackage"
+
+        if compiled and compiled_path.exists():
+            self.model = ct.models.CompiledMLModel(
+                str(compiled_path),
+                compute_units=ct.ComputeUnit.ALL
+            )
+        else:
+            if compiled and not compiled_path.exists():
+                print(f"  Warning: compiled model not found, using original")
+            self.model = ct.models.MLModel(str(package_path))
 
         # Load tokenizer
         tokenizer_path = self.model_dir / "pytorch" / "chn_jpn_yue_eng_ko_spectok.bpe.model"
