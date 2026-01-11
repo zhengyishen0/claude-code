@@ -83,119 +83,184 @@ func testWithPythonFeatures(_ path: String) async {
     }
 }
 
+// MARK: - Special Token Decoding
+
+let LANG_TOKENS: [Int: String] = [
+    24884: "auto",
+    24885: "zh",
+    24886: "en",
+    24887: "yue",
+    24888: "ja",
+    24889: "ko",
+]
+
+let TASK_TOKENS: [Int: String] = [
+    25004: "transcribe",
+    25005: "translate",
+]
+
+let EMOTION_TOKENS: [Int: String] = [
+    24993: "NEUTRAL",
+    24994: "HAPPY",
+    24995: "SAD",
+    24996: "ANGRY",
+]
+
+let EVENT_TOKENS: [Int: String] = [
+    25016: "Speech",
+    25017: "Applause",
+    25018: "BGM",
+    25019: "Laughter",
+]
+
+struct TranscriptionResult {
+    var language: String?
+    var task: String?
+    var emotion: String?
+    var event: String?
+    var tokens: [Int]
+    var textTokens: [Int]
+    var timeMs: Double
+}
+
+func decodeSpecialTokens(_ tokens: [Int]) -> (info: [String: String], textTokens: [Int]) {
+    var info: [String: String] = [:]
+    var textTokens: [Int] = []
+
+    for tok in tokens {
+        if let lang = LANG_TOKENS[tok] {
+            info["language"] = lang
+        } else if let task = TASK_TOKENS[tok] {
+            info["task"] = task
+        } else if let emotion = EMOTION_TOKENS[tok] {
+            info["emotion"] = emotion
+        } else if let event = EVENT_TOKENS[tok] {
+            info["event"] = event
+        } else {
+            textTokens.append(tok)
+        }
+    }
+
+    return (info, textTokens)
+}
+
+// MARK: - Transcribe Single Audio
+
+func transcribeAudio(path: String, model: MLModel, filterbankPath: String?) -> TranscriptionResult? {
+    let fileName = (path as NSString).lastPathComponent
+    print("\n" + String(repeating: "=", count: 60))
+    print("Transcribing: \(fileName)")
+    print(String(repeating: "=", count: 60))
+
+    let startTotal = CFAbsoluteTimeGetCurrent()
+
+    // Load audio
+    guard let audio = loadAudio(from: path) else {
+        print("Failed to load audio")
+        return nil
+    }
+    let duration = Double(audio.count) / Double(SAMPLE_RATE)
+    print("Audio duration: \(String(format: "%.2f", duration))s")
+
+    // Mel spectrogram
+    let mel = computeMelSpectrogram(audio, filterbankPath: filterbankPath)
+
+    // LFR
+    let lfr = applyLFR(mel)
+
+    // Pad
+    let padded = padToFixedFrames(lfr)
+
+    // Inference
+    do {
+        let logits = try runInference(model: model, features: padded)
+
+        // CTC decode
+        let tokens = ctcGreedyDecode(logits)
+
+        let totalTime = (CFAbsoluteTimeGetCurrent() - startTotal) * 1000
+
+        // Decode special tokens
+        let (info, textTokens) = decodeSpecialTokens(tokens)
+
+        print("\nResults:")
+        print("  Language: \(info["language"] ?? "unknown")")
+        print("  Task: \(info["task"] ?? "unknown")")
+        print("  Emotion: \(info["emotion"] ?? "unknown")")
+        print("  Event: \(info["event"] ?? "unknown")")
+        print("  Token count: \(tokens.count) (text tokens: \(textTokens.count))")
+        print("  Processing time: \(String(format: "%.0f", totalTime))ms")
+        print("\n  Token IDs: \(textTokens.prefix(30))...")
+
+        return TranscriptionResult(
+            language: info["language"],
+            task: info["task"],
+            emotion: info["emotion"],
+            event: info["event"],
+            tokens: tokens,
+            textTokens: textTokens,
+            timeMs: totalTime
+        )
+    } catch {
+        print("Inference error: \(error)")
+        return nil
+    }
+}
+
 // MARK: - Main
 
 func main() async {
-    print("=== Swift Voice Pipeline Test ===\n")
+    print("=== Swift Voice Pipeline Transcription ===\n")
 
-    // Check for pre-computed Python features (for testing)
-    let pythonFeaturesPath = "/Users/zhengyishen/Codes/claude-code-voice-isolation/voice/swift-pipeline-test/python_features.bin"
-    if FileManager.default.fileExists(atPath: pythonFeaturesPath) {
-        print("🐍 Found Python features - testing CoreML directly\n")
-        await testWithPythonFeatures(pythonFeaturesPath)
-        print("\n--- Now testing with Swift features ---\n")
-    }
+    // Audio files to transcribe (from main branch)
+    let audioFiles = [
+        "/Users/zhengyishen/Codes/claude-code/voice/recordings/sample.wav",
+        "/Users/zhengyishen/Codes/claude-code/voice/recordings/test_recording.wav",
+    ]
 
-    // 1. Find test audio
-    let testAudioPath = findTestAudio()
-    guard let audioPath = testAudioPath else {
-        print("❌ No test audio found")
-        return
-    }
-    print("📁 Audio: \(audioPath)")
-
-    // 2. Load audio
-    guard let audio = loadAudio(from: audioPath) else {
-        print("❌ Failed to load audio")
-        return
-    }
-    print("🎵 Loaded: \(audio.count) samples (\(Double(audio.count)/Double(SAMPLE_RATE))s)")
-
-    // 3. Compute mel spectrogram
-    print("\n--- Mel Spectrogram ---")
-    let melStart = CFAbsoluteTimeGetCurrent()
-    // Try to load filterbank from file (same directory as executable or source)
-    let filterbankPath = findFilterbank()
-    let mel = computeMelSpectrogram(audio, filterbankPath: filterbankPath)
-    let melTime = (CFAbsoluteTimeGetCurrent() - melStart) * 1000
-    print("✅ Mel shape: (\(mel.count), \(mel.first?.count ?? 0))")
-    print("⏱️ Time: \(String(format: "%.1f", melTime))ms")
-
-    // Debug: print mel stats for comparison with Python
-    if !mel.isEmpty {
-        let allValues = mel.flatMap { $0 }
-        let minVal = allValues.min() ?? 0
-        let maxVal = allValues.max() ?? 0
-        let meanVal = allValues.reduce(0, +) / Float(allValues.count)
-        print("📊 Mel stats: min=\(String(format: "%.3f", minVal)), max=\(String(format: "%.3f", maxVal)), mean=\(String(format: "%.3f", meanVal))")
-        print("   First frame (first 10): \(mel[0].prefix(10).map { String(format: "%.3f", $0) }.joined(separator: ", "))")
-        let mid = mel.count / 2
-        print("   Middle frame (first 10): \(mel[mid].prefix(10).map { String(format: "%.3f", $0) }.joined(separator: ", "))")
-    }
-
-    // 4. Apply LFR
-    print("\n--- LFR Transform ---")
-    let lfrStart = CFAbsoluteTimeGetCurrent()
-    let lfr = applyLFR(mel)
-    let lfrTime = (CFAbsoluteTimeGetCurrent() - lfrStart) * 1000
-    print("✅ LFR shape: (\(lfr.count), \(lfr.first?.count ?? 0))")
-    print("⏱️ Time: \(String(format: "%.1f", lfrTime))ms")
-
-    // Note: Python does NOT apply CMVN - feeds raw log-mel LFR features directly to model
-
-    // 5. Pad to fixed frames
-    let padded = padToFixedFrames(lfr)
-    print("✅ Padded shape: (\(padded.count), \(padded.first?.count ?? 0))")
-
-    // 6. Load and run CoreML model
-    print("\n--- CoreML Inference ---")
+    // Load model
     guard let modelURL = findModel(named: "sensevoice-500-itn", ext: "mlmodelc") else {
-        print("❌ Model not found")
-        print("   Looking for: sensevoice-500-itn.mlmodelc")
+        print("Model not found")
         return
     }
-    print("📦 Model: \(modelURL.lastPathComponent)")
+    print("Loading model: \(modelURL.lastPathComponent)")
 
-    do {
-        let config = MLModelConfiguration()
-        config.computeUnits = .all
+    let config = MLModelConfiguration()
+    config.computeUnits = .all
 
-        let modelStart = CFAbsoluteTimeGetCurrent()
-        let model = try MLModel(contentsOf: modelURL, configuration: config)
-        let loadTime = (CFAbsoluteTimeGetCurrent() - modelStart) * 1000
-        print("✅ Model loaded in \(String(format: "%.0f", loadTime))ms")
+    guard let model = try? MLModel(contentsOf: modelURL, configuration: config) else {
+        print("Failed to load model")
+        return
+    }
+    print("Model loaded successfully")
 
-        // Run inference
-        let inferStart = CFAbsoluteTimeGetCurrent()
-        let logits = try runInference(model: model, features: padded)
-        let inferTime = (CFAbsoluteTimeGetCurrent() - inferStart) * 1000
-        print("✅ Inference: \(String(format: "%.0f", inferTime))ms")
-        print("   Logits shape: (\(logits.count), \(logits.first?.count ?? 0))")
+    // Get filterbank path
+    let filterbankPath = findFilterbank()
 
-        // 7. CTC decode
-        print("\n--- CTC Decoding ---")
-        let tokens = ctcGreedyDecode(logits)
-        print("✅ Tokens: \(tokens.prefix(30))...")
-        print("   Total tokens: \(tokens.count)")
+    // Transcribe each file
+    var results: [TranscriptionResult] = []
 
-        // 8. Load tokenizer and decode
-        if let tokenizerPath = findModel(named: "chn_jpn_yue_eng_ko_spectok.bpe", ext: "model") {
-            print("\n--- Tokenizer ---")
-            print("📦 Tokenizer: \(tokenizerPath.lastPathComponent)")
-            // TODO: Implement SentencePiece decoding
-            print("⚠️ SentencePiece decoding not yet implemented")
-            print("   Token IDs ready for decoding")
+    for audioPath in audioFiles {
+        if FileManager.default.fileExists(atPath: audioPath) {
+            if let result = transcribeAudio(path: audioPath, model: model, filterbankPath: filterbankPath) {
+                results.append(result)
+            }
+        } else {
+            print("\nFile not found: \(audioPath)")
         }
+    }
 
-        // Summary
-        print("\n=== Summary ===")
-        print("Total pipeline time: \(String(format: "%.0f", melTime + lfrTime + inferTime))ms")
-        print("  - Mel spectrogram: \(String(format: "%.0f", melTime))ms")
-        print("  - LFR transform: \(String(format: "%.0f", lfrTime))ms")
-        print("  - CoreML inference: \(String(format: "%.0f", inferTime))ms")
+    // Summary
+    print("\n" + String(repeating: "=", count: 60))
+    print("SWIFT TRANSCRIPTION SUMMARY")
+    print(String(repeating: "=", count: 60))
 
-    } catch {
-        print("❌ Error: \(error)")
+    for (i, r) in results.enumerated() {
+        let fileName = (audioFiles[i] as NSString).lastPathComponent
+        print("\n\(fileName):")
+        print("  Language: \(r.language ?? "unknown"), Emotion: \(r.emotion ?? "unknown")")
+        print("  Tokens: \(r.tokens.count)")
+        print("  Time: \(String(format: "%.0f", r.timeMs))ms")
     }
 }
 

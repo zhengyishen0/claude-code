@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import AppKit
 
 /// YouPu (有谱) - Voice Monitor with Self-Improving Speaker Profiles
 ///
@@ -11,8 +12,8 @@ import AVFoundation
 
 @main
 struct YouPuApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var engine = VoiceEngine()
-    @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {
         // Main window
@@ -21,7 +22,6 @@ struct YouPuApp: App {
                 .environmentObject(engine)
                 .frame(minWidth: 900, minHeight: 600)
         }
-        .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(replacing: .newItem) { }
         }
@@ -38,6 +38,33 @@ struct YouPuApp: App {
             }
         }
         .menuBarExtraStyle(.menu)
+    }
+}
+
+// MARK: - App Delegate
+
+class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Make the app a regular app (shows in Dock, can be focused)
+        NSApp.setActivationPolicy(.regular)
+
+        // Activate the app and bring to front
+        NSApp.activate(ignoringOtherApps: true)
+
+        // Make windows visible
+        for window in NSApp.windows {
+            window.makeKeyAndOrderFront(nil)
+        }
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        // When clicking dock icon, show/focus the window
+        if !flag {
+            for window in sender.windows {
+                window.makeKeyAndOrderFront(self)
+            }
+        }
+        return true
     }
 }
 
