@@ -115,9 +115,14 @@ class SpeakerProfile:
         distances = [cosine_distance(embedding, e) for e in existing]
         return min(distances) >= min_dist
 
-    def add_embedding(self, embedding: np.ndarray) -> str:
+    def add_embedding(self, embedding: np.ndarray, force_boundary: bool = False) -> str:
         """
         Add embedding to appropriate layer based on distance from centroid.
+
+        Args:
+            embedding: Voice embedding vector
+            force_boundary: If True, add to boundary regardless of distance
+                           (used for user-confirmed outliers)
 
         Returns: "core", "boundary", or "rejected"
         """
@@ -129,6 +134,14 @@ class SpeakerProfile:
         dist = cosine_distance(embedding, self.centroid)
         self.all_distances.append(dist)
         self._update_std_dev()
+
+        # Force-add to boundary (for user-confirmed outliers)
+        if force_boundary:
+            if len(self.boundary) < self.MAX_BOUNDARY:
+                if self._is_diverse_from(embedding, self.boundary, self.MIN_DIVERSITY):
+                    self.boundary.append(embedding)
+                    return "boundary"
+            return "rejected"  # Boundary full or not diverse enough
 
         # Classify by distance (using σ thresholds)
         if dist < 1.0 * self.std_dev:
@@ -249,14 +262,14 @@ class VoiceLibrary:
             return True
         return False
 
-    def add_embedding(self, name: str, embedding: np.ndarray) -> str:
+    def add_embedding(self, name: str, embedding: np.ndarray, force_boundary: bool = False) -> str:
         """Add embedding to existing speaker's profile."""
         if name not in self.speakers:
             self.speakers[name] = SpeakerProfile(name, embedding)
             self.save()
             return "core"
 
-        result = self.speakers[name].add_embedding(embedding)
+        result = self.speakers[name].add_embedding(embedding, force_boundary=force_boundary)
         if result != "rejected":
             self.save()
         return result
@@ -506,7 +519,7 @@ class LivePipeline:
         # Note: We DON'T auto-learn from high-confidence matches anymore.
         # High-confidence = already well-represented, learning adds no value.
         # Medium-confidence = edge cases that expand the boundary (valuable).
-        # We learn from medium-confidence after user confirmation in prompt_confirm_medium().
+        # We learn from medium-confidence after user confirmation in auto_learn_and_confirm_outliers().
         learned = False
 
         # Store segment
@@ -846,77 +859,100 @@ class LivePipeline:
         if ignored_labels:
             print(f"\n⏭️  Skipped {len(ignored_labels)} infrequent speaker(s): {sorted(ignored_labels)}")
 
-    def prompt_confirm_medium(self):
+    def auto_learn_and_confirm_outliers(self):
         """
-        Confirm medium-confidence matches and learn from them.
+        Auto-learn from medium-confidence matches, only ask about outliers.
 
-        Medium-confidence matches are valuable because they expand the boundary
-        of what we know about a speaker's voice range. High-confidence matches
-        are already well-represented and don't add new information.
-
-        User presses Enter to confirm all, or types numbers to exclude wrong ones.
+        Logic:
+        1. Medium-confidence matches expand the voice boundary (valuable)
+        2. Auto-learn those within reasonable distance from centroid
+        3. Only ask user about far outliers (might be wrong OR very valuable)
         """
-        # Group medium-confidence segments by speaker
-        medium_by_speaker = {}
+        OUTLIER_THRESHOLD = 2.0  # Ask about segments > 2σ from centroid
+
+        # Group medium-confidence segments by speaker with distance info
+        by_speaker = {}
         for i, s in enumerate(self.segments):
             if s['is_known'] and s['confidence'] == 'medium':
                 name = s['speaker_name']
-                if name not in medium_by_speaker:
-                    medium_by_speaker[name] = []
-                medium_by_speaker[name].append((i, s))
+                profile = self.library.speakers.get(name)
+                if profile and profile.centroid is not None:
+                    dist = cosine_distance(s['embedding'], profile.centroid)
+                    sigma_dist = dist / profile.std_dev if profile.std_dev > 0 else dist / 0.2
+                else:
+                    dist = 0.0
+                    sigma_dist = 0.0
 
-        if not medium_by_speaker:
+                if name not in by_speaker:
+                    by_speaker[name] = {'auto': [], 'outliers': []}
+
+                if sigma_dist <= OUTLIER_THRESHOLD:
+                    by_speaker[name]['auto'].append((i, s, dist))
+                else:
+                    by_speaker[name]['outliers'].append((i, s, dist, sigma_dist))
+
+        if not by_speaker:
             return
 
-        print("\n" + "=" * 60)
-        print("CONFIRM MEDIUM-CONFIDENCE MATCHES")
-        print("These expand voice range - Enter to confirm, or type numbers to exclude")
-        print("=" * 60)
+        total_auto_learned = 0
+        total_outlier_learned = 0
 
-        total_learned = 0
-
-        for name, segments in medium_by_speaker.items():
-            print(f"\n{name}? ({len(segments)} segments):")
-            for idx, (seg_idx, s) in enumerate(segments):
-                text_preview = s['text'][:40] + "..." if len(s['text']) > 40 else s['text']
-                print(f"  [{idx+1}] ({s['start']:.1f}s) \"{text_preview}\"")
-
-            response = input(f"Exclude which? (Enter=confirm all, e.g. '1,3' to exclude): ").strip()
-
-            # Parse exclusions
-            exclude_indices = set()
-            if response:
-                for part in response.replace(' ', ',').split(','):
-                    part = part.strip()
-                    if part.isdigit():
-                        exclude_indices.add(int(part) - 1)  # Convert to 0-indexed
-
-            # Learn from confirmed segments
-            confirmed = [(seg_idx, s) for idx, (seg_idx, s) in enumerate(segments)
-                        if idx not in exclude_indices]
-
-            if confirmed:
-                embeddings = [s['embedding'] for _, s in confirmed if s['embedding'] is not None]
+        # Phase 1: Auto-learn from non-outliers
+        for name, groups in by_speaker.items():
+            if groups['auto']:
+                embeddings = [s['embedding'] for _, s, _ in groups['auto'] if s['embedding'] is not None]
                 diverse_embeddings = self._select_diverse_embeddings(embeddings, max_count=3)
 
                 for emb in diverse_embeddings:
                     result = self.library.add_embedding(name, emb)
                     if result != "rejected":
-                        total_learned += 1
+                        total_auto_learned += 1
 
-                # Mark as learned in segments
-                for seg_idx, s in confirmed:
+                # Mark as learned
+                for seg_idx, s, _ in groups['auto']:
                     self.segments[seg_idx]['learned'] = True
-                    self.segments[seg_idx]['confidence'] = 'confirmed'
 
-                excluded_count = len(segments) - len(confirmed)
-                if excluded_count:
-                    print(f"  ✅ Learned from {len(diverse_embeddings)} (excluded {excluded_count})")
+        if total_auto_learned:
+            print(f"\n📚 Auto-learned {total_auto_learned} boundary embeddings")
+
+        # Phase 2: Ask about outliers (sorted by distance, furthest first)
+        all_outliers = []
+        for name, groups in by_speaker.items():
+            for seg_idx, s, dist, sigma_dist in groups['outliers']:
+                all_outliers.append((name, seg_idx, s, dist, sigma_dist))
+
+        if not all_outliers:
+            return
+
+        # Sort by sigma distance (furthest first)
+        all_outliers.sort(key=lambda x: x[4], reverse=True)
+
+        print("\n" + "=" * 60)
+        print("CONFIRM OUTLIERS (far from known voice pattern)")
+        print("These could be misidentified OR valuable edge cases")
+        print("=" * 60)
+
+        for name, seg_idx, s, dist, sigma_dist in all_outliers:
+            text_preview = s['text'][:50] + "..." if len(s['text']) > 50 else s['text']
+            print(f"\n{name}? ({sigma_dist:.1f}σ from center)")
+            print(f"  \"{text_preview}\"")
+
+            response = input(f"  Learn this? [Y/n]: ").strip().lower()
+
+            if response != 'n':
+                # Force-add to boundary since user confirmed this outlier
+                result = self.library.add_embedding(name, s['embedding'], force_boundary=True)
+                if result != "rejected":
+                    total_outlier_learned += 1
+                    self.segments[seg_idx]['learned'] = True
+                    print(f"  ✅ Learned ({result})")
                 else:
-                    print(f"  ✅ Learned from {len(diverse_embeddings)} embeddings")
+                    print(f"  ⏭️  Rejected (too similar to existing)")
+            else:
+                print(f"  ⏭️  Skipped")
 
-        if total_learned:
-            print(f"\n📚 Total: {total_learned} new boundary embeddings added")
+        if total_outlier_learned:
+            print(f"\n📚 Outliers: {total_outlier_learned} new embeddings added")
 
     def process_file(self, file_path: str):
         """Process an audio file instead of live microphone input."""
@@ -1011,7 +1047,7 @@ class LivePipeline:
             self.show_stats()
             self.show_clustered_transcript()
             self.prompt_naming()
-            self.prompt_confirm_medium()
+            self.auto_learn_and_confirm_outliers()
         else:
             print("   No valid segments found.")
 
@@ -1040,7 +1076,7 @@ class LivePipeline:
                     self.show_stats()
                     self.show_clustered_transcript()
                     self.prompt_naming()
-                    self.prompt_confirm_medium()
+                    self.auto_learn_and_confirm_outliers()
 
                 return False  # Stop listener
 
