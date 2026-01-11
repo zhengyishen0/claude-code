@@ -56,7 +56,24 @@ from sklearn.cluster import AgglomerativeClustering
 from pynput import keyboard
 
 VOICE_DIR = Path(__file__).parent
-LIBRARY_PATH = VOICE_DIR / "speaker_id" / "voice_library.json"
+
+# Speaker embedding models
+SPEAKER_MODELS = {
+    "ecapa": {
+        "source": "speechbrain/spkrec-ecapa-voxceleb",
+        "savedir": "pretrained_models/spkrec-ecapa-voxceleb",
+        "dim": 192,
+        "library": VOICE_DIR / "speaker_id" / "voice_library_ecapa.json",
+    },
+    "xvector": {
+        "source": "speechbrain/spkrec-xvect-voxceleb",
+        "savedir": "pretrained_models/spkrec-xvect-voxceleb",
+        "dim": 512,
+        "library": VOICE_DIR / "speaker_id" / "voice_library_xvector.json",
+    },
+}
+DEFAULT_SPEAKER_MODEL = "ecapa"
+LIBRARY_PATH = SPEAKER_MODELS[DEFAULT_SPEAKER_MODEL]["library"]
 RECORDINGS_DIR = VOICE_DIR / "recordings"
 SAMPLE_RATE = 16000
 CHUNK_SIZE = 512  # ~32ms at 16kHz
@@ -431,7 +448,19 @@ class VADProcessor:
 class LivePipeline:
     """Live voice processing pipeline with real-time streaming output."""
 
-    def __init__(self):
+    def __init__(self, speaker_model: str = DEFAULT_SPEAKER_MODEL):
+        """
+        Initialize pipeline.
+
+        Args:
+            speaker_model: "ecapa" (192-dim, accurate) or "xvector" (512-dim, fast)
+        """
+        if speaker_model not in SPEAKER_MODELS:
+            raise ValueError(f"Unknown speaker model: {speaker_model}. Use: {list(SPEAKER_MODELS.keys())}")
+
+        self.speaker_model_name = speaker_model
+        self.speaker_model_config = SPEAKER_MODELS[speaker_model]
+
         self.library = None
         self.vad_model = None
         self.vad_utils = None
@@ -456,7 +485,7 @@ class LivePipeline:
         print("\n📦 Loading models...")
         t_total = time.time()
 
-        self.library = VoiceLibrary()
+        self.library = VoiceLibrary(path=self.speaker_model_config["library"])
 
         t0 = time.time()
         self.vad_model, self.vad_utils = torch.hub.load(
@@ -471,10 +500,10 @@ class LivePipeline:
         logging.getLogger('speechbrain').setLevel(logging.ERROR)
         from speechbrain.inference.speaker import EncoderClassifier
         self.speaker_model = EncoderClassifier.from_hparams(
-            source='speechbrain/spkrec-ecapa-voxceleb',
-            savedir='pretrained_models/spkrec-ecapa-voxceleb'
+            source=self.speaker_model_config["source"],
+            savedir=self.speaker_model_config["savedir"]
         )
-        print(f"  Speaker: {time.time()-t0:.2f}s")
+        print(f"  Speaker ({self.speaker_model_name}, {self.speaker_model_config['dim']}-dim): {time.time()-t0:.2f}s")
 
         t0 = time.time()
         from sensevoice_coreml import SenseVoiceCoreML
@@ -1118,20 +1147,31 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python live.py                    # Live microphone recording
-  python live.py recording.wav      # Process audio file
-  python live.py --file input.m4a   # Process audio file (explicit)
+  python live.py                           # Live microphone (ECAPA model)
+  python live.py --speaker-model xvector   # Live microphone (xvector model)
+  python live.py recording.wav             # Process audio file
+  python live.py --file input.m4a          # Process audio file (explicit)
+
+Speaker Models:
+  ecapa   - 192-dim embeddings, more accurate (default)
+  xvector - 512-dim embeddings, ~5x faster, Swift-compatible
         """
     )
     parser.add_argument('file', nargs='?', help='Audio file to process (wav, m4a, mp3)')
     parser.add_argument('--file', '-f', dest='file_explicit', help='Audio file to process')
+    parser.add_argument(
+        '--speaker-model', '-s',
+        choices=list(SPEAKER_MODELS.keys()),
+        default=DEFAULT_SPEAKER_MODEL,
+        help=f'Speaker embedding model (default: {DEFAULT_SPEAKER_MODEL})'
+    )
 
     args = parser.parse_args()
 
     # Get file path from either positional or explicit argument
     file_path = args.file or args.file_explicit
 
-    pipeline = LivePipeline()
+    pipeline = LivePipeline(speaker_model=args.speaker_model)
 
     if file_path:
         pipeline.process_file(file_path)
