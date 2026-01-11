@@ -333,6 +333,10 @@ class LivePipeline {
     private var isRunning = false
     private var segments: [[String: Any]] = []
 
+    // Signal handling
+    private var signalSource: DispatchSourceSignal?
+    private let stopSemaphore = DispatchSemaphore(value: 0)
+
     // Configuration
     private var useVoiceIsolation: Bool = false
 
@@ -677,18 +681,23 @@ class LivePipeline {
         do {
             try await startRecording()
 
-            // Wait for interrupt signal
-            let sigintSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+            // Set up signal handler for graceful shutdown (retain in property)
+            signalSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
             signal(SIGINT, SIG_IGN)
 
-            sigintSource.setEventHandler { [weak self] in
+            signalSource?.setEventHandler { [weak self] in
                 self?.stopRecording()
-                exit(0)
+                self?.stopSemaphore.signal()
             }
-            sigintSource.resume()
+            signalSource?.resume()
 
-            // Keep running
-            RunLoop.main.run()
+            // Wait on semaphore in background to avoid blocking async context
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                DispatchQueue.global().async { [weak self] in
+                    self?.stopSemaphore.wait()
+                    continuation.resume()
+                }
+            }
 
         } catch {
             print("❌ Error: \(error)")
