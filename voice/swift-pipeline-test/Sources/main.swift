@@ -4,6 +4,7 @@ import CoreML
 import Accelerate
 import AVFoundation
 import KissFFT
+import SentencepieceTokenizer
 
 // MARK: - Configuration (matches Python exactly)
 
@@ -120,6 +121,7 @@ struct TranscriptionResult {
     var event: String?
     var tokens: [Int]
     var textTokens: [Int]
+    var transcription: String?
     var timeMs: Double
 }
 
@@ -146,7 +148,7 @@ func decodeSpecialTokens(_ tokens: [Int]) -> (info: [String: String], textTokens
 
 // MARK: - Transcribe Single Audio
 
-func transcribeAudio(path: String, model: MLModel, filterbankPath: String?) -> TranscriptionResult? {
+func transcribeAudio(path: String, model: MLModel, filterbankPath: String?, tokenizer: SentencepieceTokenizer?) -> TranscriptionResult? {
     let fileName = (path as NSString).lastPathComponent
     print("\n" + String(repeating: "=", count: 60))
     print("Transcribing: \(fileName)")
@@ -183,6 +185,15 @@ func transcribeAudio(path: String, model: MLModel, filterbankPath: String?) -> T
         // Decode special tokens
         let (info, textTokens) = decodeSpecialTokens(tokens)
 
+        // Decode tokens to text using SentencePiece
+        // Note: Swift SentencePiece has off-by-one from Python/CoreML tokens
+        // Need to add 1 to CoreML tokens before decoding with Swift SentencePiece
+        var transcription: String? = nil
+        if let tokenizer = tokenizer {
+            let adjustedTokens = textTokens.map { $0 + 1 }
+            transcription = try? tokenizer.decode(adjustedTokens)
+        }
+
         print("\nResults:")
         print("  Language: \(info["language"] ?? "unknown")")
         print("  Task: \(info["task"] ?? "unknown")")
@@ -190,7 +201,12 @@ func transcribeAudio(path: String, model: MLModel, filterbankPath: String?) -> T
         print("  Event: \(info["event"] ?? "unknown")")
         print("  Token count: \(tokens.count) (text tokens: \(textTokens.count))")
         print("  Processing time: \(String(format: "%.0f", totalTime))ms")
-        print("\n  Token IDs: \(textTokens.prefix(30))...")
+
+        if let text = transcription {
+            print("\n  Transcription: \(text)")
+        } else {
+            print("\n  Token IDs: \(textTokens.prefix(30))...")
+        }
 
         return TranscriptionResult(
             language: info["language"],
@@ -199,6 +215,7 @@ func transcribeAudio(path: String, model: MLModel, filterbankPath: String?) -> T
             event: info["event"],
             tokens: tokens,
             textTokens: textTokens,
+            transcription: transcription,
             timeMs: totalTime
         )
     } catch {
@@ -237,12 +254,29 @@ func main() async {
     // Get filterbank path
     let filterbankPath = findFilterbank()
 
+    // Load tokenizer for text decoding
+    var tokenizer: SentencepieceTokenizer? = nil
+    if let tokenizerPath = findTokenizerModel() {
+        print("Loading tokenizer: \(tokenizerPath)")
+        do {
+            tokenizer = try SentencepieceTokenizer(modelPath: tokenizerPath)
+            print("Tokenizer loaded successfully")
+
+        } catch {
+            print("Warning: Failed to load tokenizer: \(error)")
+            print("Will output token IDs instead of text")
+        }
+    } else {
+        print("Warning: Tokenizer model not found")
+        print("Will output token IDs instead of text")
+    }
+
     // Transcribe each file
     var results: [TranscriptionResult] = []
 
     for audioPath in audioFiles {
         if FileManager.default.fileExists(atPath: audioPath) {
-            if let result = transcribeAudio(path: audioPath, model: model, filterbankPath: filterbankPath) {
+            if let result = transcribeAudio(path: audioPath, model: model, filterbankPath: filterbankPath, tokenizer: tokenizer) {
                 results.append(result)
             }
         } else {
@@ -261,6 +295,9 @@ func main() async {
         print("  Language: \(r.language ?? "unknown"), Emotion: \(r.emotion ?? "unknown")")
         print("  Tokens: \(r.tokens.count)")
         print("  Time: \(String(format: "%.0f", r.timeMs))ms")
+        if let text = r.transcription {
+            print("  Text: \(text)")
+        }
     }
 }
 
@@ -802,6 +839,24 @@ func findModel(named name: String, ext: String) -> URL? {
         let url = URL(fileURLWithPath: candidate)
         if FileManager.default.fileExists(atPath: url.path) {
             return url
+        }
+    }
+
+    return nil
+}
+
+func findTokenizerModel() -> String? {
+    let candidates = [
+        // YouPu app models
+        "../YouPu/Sources/YouPu/Models/chn_jpn_yue_eng_ko_spectok.bpe.model",
+        // Main project models
+        "/Users/zhengyishen/Codes/claude-code/voice/YouPu/Sources/YouPu/Models/chn_jpn_yue_eng_ko_spectok.bpe.model",
+        "/Users/zhengyishen/Codes/claude-code/voice/transcription/pytorch/chn_jpn_yue_eng_ko_spectok.bpe.model"
+    ]
+
+    for candidate in candidates {
+        if FileManager.default.fileExists(atPath: candidate) {
+            return candidate
         }
     }
 
