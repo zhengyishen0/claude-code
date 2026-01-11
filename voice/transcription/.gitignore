@@ -8,4 +8,4 @@ __pycache__/
 .venv/
 
 # Test audio (regenerate as needed)
-test/*.wav
+test/

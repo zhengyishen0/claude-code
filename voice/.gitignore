@@ -2,10 +2,11 @@
 *.mlpackage/
 *.mlmodel
 *.bin
+**/models/
 
 # Test outputs
 test_output/
-test_audio/
+**/test_audio/
 recordings/
 
 # Python cache
