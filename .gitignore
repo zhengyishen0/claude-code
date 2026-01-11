@@ -1,1 +1,6 @@
 /tmp/*
+
+# Large model files
+pretrained_models/
+*.mlmodelc/
+*.ckpt
