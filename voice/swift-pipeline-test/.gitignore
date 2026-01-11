@@ -1,0 +1,13 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Binary data files (too large for git)
+*.bin
+
+# Temporary scripts
+profile_simple.sh
+
+# macOS
+.DS_Store
