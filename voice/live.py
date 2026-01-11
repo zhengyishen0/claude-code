@@ -57,51 +57,267 @@ def is_valid_transcript(text: str) -> bool:
     return len(cleaned) > 0
 
 
+def cosine_similarity(a, b):
+    """Compute cosine similarity between two vectors."""
+    a_norm = a / np.linalg.norm(a)
+    b_norm = b / np.linalg.norm(b)
+    return np.dot(a_norm, b_norm)
+
+
+def cosine_distance(a, b):
+    """Compute cosine distance (1 - similarity)."""
+    return 1.0 - cosine_similarity(a, b)
+
+
+class SpeakerProfile:
+    """
+    Two-layer speaker profile with core and boundary embeddings.
+
+    Core: Frequent voice patterns (within 1σ of centroid)
+    Boundary: Edge case voice patterns (1σ to 2σ from centroid)
+
+    Uses distance from centroid as proxy for frequency.
+    """
+
+    # Limits to prevent unbounded growth
+    MAX_CORE = 5
+    MAX_BOUNDARY = 10
+    MIN_DIVERSITY = 0.1  # Minimum distance to add new embedding
+
+    def __init__(self, name: str, initial_embedding: np.ndarray = None):
+        self.name = name
+        self.core = []  # High-frequency embeddings (close to centroid)
+        self.boundary = []  # Edge-case embeddings (far from centroid)
+        self.centroid = None
+        self.std_dev = 0.2  # Default until we have enough data
+        self.all_distances = []  # Track distances to compute σ
+
+        if initial_embedding is not None:
+            self.core.append(initial_embedding)
+            self.centroid = initial_embedding.copy()
+
+    def _update_centroid(self):
+        """Recompute centroid from core embeddings."""
+        if self.core:
+            self.centroid = np.mean(self.core, axis=0)
+
+    def _update_std_dev(self):
+        """Recompute standard deviation from distance history."""
+        if len(self.all_distances) >= 3:
+            self.std_dev = max(np.std(self.all_distances), 0.05)  # Min 0.05
+
+    def _is_diverse_from(self, embedding: np.ndarray, existing: list, min_dist: float) -> bool:
+        """Check if embedding is diverse enough from existing ones."""
+        if not existing:
+            return True
+        distances = [cosine_distance(embedding, e) for e in existing]
+        return min(distances) >= min_dist
+
+    def add_embedding(self, embedding: np.ndarray) -> str:
+        """
+        Add embedding to appropriate layer based on distance from centroid.
+
+        Returns: "core", "boundary", or "rejected"
+        """
+        if self.centroid is None:
+            self.core.append(embedding)
+            self.centroid = embedding.copy()
+            return "core"
+
+        dist = cosine_distance(embedding, self.centroid)
+        self.all_distances.append(dist)
+        self._update_std_dev()
+
+        # Classify by distance (using σ thresholds)
+        if dist < 1.0 * self.std_dev:
+            # Within 1σ → Core candidate
+            if len(self.core) < self.MAX_CORE:
+                if self._is_diverse_from(embedding, self.core, self.MIN_DIVERSITY):
+                    self.core.append(embedding)
+                    self._update_centroid()
+                    return "core"
+            return "rejected"  # Core full or not diverse enough
+
+        elif dist < 2.0 * self.std_dev:
+            # Between 1σ and 2σ → Boundary candidate
+            if len(self.boundary) < self.MAX_BOUNDARY:
+                if self._is_diverse_from(embedding, self.boundary, self.MIN_DIVERSITY):
+                    self.boundary.append(embedding)
+                    return "boundary"
+            return "rejected"  # Boundary full or not diverse enough
+
+        else:
+            # Beyond 2σ → Too far, might be noise
+            return "rejected"
+
+    def max_similarity_to_core(self, embedding: np.ndarray) -> float:
+        """Get max similarity to any core embedding."""
+        if not self.core:
+            return 0.0
+        return max(cosine_similarity(embedding, e) for e in self.core)
+
+    def max_similarity_to_boundary(self, embedding: np.ndarray) -> float:
+        """Get max similarity to any boundary embedding."""
+        all_embs = self.core + self.boundary
+        if not all_embs:
+            return 0.0
+        return max(cosine_similarity(embedding, e) for e in all_embs)
+
+    def to_dict(self) -> dict:
+        """Serialize to dict for JSON storage."""
+        return {
+            "core": [e.tolist() for e in self.core],
+            "boundary": [e.tolist() for e in self.boundary],
+            "centroid": self.centroid.tolist() if self.centroid is not None else None,
+            "std_dev": self.std_dev,
+            "all_distances": self.all_distances[-100:]  # Keep last 100
+        }
+
+    @classmethod
+    def from_dict(cls, name: str, data: dict) -> "SpeakerProfile":
+        """Deserialize from dict."""
+        profile = cls(name)
+        profile.core = [np.array(e) for e in data.get("core", [])]
+        profile.boundary = [np.array(e) for e in data.get("boundary", [])]
+        if data.get("centroid"):
+            profile.centroid = np.array(data["centroid"])
+        profile.std_dev = data.get("std_dev", 0.2)
+        profile.all_distances = data.get("all_distances", [])
+        return profile
+
+    @classmethod
+    def from_legacy(cls, name: str, embeddings: list) -> "SpeakerProfile":
+        """Convert from old format (list of embeddings) to new format."""
+        profile = cls(name)
+        if embeddings:
+            # First embedding becomes centroid
+            profile.centroid = np.array(embeddings[0])
+            # Add all embeddings (will be classified into layers)
+            for emb in embeddings:
+                emb_array = np.array(emb) if not isinstance(emb, np.ndarray) else emb
+                profile.add_embedding(emb_array)
+        return profile
+
+
 class VoiceLibrary:
-    """Persistent voice library for known speakers."""
+    """
+    Persistent voice library with two-layer speaker profiles.
+
+    Features:
+    - Core/boundary layers for each speaker
+    - Two-phase matching (boundary first, core for conflicts)
+    - Self-improvement: auto-learns from high-confidence matches
+    """
+
+    BOUNDARY_THRESHOLD = 0.35  # Min score to match boundary
+    CORE_THRESHOLD = 0.45  # Min score to match core
+    AUTO_LEARN_THRESHOLD = 0.55  # Min score for auto-learning
+    CONFLICT_MARGIN = 0.1  # Score gap to resolve conflicts
 
     def __init__(self, path=LIBRARY_PATH):
         self.path = path
-        self.speakers = {}
+        self.speakers: dict[str, SpeakerProfile] = {}
         self.load()
 
     def load(self):
         if self.path.exists():
             with open(self.path) as f:
                 data = json.load(f)
-                for name, embs in data.items():
-                    self.speakers[name] = [np.array(e) for e in embs]
+
+            for name, value in data.items():
+                if isinstance(value, dict) and "core" in value:
+                    # New format with layers
+                    self.speakers[name] = SpeakerProfile.from_dict(name, value)
+                else:
+                    # Legacy format (list of embeddings)
+                    self.speakers[name] = SpeakerProfile.from_legacy(name, value)
+
             print(f"  📂 Loaded {len(self.speakers)} speakers: {list(self.speakers.keys())}")
 
     def save(self):
-        data = {name: [e.tolist() for e in embs] for name, embs in self.speakers.items()}
+        data = {name: profile.to_dict() for name, profile in self.speakers.items()}
         with open(self.path, 'w') as f:
-            json.dump(data, f)
+            json.dump(data, f, indent=2)
 
-    def add_embedding(self, name, embedding):
+    def add_speaker(self, name: str, embedding: np.ndarray):
+        """Add a new speaker with initial embedding."""
         if name not in self.speakers:
-            self.speakers[name] = []
-        self.speakers[name].append(embedding)
-        self.save()
+            self.speakers[name] = SpeakerProfile(name, embedding)
+            self.save()
+            return True
+        return False
 
-    def match(self, embedding, threshold=0.4):
+    def add_embedding(self, name: str, embedding: np.ndarray) -> str:
+        """Add embedding to existing speaker's profile."""
+        if name not in self.speakers:
+            self.speakers[name] = SpeakerProfile(name, embedding)
+            self.save()
+            return "core"
+
+        result = self.speakers[name].add_embedding(embedding)
+        if result != "rejected":
+            self.save()
+        return result
+
+    def match(self, embedding: np.ndarray, threshold: float = None) -> tuple:
+        """
+        Two-phase matching: boundary first, then core if conflict.
+
+        Returns: (name, score, confidence)
+            - name: Speaker name or None
+            - score: Best match score
+            - confidence: "high", "medium", "low", or "conflict"
+        """
         if not self.speakers:
-            return None, 0.0
+            return None, 0.0, "low"
 
-        emb_norm = embedding / np.linalg.norm(embedding)
-        best_name, best_score = None, -1
+        threshold = threshold or self.BOUNDARY_THRESHOLD
 
-        for name, embs in self.speakers.items():
-            for stored_emb in embs:
-                stored_norm = stored_emb / np.linalg.norm(stored_emb)
-                score = np.dot(emb_norm, stored_norm)
-                if score > best_score:
-                    best_score = score
-                    best_name = name
+        # Phase 1: Check all boundary layers
+        boundary_matches = []
+        for name, profile in self.speakers.items():
+            score = profile.max_similarity_to_boundary(embedding)
+            if score >= threshold:
+                boundary_matches.append((name, score, profile))
 
-        if best_score >= threshold:
-            return best_name, best_score
-        return None, best_score
+        if len(boundary_matches) == 0:
+            return None, 0.0, "low"
+
+        if len(boundary_matches) == 1:
+            name, score, profile = boundary_matches[0]
+            confidence = "high" if score >= self.AUTO_LEARN_THRESHOLD else "medium"
+            return name, score, confidence
+
+        # Phase 2: Conflict - use core scores to distinguish
+        core_scores = []
+        for name, _, profile in boundary_matches:
+            core_score = profile.max_similarity_to_core(embedding)
+            core_scores.append((name, core_score, profile))
+
+        core_scores.sort(key=lambda x: x[1], reverse=True)
+        best_name, best_score, best_profile = core_scores[0]
+        second_name, second_score, _ = core_scores[1]
+
+        if best_score - second_score >= self.CONFLICT_MARGIN:
+            # Core distinguishes them
+            confidence = "high" if best_score >= self.AUTO_LEARN_THRESHOLD else "medium"
+            return best_name, best_score, confidence
+        else:
+            # Still ambiguous
+            return f"[{best_name}/{second_name}?]", best_score, "conflict"
+
+    def auto_learn(self, name: str, embedding: np.ndarray, score: float) -> bool:
+        """
+        Auto-learn from high-confidence match.
+
+        Returns True if embedding was added.
+        """
+        if score >= self.AUTO_LEARN_THRESHOLD and name in self.speakers:
+            result = self.speakers[name].add_embedding(embedding)
+            if result != "rejected":
+                self.save()
+                return True
+        return False
 
 
 class VADProcessor:
@@ -246,38 +462,49 @@ class LivePipeline:
         return emb.squeeze().numpy()
 
     def process_segment(self, audio, start_time, end_time):
-        """Process segment with parallel embedding + transcription."""
+        """Process segment with parallel embedding + transcription + speaker matching."""
         timings = {}
 
-        def do_embedding():
+        def do_embedding_and_match():
+            """Run embedding AND matching together (both speaker-related)."""
             t = time.time()
             emb = self.extract_embedding(audio)
-            return emb, (time.time() - t) * 1000
+            emb_time = (time.time() - t) * 1000
+
+            t = time.time()
+            name, score, confidence = self.library.match(emb)
+            match_time = (time.time() - t) * 1000
+
+            return emb, name, score, confidence, emb_time, match_time
 
         def do_transcription():
             t = time.time()
             text, _ = self.asr_model.transcribe_audio(audio)
             return text.strip(), (time.time() - t) * 1000
 
-        # Run in parallel
-        emb_future = self.executor.submit(do_embedding)
+        # Run in parallel: (embedding + matching) || transcription
+        speaker_future = self.executor.submit(do_embedding_and_match)
         trans_future = self.executor.submit(do_transcription)
 
-        embedding, emb_time = emb_future.result()
+        embedding, name, score, confidence, emb_time, match_time = speaker_future.result()
         text, trans_time = trans_future.result()
 
         timings['embedding'] = emb_time
+        timings['match'] = match_time
         timings['transcribe'] = trans_time
 
         # Filter invalid transcripts
         if not is_valid_transcript(text):
             return None
 
-        # Match speaker
-        t0 = time.time()
-        name, score = self.library.match(embedding)
-        is_known = name is not None
-        timings['match'] = (time.time() - t0) * 1000
+        # Determine speaker status
+        is_known = name is not None and not name.startswith("[")
+        is_conflict = confidence == "conflict"
+
+        # Auto-learn from high-confidence matches
+        learned = False
+        if is_known and confidence == "high":
+            learned = self.library.auto_learn(name, embedding, score)
 
         # Store segment
         segment = {
@@ -287,16 +514,32 @@ class LivePipeline:
             'embedding': embedding,
             'speaker_name': name,
             'match_score': score,
+            'confidence': confidence,
             'is_known': is_known,
+            'is_conflict': is_conflict,
+            'learned': learned,
             'timings': timings,
             'duration': end_time - start_time
         }
         self.segments.append(segment)
 
-        # LIVE OUTPUT
-        speaker_label = name if is_known else "???"
+        # LIVE OUTPUT with confidence indicator
+        if is_known:
+            if confidence == "high":
+                speaker_label = f"{name}"
+                learn_indicator = " 📚" if learned else ""
+            else:
+                speaker_label = f"{name}?"
+                learn_indicator = ""
+        elif is_conflict:
+            speaker_label = name  # Already formatted as [A/B?]
+            learn_indicator = ""
+        else:
+            speaker_label = "???"
+            learn_indicator = ""
+
         total_time = sum(timings.values())
-        print(f"[{speaker_label}] ({start_time:.1f}s-{end_time:.1f}s) {text}  [{total_time:.0f}ms]")
+        print(f"[{speaker_label}] ({start_time:.1f}s-{end_time:.1f}s) {text}  [{total_time:.0f}ms]{learn_indicator}")
 
         return segment
 
@@ -398,8 +641,10 @@ class LivePipeline:
         print(f"💾 Saved: {filepath}")
 
     def cluster_unknowns(self):
-        """Cluster unknown speakers and assign letters."""
-        unknowns = [s for s in self.segments if not s['is_known']]
+        """Cluster unknown speakers and assign letters. Exclude conflicts."""
+        # Exclude known speakers AND conflict segments
+        unknowns = [s for s in self.segments
+                    if not s['is_known'] and not s.get('is_conflict', False)]
 
         if len(unknowns) == 0:
             return 0
@@ -421,6 +666,11 @@ class LivePipeline:
         for i, s in enumerate(unknowns):
             s['speaker_label'] = f'Speaker {chr(65 + labels[i])}'
 
+        # Mark conflict segments separately
+        for s in self.segments:
+            if s.get('is_conflict', False):
+                s['speaker_label'] = s['speaker_name']  # Keep [A/B?] format
+
         # Also update known speakers
         for s in self.segments:
             if s['is_known']:
@@ -429,7 +679,7 @@ class LivePipeline:
         return len(set(labels))
 
     def show_stats(self):
-        """Show speed breakdown after stop."""
+        """Show speed breakdown and speaker stats after stop."""
         if not self.segments:
             print("\n⚠️  No valid segments detected")
             return
@@ -460,6 +710,31 @@ class LivePipeline:
             print(f"RTF: {total_process / (total_audio * 1000):.3f}")
             print(f"Speed: {total_audio * 1000 / total_process:.0f}x RT")
 
+        # Speaker recognition stats
+        print("\n" + "=" * 60)
+        print("SPEAKER RECOGNITION")
+        print("=" * 60)
+
+        n_known = sum(1 for s in self.segments if s['is_known'])
+        n_unknown = sum(1 for s in self.segments if not s['is_known'] and not s.get('is_conflict'))
+        n_conflict = sum(1 for s in self.segments if s.get('is_conflict'))
+        n_learned = sum(1 for s in self.segments if s.get('learned'))
+
+        n_high = sum(1 for s in self.segments if s.get('confidence') == 'high')
+        n_medium = sum(1 for s in self.segments if s.get('confidence') == 'medium')
+
+        print(f"\nSegments: {len(self.segments)} total")
+        print(f"  Known speakers:   {n_known} ({n_high} high conf, {n_medium} medium)")
+        print(f"  Unknown speakers: {n_unknown}")
+        print(f"  Conflicts:        {n_conflict}")
+        print(f"  Auto-learned:     {n_learned} embeddings")
+
+        # Show library status
+        if self.library.speakers:
+            print(f"\nVoice Library ({len(self.library.speakers)} speakers):")
+            for name, profile in self.library.speakers.items():
+                print(f"  {name}: {len(profile.core)} core, {len(profile.boundary)} boundary")
+
     def show_clustered_transcript(self):
         """Show final transcript with clustered speaker labels."""
         if not self.segments:
@@ -473,36 +748,100 @@ class LivePipeline:
             label = s.get('speaker_label', s.get('speaker_name', '???'))
             print(f"[{label}] ({s['start']:.1f}s-{s['end']:.1f}s) {s['text']}")
 
-    def prompt_naming(self):
-        """Prompt user to name unknown speakers."""
-        unknown_labels = set()
-        for s in self.segments:
-            if not s['is_known']:
-                unknown_labels.add(s.get('speaker_label', 'Unknown'))
+    def _select_diverse_embeddings(self, embeddings: list, max_count: int = 5) -> list:
+        """Select most diverse embeddings using farthest-first traversal."""
+        if len(embeddings) <= max_count:
+            return embeddings
 
-        if not unknown_labels:
-            print("\n✅ All speakers are known!")
+        selected = [embeddings[0]]
+        remaining = embeddings[1:]
+
+        while len(selected) < max_count and remaining:
+            # Find embedding farthest from all selected
+            best_emb = None
+            best_min_dist = -1
+
+            for emb in remaining:
+                min_dist = min(cosine_distance(emb, s) for s in selected)
+                if min_dist > best_min_dist:
+                    best_min_dist = min_dist
+                    best_emb = emb
+
+            if best_emb is not None:
+                selected.append(best_emb)
+                remaining.remove(best_emb)
+
+        return selected
+
+    def prompt_naming(self):
+        """
+        Prompt user to name unknown speakers.
+
+        Only asks about speakers with ≥3 segments (frequent speakers).
+        Excludes conflict segments.
+        Uses diversity-based selection when saving embeddings.
+        """
+        MIN_SEGMENTS_TO_NAME = 3  # Only ask about frequent speakers
+
+        # Count segments per unknown label (exclude conflicts)
+        label_counts = {}
+        for s in self.segments:
+            if not s['is_known'] and not s.get('is_conflict', False):
+                label = s.get('speaker_label', 'Unknown')
+                label_counts[label] = label_counts.get(label, 0) + 1
+
+        # Filter to only frequent speakers
+        frequent_labels = {label for label, count in label_counts.items()
+                          if count >= MIN_SEGMENTS_TO_NAME}
+
+        # Also show ignored speakers
+        ignored_labels = {label for label, count in label_counts.items()
+                         if count < MIN_SEGMENTS_TO_NAME}
+
+        if not frequent_labels:
+            if ignored_labels:
+                print(f"\n⏭️  Skipped {len(ignored_labels)} infrequent speaker(s)")
+            else:
+                print("\n✅ All speakers are known!")
             return
 
         print("\n" + "=" * 60)
         print("NAME SPEAKERS (Enter to skip)")
+        print(f"Showing speakers with ≥{MIN_SEGMENTS_TO_NAME} segments")
         print("=" * 60)
 
-        for label in sorted(unknown_labels):
-            samples = [s for s in self.segments if s.get('speaker_label') == label]
-            print(f"\n{label} said:")
-            for s in samples[:2]:
-                print(f"  \"{s['text'][:60]}...\"" if len(s['text']) > 60 else f"  \"{s['text']}\"")
+        for label in sorted(frequent_labels):
+            samples = [s for s in self.segments
+                      if s.get('speaker_label') == label and not s.get('is_conflict', False)]
+            total_duration = sum(s['duration'] for s in samples)
+
+            print(f"\n{label} ({len(samples)} segments, {total_duration:.1f}s):")
+            for s in samples[:3]:
+                text_preview = f"\"{s['text'][:50]}...\"" if len(s['text']) > 50 else f"\"{s['text']}\""
+                print(f"  {text_preview}")
 
             name = input(f"Name for {label}: ").strip()
 
             if name:
+                # Collect all embeddings from this speaker
+                embeddings = [s['embedding'] for s in samples if s['embedding'] is not None]
+
+                # Select most diverse embeddings
+                diverse_embeddings = self._select_diverse_embeddings(embeddings)
+
+                # Add to library
+                for emb in diverse_embeddings:
+                    self.library.add_embedding(name, emb)
+
+                # Update labels
                 for s in self.segments:
                     if s.get('speaker_label') == label:
                         s['speaker_label'] = name
-                        if s['embedding'] is not None:
-                            self.library.add_embedding(name, s['embedding'])
-                print(f"  ✅ Saved '{name}' to library")
+
+                print(f"  ✅ Saved '{name}' with {len(diverse_embeddings)} diverse embeddings")
+
+        if ignored_labels:
+            print(f"\n⏭️  Skipped {len(ignored_labels)} infrequent speaker(s): {sorted(ignored_labels)}")
 
     def run(self):
         print("=" * 60)
