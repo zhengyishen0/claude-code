@@ -520,9 +520,13 @@ class LivePipeline {
         let (_, textTokens) = decodeSpecialTokens(tokens)
 
         // Decode to text
+        // Note: Swift SentencePiece has off-by-one from Python/CoreML tokens
+        // Need to add 1 to CoreML tokens before decoding with Swift SentencePiece
         if let tokenizer = tokenizer {
             let adjustedTokens = textTokens.map { $0 + 1 }
-            return try? tokenizer.decode(adjustedTokens)
+            if let text = try? tokenizer.decode(adjustedTokens) {
+                return cleanTranscriptText(text)
+            }
         }
 
         return nil
@@ -928,6 +932,21 @@ func decodeSpecialTokens(_ tokens: [Int]) -> (info: [String: String], textTokens
     return (info, textTokens)
 }
 
+/// Clean transcript by removing special tokens (matches Python's _clean_text)
+func cleanTranscriptText(_ text: String) -> String {
+    // Remove special tokens like <|zh|>, <|en|>, <|EMO_UNKNOWN|>, etc.
+    var cleaned = text.replacingOccurrences(
+        of: "<\\|[^|]+\\|>",
+        with: "",
+        options: .regularExpression
+    )
+    // Remove extra whitespace
+    cleaned = cleaned.components(separatedBy: .whitespaces)
+        .filter { !$0.isEmpty }
+        .joined(separator: " ")
+    return cleaned.trimmingCharacters(in: .whitespaces)
+}
+
 // MARK: - Transcribe Single Audio
 
 func transcribeAudio(path: String, model: MLModel, filterbankPath: String?, tokenizer: SentencepieceTokenizer?, speakerModel: MLModel?, voiceLibrary: VoiceLibrary?) -> TranscriptionResult? {
@@ -946,18 +965,28 @@ func transcribeAudio(path: String, model: MLModel, filterbankPath: String?, toke
     let duration = Double(audio.count) / Double(SAMPLE_RATE)
     print("Audio duration: \(String(format: "%.2f", duration))s")
 
+    // Timing
+    var t0 = CFAbsoluteTimeGetCurrent()
+
     // Mel spectrogram
     let mel = computeMelSpectrogram(audio, filterbankPath: filterbankPath)
+    print("   Mel spectrogram: \(String(format: "%.0f", (CFAbsoluteTimeGetCurrent() - t0) * 1000))ms")
 
+    t0 = CFAbsoluteTimeGetCurrent()
     // LFR
     let lfr = applyLFR(mel)
+    print("   LFR: \(String(format: "%.0f", (CFAbsoluteTimeGetCurrent() - t0) * 1000))ms")
 
+    t0 = CFAbsoluteTimeGetCurrent()
     // Pad
     let padded = padToFixedFrames(lfr)
+    print("   Pad: \(String(format: "%.0f", (CFAbsoluteTimeGetCurrent() - t0) * 1000))ms")
 
     // Inference
     do {
+        t0 = CFAbsoluteTimeGetCurrent()
         let logits = try runInference(model: model, features: padded)
+        print("   Inference: \(String(format: "%.0f", (CFAbsoluteTimeGetCurrent() - t0) * 1000))ms")
 
         // CTC decode
         let tokens = ctcGreedyDecode(logits)
@@ -971,7 +1000,9 @@ func transcribeAudio(path: String, model: MLModel, filterbankPath: String?, toke
         var transcription: String? = nil
         if let tokenizer = tokenizer {
             let adjustedTokens = textTokens.map { $0 + 1 }
-            transcription = try? tokenizer.decode(adjustedTokens)
+            if let text = try? tokenizer.decode(adjustedTokens) {
+                transcription = cleanTranscriptText(text)
+            }
         }
 
         // Speaker identification
@@ -1025,6 +1056,7 @@ func transcribeAudio(path: String, model: MLModel, filterbankPath: String?, toke
         print("  Emotion: \(info["emotion"] ?? "unknown")")
         print("  Event: \(info["event"] ?? "unknown")")
         print("  Token count: \(tokens.count) (text tokens: \(textTokens.count))")
+        print("  Text token IDs (first 20): \(Array(textTokens.prefix(20)))")
         print("  Processing time: \(String(format: "%.0f", totalTime))ms")
 
         if let text = transcription {
@@ -1228,7 +1260,7 @@ func resample(_ audio: [Float], from sourceSR: Int, to targetSR: Int) -> [Float]
     return output
 }
 
-// MARK: - KissFFT-based FFT (O(N log N) - replaces O(N²) manual DFT)
+// MARK: - KissFFT-based FFT
 
 /// Global FFT configuration (reused for all frames)
 private var kissFFTConfig: OpaquePointer?
@@ -1241,7 +1273,7 @@ func initializeKissFFT() {
 }
 
 /// Compute FFT magnitude using KissFFT
-func computeFFTKiss(_ input: [Float]) -> [Float] {
+func computeFFTMagnitude(_ input: [Float]) -> [Float] {
     let N = input.count
     let numBins = N / 2 + 1
 
@@ -1351,8 +1383,8 @@ func computeMelSpectrogram(_ audio: [Float], filterbankPath: String? = nil) -> [
             print("   Debug: first windowed frame max=\(frame.max()!), first 5: \(frame[0..<5])")
         }
 
-        // Compute FFT magnitude using KissFFT (O(N log N) instead of O(N²) DFT)
-        let magnitude = computeFFTKiss(frame)
+        // Compute FFT magnitude using KissFFT
+        let magnitude = computeFFTMagnitude(frame)
 
         // Debug first frame's magnitude
         if i == 0 && !debugPrinted {
