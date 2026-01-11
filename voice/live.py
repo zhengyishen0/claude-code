@@ -24,8 +24,10 @@ warnings.filterwarnings('ignore', message='.*urllib3.*')
 warnings.filterwarnings('ignore', message='.*torchaudio.*')
 
 import sys
-sys.path.insert(0, '.')
-sys.path.insert(0, 'transcription')
+from pathlib import Path as _Path
+_VOICE_DIR = _Path(__file__).parent
+sys.path.insert(0, str(_VOICE_DIR))
+sys.path.insert(0, str(_VOICE_DIR / 'transcription'))
 
 import time
 import threading
@@ -501,10 +503,11 @@ class LivePipeline:
         is_known = name is not None and not name.startswith("[")
         is_conflict = confidence == "conflict"
 
-        # Auto-learn from high-confidence matches
+        # Note: We DON'T auto-learn from high-confidence matches anymore.
+        # High-confidence = already well-represented, learning adds no value.
+        # Medium-confidence = edge cases that expand the boundary (valuable).
+        # We learn from medium-confidence after user confirmation in prompt_confirm_medium().
         learned = False
-        if is_known and confidence == "high":
-            learned = self.library.auto_learn(name, embedding, score)
 
         # Store segment
         segment = {
@@ -843,6 +846,78 @@ class LivePipeline:
         if ignored_labels:
             print(f"\n⏭️  Skipped {len(ignored_labels)} infrequent speaker(s): {sorted(ignored_labels)}")
 
+    def prompt_confirm_medium(self):
+        """
+        Confirm medium-confidence matches and learn from them.
+
+        Medium-confidence matches are valuable because they expand the boundary
+        of what we know about a speaker's voice range. High-confidence matches
+        are already well-represented and don't add new information.
+
+        User presses Enter to confirm all, or types numbers to exclude wrong ones.
+        """
+        # Group medium-confidence segments by speaker
+        medium_by_speaker = {}
+        for i, s in enumerate(self.segments):
+            if s['is_known'] and s['confidence'] == 'medium':
+                name = s['speaker_name']
+                if name not in medium_by_speaker:
+                    medium_by_speaker[name] = []
+                medium_by_speaker[name].append((i, s))
+
+        if not medium_by_speaker:
+            return
+
+        print("\n" + "=" * 60)
+        print("CONFIRM MEDIUM-CONFIDENCE MATCHES")
+        print("These expand voice range - Enter to confirm, or type numbers to exclude")
+        print("=" * 60)
+
+        total_learned = 0
+
+        for name, segments in medium_by_speaker.items():
+            print(f"\n{name}? ({len(segments)} segments):")
+            for idx, (seg_idx, s) in enumerate(segments):
+                text_preview = s['text'][:40] + "..." if len(s['text']) > 40 else s['text']
+                print(f"  [{idx+1}] ({s['start']:.1f}s) \"{text_preview}\"")
+
+            response = input(f"Exclude which? (Enter=confirm all, e.g. '1,3' to exclude): ").strip()
+
+            # Parse exclusions
+            exclude_indices = set()
+            if response:
+                for part in response.replace(' ', ',').split(','):
+                    part = part.strip()
+                    if part.isdigit():
+                        exclude_indices.add(int(part) - 1)  # Convert to 0-indexed
+
+            # Learn from confirmed segments
+            confirmed = [(seg_idx, s) for idx, (seg_idx, s) in enumerate(segments)
+                        if idx not in exclude_indices]
+
+            if confirmed:
+                embeddings = [s['embedding'] for _, s in confirmed if s['embedding'] is not None]
+                diverse_embeddings = self._select_diverse_embeddings(embeddings, max_count=3)
+
+                for emb in diverse_embeddings:
+                    result = self.library.add_embedding(name, emb)
+                    if result != "rejected":
+                        total_learned += 1
+
+                # Mark as learned in segments
+                for seg_idx, s in confirmed:
+                    self.segments[seg_idx]['learned'] = True
+                    self.segments[seg_idx]['confidence'] = 'confirmed'
+
+                excluded_count = len(segments) - len(confirmed)
+                if excluded_count:
+                    print(f"  ✅ Learned from {len(diverse_embeddings)} (excluded {excluded_count})")
+                else:
+                    print(f"  ✅ Learned from {len(diverse_embeddings)} embeddings")
+
+        if total_learned:
+            print(f"\n📚 Total: {total_learned} new boundary embeddings added")
+
     def process_file(self, file_path: str):
         """Process an audio file instead of live microphone input."""
         from pathlib import Path
@@ -936,6 +1011,7 @@ class LivePipeline:
             self.show_stats()
             self.show_clustered_transcript()
             self.prompt_naming()
+            self.prompt_confirm_medium()
         else:
             print("   No valid segments found.")
 
@@ -964,6 +1040,7 @@ class LivePipeline:
                     self.show_stats()
                     self.show_clustered_transcript()
                     self.prompt_naming()
+                    self.prompt_confirm_medium()
 
                 return False  # Stop listener
 

@@ -1,13 +1,19 @@
 # Large model files (download separately)
 *.mlpackage/
 *.mlmodel
+*.mlmodelc/
 *.bin
+*.bpe.model
 **/models/
+
+# Personal voice data (user-specific)
+**/voice_library.json
 
 # Test outputs
 test_output/
 **/test_audio/
 recordings/
+*.wav
 
 # Python cache
 __pycache__/
