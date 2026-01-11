@@ -344,10 +344,12 @@ class LivePipeline {
     private let stopSemaphore = DispatchSemaphore(value: 0)
 
     // Configuration
-    private var useVoiceIsolation: Bool = false
+    private var useSuppression: Bool = false
+    private var useIsolation: Bool = false
 
-    init(voiceIsolation: Bool = false) {
-        self.useVoiceIsolation = voiceIsolation
+    init(suppression: Bool = false, isolation: Bool = false) {
+        self.useSuppression = suppression
+        self.useIsolation = isolation
     }
 
     func loadModels() {
@@ -555,6 +557,8 @@ class LivePipeline {
     private func processSegment(audio: [Float], startTime: Double, endTime: Double) {
         guard let asrModel = asrModel, let speakerModel = speakerModel else { return }
 
+        let processStart = CFAbsoluteTimeGetCurrent()
+
         // Run transcription and speaker ID in PARALLEL
         var transcription: String? = nil
         var speakerName: String? = nil
@@ -600,8 +604,9 @@ class LivePipeline {
             speakerLabel = "???"
         }
 
-        // Clean output: [Speaker] (start-end) text
-        print("[\(speakerLabel)] (\(String(format: "%.1f", startTime))s-\(String(format: "%.1f", endTime))s) \(text)")
+        // Output: [Speaker] (start-end) text [processing time]
+        let processTime = Int((CFAbsoluteTimeGetCurrent() - processStart) * 1000)
+        print("[\(speakerLabel)] (\(String(format: "%.1f", startTime))s-\(String(format: "%.1f", endTime))s) \(text)  [\(processTime)ms]")
 
         // Store segment
         segments.append([
@@ -669,13 +674,39 @@ class LivePipeline {
 
         let inputNode = engine.inputNode
 
-        // Enable voice isolation if requested
-        if useVoiceIsolation {
+        // Enable isolation (ML-based voice isolation) if requested
+        // Note: Voice Isolation must be enabled by user via system dialog
+        if useIsolation {
+            if #available(macOS 14.0, *) {
+                AVCaptureDevice.showSystemUserInterface(.microphoneModes)
+                print("🎯 Please select 'Voice Isolation' in the system dialog")
+                print("   (Waiting 3 seconds for selection...)")
+                Thread.sleep(forTimeInterval: 3.0)
+
+                // Also enable voice processing for echo cancellation
+                do {
+                    try inputNode.setVoiceProcessingEnabled(true)
+                } catch {
+                    print("⚠️  Could not enable voice processing: \(error)")
+                }
+            } else {
+                print("⚠️  Isolation requires macOS 14+, falling back to suppression")
+                do {
+                    try inputNode.setVoiceProcessingEnabled(true)
+                    print("🔇 Suppression enabled (fallback)")
+                } catch {
+                    print("⚠️  Could not enable suppression: \(error)")
+                }
+            }
+        }
+
+        // Enable suppression (echo cancellation + noise suppression) if requested
+        if useSuppression && !useIsolation {
             do {
                 try inputNode.setVoiceProcessingEnabled(true)
-                print("🎤 Voice Isolation enabled")
+                print("🔇 Suppression enabled (echo cancellation + noise reduction)")
             } catch {
-                print("⚠️  Could not enable Voice Isolation: \(error)")
+                print("⚠️  Could not enable suppression: \(error)")
             }
         }
 
@@ -693,15 +724,37 @@ class LivePipeline {
             throw NSError(domain: "LivePipeline", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to create target format"])
         }
 
-        // Create converter
-        guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
+        // When suppression is enabled, input is 9 channels - only channel 0 has the processed voice
+        // Create mono format at input sample rate first, then resample
+        let tapFormat: AVAudioFormat
+        let needsChannelExtraction: Bool
+
+        if inputFormat.channelCount > 1 {
+            // Multi-channel input (e.g., 9 channels from Voice Processing)
+            // We'll extract channel 0 manually in handleAudioBuffer
+            tapFormat = inputFormat
+            needsChannelExtraction = true
+        } else {
+            tapFormat = inputFormat
+            needsChannelExtraction = false
+        }
+
+        // Create converter from mono input sample rate to target
+        let monoInputFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: inputFormat.sampleRate,
+            channels: 1,
+            interleaved: false
+        )!
+
+        guard let converter = AVAudioConverter(from: monoInputFormat, to: targetFormat) else {
             throw NSError(domain: "LivePipeline", code: 3, userInfo: [NSLocalizedDescriptionKey: "Failed to create converter"])
         }
         audioConverter = converter
 
         // Install tap on input node
-        inputNode.installTap(onBus: 0, bufferSize: AVAudioFrameCount(VAD_CHUNK_SIZE), format: inputFormat) { [weak self] buffer, _ in
-            self?.handleAudioBuffer(buffer, converter: converter, targetFormat: targetFormat)
+        inputNode.installTap(onBus: 0, bufferSize: AVAudioFrameCount(VAD_CHUNK_SIZE), format: tapFormat) { [weak self] buffer, _ in
+            self?.handleAudioBuffer(buffer, converter: converter, targetFormat: targetFormat, extractChannel0: needsChannelExtraction)
         }
 
         // Start engine
@@ -713,10 +766,44 @@ class LivePipeline {
         print(String(repeating: "-", count: 60))
     }
 
-    private func handleAudioBuffer(_ buffer: AVAudioPCMBuffer, converter: AVAudioConverter, targetFormat: AVAudioFormat) {
-        // Calculate output frame count
-        let ratio = targetFormat.sampleRate / buffer.format.sampleRate
-        let outputFrameCount = AVAudioFrameCount(Double(buffer.frameLength) * ratio)
+    private func handleAudioBuffer(_ buffer: AVAudioPCMBuffer, converter: AVAudioConverter, targetFormat: AVAudioFormat, extractChannel0: Bool = false) {
+        // Get mono audio at input sample rate
+        let monoSamples: [Float]
+
+        if extractChannel0 {
+            // Multi-channel input (e.g., 9 channels from Voice Processing)
+            // Only channel 0 contains the processed voice
+            guard let channelData = buffer.floatChannelData else { return }
+            monoSamples = Array(UnsafeBufferPointer(start: channelData[0], count: Int(buffer.frameLength)))
+        } else {
+            // Already mono
+            guard let channelData = buffer.floatChannelData else { return }
+            monoSamples = Array(UnsafeBufferPointer(start: channelData[0], count: Int(buffer.frameLength)))
+        }
+
+        // Create mono buffer at input sample rate for the converter
+        let monoFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: buffer.format.sampleRate,
+            channels: 1,
+            interleaved: false
+        )!
+
+        guard let monoBuffer = AVAudioPCMBuffer(pcmFormat: monoFormat, frameCapacity: AVAudioFrameCount(monoSamples.count)) else {
+            return
+        }
+        monoBuffer.frameLength = AVAudioFrameCount(monoSamples.count)
+
+        // Copy mono samples to buffer
+        if let destData = monoBuffer.floatChannelData {
+            for i in 0..<monoSamples.count {
+                destData[0][i] = monoSamples[i]
+            }
+        }
+
+        // Resample to 16kHz
+        let ratio = targetFormat.sampleRate / monoFormat.sampleRate
+        let outputFrameCount = AVAudioFrameCount(Double(monoBuffer.frameLength) * ratio)
 
         guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outputFrameCount) else {
             return
@@ -725,14 +812,14 @@ class LivePipeline {
         var error: NSError?
         let status = converter.convert(to: outputBuffer, error: &error) { inNumPackets, outStatus in
             outStatus.pointee = .haveData
-            return buffer
+            return monoBuffer
         }
 
         guard status != .error, error == nil else { return }
 
-        // Get float samples
-        guard let channelData = outputBuffer.floatChannelData else { return }
-        let samples = Array(UnsafeBufferPointer(start: channelData[0], count: Int(outputBuffer.frameLength)))
+        // Get resampled samples
+        guard let outData = outputBuffer.floatChannelData else { return }
+        let samples = Array(UnsafeBufferPointer(start: outData[0], count: Int(outputBuffer.frameLength)))
 
         // Process through VAD
         processVADChunk(samples)
@@ -1824,14 +1911,16 @@ func printUsage() {
     Swift Voice Pipeline
 
     USAGE:
-      swift run                         # Process sample audio files
-      swift run -- --live               # Live microphone transcription
-      swift run -- --live --voice-isolation  # Live with noise reduction
+      swift run                    # Live microphone transcription (default)
+      swift run -- --suppression   # Live with echo/noise suppression
+      swift run -- --isolation     # Live with ML voice isolation (macOS 14+)
+      swift run -- --file          # Process sample audio files
 
     OPTIONS:
-      --live              Enable live microphone mode
-      --voice-isolation   Enable Apple Voice Isolation (macOS 26)
-      --help              Show this help message
+      --suppression     Echo cancellation + noise suppression
+      --isolation       ML-based voice isolation (strongest, macOS 14+)
+      --file            Process sample audio files instead of live mode
+      --help            Show this help message
     """)
 }
 
@@ -1840,12 +1929,13 @@ let args = CommandLine.arguments.dropFirst()
 
 if args.contains("--help") || args.contains("-h") {
     printUsage()
-} else if args.contains("--live") {
-    // Live mode
-    let useVoiceIsolation = args.contains("--voice-isolation")
-    let pipeline = LivePipeline(voiceIsolation: useVoiceIsolation)
-    await pipeline.run()
-} else {
-    // Default: process sample files
+} else if args.contains("--file") {
+    // File processing mode
     await main()
+} else {
+    // Default: live mode
+    let useSuppression = args.contains("--suppression")
+    let useIsolation = args.contains("--isolation")
+    let pipeline = LivePipeline(suppression: useSuppression, isolation: useIsolation)
+    await pipeline.run()
 }
