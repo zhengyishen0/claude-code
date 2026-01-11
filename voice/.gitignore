@@ -6,6 +6,7 @@
 # Test outputs
 test_output/
 test_audio/
+recordings/
 
 # Python cache
 __pycache__/

@@ -6,6 +6,11 @@ Fast speech recognition using SenseVoice converted to CoreML for Apple Silicon.
 Supports Chinese, English, Japanese, Korean, and Cantonese.
 """
 
+# Suppress coremltools version warnings before import
+import warnings
+warnings.filterwarnings('ignore', message='.*scikit-learn.*')
+warnings.filterwarnings('ignore', message='.*Torch version.*')
+
 import numpy as np
 import coremltools as ct
 import sentencepiece as spm
