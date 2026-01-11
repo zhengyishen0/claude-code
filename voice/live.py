@@ -843,6 +843,102 @@ class LivePipeline:
         if ignored_labels:
             print(f"\n⏭️  Skipped {len(ignored_labels)} infrequent speaker(s): {sorted(ignored_labels)}")
 
+    def process_file(self, file_path: str):
+        """Process an audio file instead of live microphone input."""
+        from pathlib import Path
+
+        file_path = Path(file_path)
+        if not file_path.exists():
+            print(f"Error: File not found: {file_path}")
+            return
+
+        print("=" * 60)
+        print("FILE VOICE PIPELINE (VAD Processing)")
+        print("=" * 60)
+        print(f"\n📁 Processing: {file_path.name}")
+
+        self.load_models()
+
+        # Load audio file
+        print("\n[1/4] Loading audio...")
+        try:
+            audio, sr = sf.read(file_path)
+        except Exception as e:
+            print(f"Error reading file: {e}")
+            print("Tip: For m4a files, convert to wav first:")
+            print(f"  ffmpeg -i {file_path} -ar 16000 -ac 1 output.wav")
+            return
+
+        # Convert to mono if stereo
+        if len(audio.shape) > 1:
+            audio = audio.mean(axis=1)
+
+        # Ensure float32 for model compatibility
+        audio = audio.astype(np.float32)
+
+        # Resample if needed
+        if sr != SAMPLE_RATE:
+            print(f"   Resampling from {sr}Hz to {SAMPLE_RATE}Hz...")
+            import torchaudio.functional as F
+            audio_tensor = torch.from_numpy(audio).float()
+            audio_tensor = F.resample(audio_tensor, sr, SAMPLE_RATE)
+            audio = audio_tensor.numpy()
+
+        duration = len(audio) / SAMPLE_RATE
+        print(f"   Duration: {duration:.1f}s, Sample rate: {SAMPLE_RATE}Hz")
+
+        # Run VAD to find speech segments
+        print("\n[2/4] Detecting speech segments (VAD)...")
+        speech_timestamps = self.vad_utils[0](
+            torch.from_numpy(audio).float(),
+            self.vad_model,
+            sampling_rate=SAMPLE_RATE,
+            return_seconds=True
+        )
+
+        print(f"   Found {len(speech_timestamps)} speech segments")
+
+        if not speech_timestamps:
+            print("   No speech detected in file.")
+            return
+
+        # Process each segment
+        print("\n[3/4] Processing segments...")
+        print("-" * 60)
+
+        self.segments = []
+        for seg in speech_timestamps:
+            start_time = seg['start']
+            end_time = seg['end']
+
+            # Extract segment audio (ensure float32 for model compatibility)
+            start_sample = int(start_time * SAMPLE_RATE)
+            end_sample = int(end_time * SAMPLE_RATE)
+            segment_audio = audio[start_sample:end_sample].astype(np.float32)
+
+            # Skip very short segments
+            if len(segment_audio) < SAMPLE_RATE * 0.3:
+                continue
+
+            # Process segment (embedding + transcription + matching)
+            self.process_segment(segment_audio, start_time, end_time)
+
+        print("-" * 60)
+
+        # Cluster and show results
+        print("\n[4/4] Analyzing results...")
+
+        if self.segments:
+            n_clusters = self.cluster_unknowns()
+            if n_clusters:
+                print(f"\n📊 Clustered unknowns into {n_clusters} speakers")
+
+            self.show_stats()
+            self.show_clustered_transcript()
+            self.prompt_naming()
+        else:
+            print("   No valid segments found.")
+
     def run(self):
         print("=" * 60)
         print("LIVE VOICE PIPELINE (VAD Streaming)")
@@ -876,8 +972,32 @@ class LivePipeline:
 
 
 def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Live Voice Pipeline - VAD-Driven Speaker Diarization",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python live.py                    # Live microphone recording
+  python live.py recording.wav      # Process audio file
+  python live.py --file input.m4a   # Process audio file (explicit)
+        """
+    )
+    parser.add_argument('file', nargs='?', help='Audio file to process (wav, m4a, mp3)')
+    parser.add_argument('--file', '-f', dest='file_explicit', help='Audio file to process')
+
+    args = parser.parse_args()
+
+    # Get file path from either positional or explicit argument
+    file_path = args.file or args.file_explicit
+
     pipeline = LivePipeline()
-    pipeline.run()
+
+    if file_path:
+        pipeline.process_file(file_path)
+    else:
+        pipeline.run()
 
 
 if __name__ == "__main__":
