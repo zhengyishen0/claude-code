@@ -18,11 +18,16 @@ let SAMPLE_RATE: Int = 16000
 let SAMPLE_RATE_DOUBLE: Double = 16000.0
 let XVECTOR_SAMPLES: Int = 48000  // 3 seconds for speaker embedding
 
-// VAD Configuration (matches Python live.py)
-let VAD_THRESHOLD: Float = 0.02        // RMS threshold for speech detection
-let MIN_SPEECH_DURATION: Double = 0.3  // Minimum speech duration in seconds
-let MIN_SILENCE_DURATION: Double = 0.5 // Silence duration to end speech segment
-let CHUNK_SIZE: Int = 512              // ~32ms at 16kHz
+// VAD Configuration - Silero VAD (matches FluidAudio exactly)
+let VAD_SPEECH_THRESHOLD: Float = 0.5   // Speech probability threshold (Python: 0.5)
+let MIN_SPEECH_DURATION: Double = 0.3   // Minimum speech duration (Python: 0.3s)
+let MIN_SILENCE_DURATION: Double = 0.3  // Silence to end segment (Python: 0.3s)
+
+// Silero VAD model constants (from FluidAudio VadManager)
+let VAD_CHUNK_SIZE: Int = 4096          // 256ms at 16kHz
+let VAD_CONTEXT_SIZE: Int = 64          // Context samples carried between chunks
+let VAD_STATE_SIZE: Int = 128           // LSTM state size
+let VAD_MODEL_INPUT_SIZE: Int = 4160    // VAD_CHUNK_SIZE + VAD_CONTEXT_SIZE
 let N_MELS: Int = 80
 let N_FFT: Int = 400      // 25ms at 16kHz
 let HOP_LENGTH: Int = 160 // 10ms at 16kHz
@@ -231,17 +236,12 @@ class VoiceLibrary {
 
         let thresh = threshold ?? VoiceLibrary.BOUNDARY_THRESHOLD
 
-        // Debug: print all similarity scores
-        print("  Matching against \(speakers.count) speakers:")
         var allScores: [(String, Float)] = []
         for (name, profile) in speakers {
             let score = profile.maxSimilarityToBoundary(embedding)
             allScores.append((name, score))
         }
         allScores.sort { $0.1 > $1.1 }
-        for (name, score) in allScores.prefix(3) {
-            print("    \(name): \(String(format: "%.3f", score))")
-        }
 
         // Phase 1: Check all boundary layers
         var boundaryMatches: [(String, Float, SpeakerProfile)] = []
@@ -314,6 +314,7 @@ class LivePipeline {
     // Models
     private var asrModel: MLModel?
     private var speakerModel: MLModel?
+    private var vadModel: MLModel?  // Silero VAD CoreML
     private var tokenizer: SentencepieceTokenizer?
     private var voiceLibrary: VoiceLibrary?
 
@@ -321,12 +322,17 @@ class LivePipeline {
     private var audioEngine: AVAudioEngine?
     private var audioConverter: AVAudioConverter?
 
-    // VAD state (matches Python VADProcessor)
+    // VAD state - Silero VAD (matches FluidAudio VadManager)
     private var speechBuffer: [Float] = []
     private var isSpeaking = false
     private var speechStartSample: Int = 0
     private var totalSamples: Int = 0
     private var silenceSamples: Int = 0
+    // Silero VAD LSTM state
+    private var vadHiddenState: [Float] = Array(repeating: 0, count: VAD_STATE_SIZE)
+    private var vadCellState: [Float] = Array(repeating: 0, count: VAD_STATE_SIZE)
+    private var vadContext: [Float] = Array(repeating: 0, count: VAD_CONTEXT_SIZE)
+    private var vadChunkBuffer: [Float] = []  // Accumulate samples until VAD_CHUNK_SIZE
 
     // Processing
     private let processingQueue = DispatchQueue(label: "live.processing", qos: .userInitiated)
@@ -348,8 +354,19 @@ class LivePipeline {
         print("\n📦 Loading models...")
         let startTotal = CFAbsoluteTimeGetCurrent()
 
-        // Load ASR model
+        // Load Silero VAD model (first - needed for live streaming)
         var t0 = CFAbsoluteTimeGetCurrent()
+        if let vadURL = findVADModel() {
+            let config = MLModelConfiguration()
+            config.computeUnits = .all
+            vadModel = try? MLModel(contentsOf: vadURL, configuration: config)
+            print("  VAD (Silero): \(String(format: "%.2f", CFAbsoluteTimeGetCurrent() - t0))s")
+        } else {
+            print("  ⚠️ VAD model not found - falling back to RMS-based VAD")
+        }
+
+        // Load ASR model
+        t0 = CFAbsoluteTimeGetCurrent()
         if let modelURL = findModel(named: "sensevoice-500-itn", ext: "mlmodelc") {
             let config = MLModelConfiguration()
             config.computeUnits = .all
@@ -383,57 +400,153 @@ class LivePipeline {
         print("  Total: \(String(format: "%.2f", CFAbsoluteTimeGetCurrent() - startTotal))s")
     }
 
-    private func calculateRMS(_ samples: [Float]) -> Float {
-        guard !samples.isEmpty else { return 0 }
-        var rms: Float = 0
-        vDSP_rmsqv(samples, 1, &rms, vDSP_Length(samples.count))
-        return rms
+    private func findVADModel() -> URL? {
+        // Check in swift-pipeline-test/Models first
+        let localPath = FileManager.default.currentDirectoryPath + "/Models/silero-vad-unified-256ms-v6.0.0.mlmodelc"
+        if FileManager.default.fileExists(atPath: localPath) {
+            return URL(fileURLWithPath: localPath)
+        }
+        // Check in YouPu Models
+        let youpuPath = YOUPU_ROOT + "/Models/silero-vad-unified-256ms-v6.0.0.mlmodelc"
+        if FileManager.default.fileExists(atPath: youpuPath) {
+            return URL(fileURLWithPath: youpuPath)
+        }
+        return nil
     }
 
+    /// Run Silero VAD inference on a chunk (matches FluidAudio VadManager.processChunk)
+    private func runSileroVAD(_ audioChunk: [Float]) -> Float? {
+        guard let model = vadModel else { return nil }
+
+        // Prepare audio input: context (64) + new chunk (4096) = 4160
+        var audioInput = vadContext
+        audioInput.append(contentsOf: audioChunk.prefix(VAD_CHUNK_SIZE))
+
+        // Pad if needed
+        while audioInput.count < VAD_MODEL_INPUT_SIZE {
+            audioInput.append(audioInput.last ?? 0)
+        }
+
+        // Update context for next chunk
+        vadContext = Array(audioChunk.suffix(VAD_CONTEXT_SIZE))
+
+        do {
+            // Create input arrays
+            let audioArray = try MLMultiArray(shape: [1, NSNumber(value: VAD_MODEL_INPUT_SIZE)], dataType: .float32)
+            let hiddenArray = try MLMultiArray(shape: [1, NSNumber(value: VAD_STATE_SIZE)], dataType: .float32)
+            let cellArray = try MLMultiArray(shape: [1, NSNumber(value: VAD_STATE_SIZE)], dataType: .float32)
+
+            // Copy audio input
+            let audioPtr = audioArray.dataPointer.assumingMemoryBound(to: Float.self)
+            for i in 0..<VAD_MODEL_INPUT_SIZE {
+                audioPtr[i] = audioInput[i]
+            }
+
+            // Copy hidden state
+            let hiddenPtr = hiddenArray.dataPointer.assumingMemoryBound(to: Float.self)
+            for i in 0..<VAD_STATE_SIZE {
+                hiddenPtr[i] = vadHiddenState[i]
+            }
+
+            // Copy cell state
+            let cellPtr = cellArray.dataPointer.assumingMemoryBound(to: Float.self)
+            for i in 0..<VAD_STATE_SIZE {
+                cellPtr[i] = vadCellState[i]
+            }
+
+            // Create input provider
+            let input = try MLDictionaryFeatureProvider(dictionary: [
+                "audio_input": audioArray,
+                "hidden_state": hiddenArray,
+                "cell_state": cellArray
+            ])
+
+            // Run inference
+            let output = try model.prediction(from: input)
+
+            // Extract probability
+            guard let vadOutput = output.featureValue(for: "vad_output")?.multiArrayValue else {
+                return nil
+            }
+            let probability = vadOutput.dataPointer.assumingMemoryBound(to: Float.self)[0]
+
+            // Update LSTM states
+            if let newHidden = output.featureValue(for: "new_hidden_state")?.multiArrayValue {
+                let ptr = newHidden.dataPointer.assumingMemoryBound(to: Float.self)
+                for i in 0..<VAD_STATE_SIZE {
+                    vadHiddenState[i] = ptr[i]
+                }
+            }
+            if let newCell = output.featureValue(for: "new_cell_state")?.multiArrayValue {
+                let ptr = newCell.dataPointer.assumingMemoryBound(to: Float.self)
+                for i in 0..<VAD_STATE_SIZE {
+                    vadCellState[i] = ptr[i]
+                }
+            }
+
+            return probability
+        } catch {
+            print("VAD inference error: \(error)")
+            return nil
+        }
+    }
+
+    /// Process incoming audio samples with Silero VAD (matches Python VADProcessor)
     private func processVADChunk(_ samples: [Float]) {
+        // Accumulate samples into VAD chunk buffer
+        vadChunkBuffer.append(contentsOf: samples)
         totalSamples += samples.count
 
-        let rms = calculateRMS(samples)
+        // Process complete chunks
+        while vadChunkBuffer.count >= VAD_CHUNK_SIZE {
+            let chunk = Array(vadChunkBuffer.prefix(VAD_CHUNK_SIZE))
+            vadChunkBuffer.removeFirst(VAD_CHUNK_SIZE)
 
-        if rms > VAD_THRESHOLD {
-            // Speech detected
-            silenceSamples = 0
-            if !isSpeaking {
-                // Speech started
-                isSpeaking = true
-                speechStartSample = totalSamples - samples.count
-                speechBuffer = samples
+            // Run Silero VAD
+            let probability = runSileroVAD(chunk) ?? 0.0
+            let isSpeechFrame = probability >= VAD_SPEECH_THRESHOLD
+
+            if isSpeechFrame {
+                // Speech detected
+                silenceSamples = 0
+
+                if !isSpeaking {
+                    // Speech started
+                    isSpeaking = true
+                    speechStartSample = totalSamples - vadChunkBuffer.count - chunk.count
+                    speechBuffer = chunk
+                } else {
+                    // Speech continues
+                    speechBuffer.append(contentsOf: chunk)
+                }
             } else {
-                // Speech continues
-                speechBuffer.append(contentsOf: samples)
-            }
-        } else {
-            // Silence detected
-            if isSpeaking {
-                silenceSamples += samples.count
-                speechBuffer.append(contentsOf: samples)
+                // Silence detected
+                if isSpeaking {
+                    speechBuffer.append(contentsOf: chunk)
+                    silenceSamples += chunk.count
 
-                // Check if silence is long enough to end speech
-                let silenceDuration = Double(silenceSamples) / SAMPLE_RATE_DOUBLE
-                if silenceDuration >= MIN_SILENCE_DURATION {
-                    // Speech ended
-                    isSpeaking = false
+                    // Check if silence is long enough to end speech
+                    let silenceDuration = Double(silenceSamples) / SAMPLE_RATE_DOUBLE
+                    if silenceDuration >= MIN_SILENCE_DURATION {
+                        // Speech ended
+                        isSpeaking = false
 
-                    // Check minimum duration
-                    let speechDuration = Double(speechBuffer.count) / SAMPLE_RATE_DOUBLE
-                    if speechDuration >= MIN_SPEECH_DURATION {
-                        let segment = speechBuffer
-                        let startTime = Double(speechStartSample) / SAMPLE_RATE_DOUBLE
-                        let endTime = Double(speechStartSample + speechBuffer.count) / SAMPLE_RATE_DOUBLE
+                        // Check minimum duration
+                        let speechDuration = Double(speechBuffer.count) / SAMPLE_RATE_DOUBLE
+                        if speechDuration >= MIN_SPEECH_DURATION {
+                            let segment = speechBuffer
+                            let startTime = Double(speechStartSample) / SAMPLE_RATE_DOUBLE
+                            let endTime = Double(speechStartSample + speechBuffer.count) / SAMPLE_RATE_DOUBLE
 
-                        // Process segment in background
-                        processingQueue.async { [weak self] in
-                            self?.processSegment(audio: segment, startTime: startTime, endTime: endTime)
+                            // Process segment in background
+                            processingQueue.async { [weak self] in
+                                self?.processSegment(audio: segment, startTime: startTime, endTime: endTime)
+                            }
                         }
-                    }
 
-                    speechBuffer = []
-                    silenceSamples = 0
+                        speechBuffer = []
+                        silenceSamples = 0
+                    }
                 }
             }
         }
@@ -442,52 +555,53 @@ class LivePipeline {
     private func processSegment(audio: [Float], startTime: Double, endTime: Double) {
         guard let asrModel = asrModel, let speakerModel = speakerModel else { return }
 
-        let startProcess = CFAbsoluteTimeGetCurrent()
-
-        // Run transcription
-        let transcription = transcribeAudioSegment(audio: audio, model: asrModel)
-
-        // Run speaker identification
+        // Run transcription and speaker ID in PARALLEL
+        var transcription: String? = nil
         var speakerName: String? = nil
-        var speakerScore: Float = 0
         var speakerConfidence = "low"
-        var learned = false
 
-        if let embedding = extractSpeakerEmbedding(audio: audio, model: speakerModel),
-           let library = voiceLibrary {
-            let (name, score, confidence) = library.match(embedding)
-            speakerName = name
-            speakerScore = score
-            speakerConfidence = confidence
+        let group = DispatchGroup()
 
-            // Auto-learn from high-confidence matches
-            if let matchedName = name, confidence == "high", !matchedName.hasPrefix("[") {
-                learned = library.autoLearn(matchedName, embedding, score: score)
-            }
+        // Task 1: Transcription (slower, ~300ms)
+        group.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            transcription = self.transcribeAudioSegment(audio: audio, model: asrModel)
+            group.leave()
         }
 
-        let processTime = (CFAbsoluteTimeGetCurrent() - startProcess) * 1000
+        // Task 2: Speaker embedding + matching (faster, ~100ms total)
+        group.enter()
+        DispatchQueue.global(qos: .userInitiated).async {
+            if let embedding = extractSpeakerEmbedding(audio: audio, model: speakerModel),
+               let library = self.voiceLibrary {
+                let matchResult = library.match(embedding)
+                speakerName = matchResult.0
+                speakerConfidence = matchResult.2
 
-        // Skip empty transcriptions
-        guard let text = transcription, !text.isEmpty else { return }
+                // Auto-learn from high-confidence matches
+                if let matchedName = matchResult.0, matchResult.2 == "high", !matchedName.hasPrefix("[") {
+                    _ = library.autoLearn(matchedName, embedding, score: matchResult.1)
+                }
+            }
+            group.leave()
+        }
+
+        // Wait for both to complete
+        group.wait()
+
+        // Skip invalid transcriptions
+        guard let text = transcription, isValidTranscript(text) else { return }
 
         // Format speaker label
         let speakerLabel: String
         if let name = speakerName {
-            if speakerConfidence == "high" {
-                speakerLabel = name
-            } else if speakerConfidence == "conflict" {
-                speakerLabel = name
-            } else {
-                speakerLabel = "\(name)?"
-            }
+            speakerLabel = speakerConfidence == "high" ? name : "\(name)?"
         } else {
             speakerLabel = "???"
         }
 
-        // Live output
-        let learnIndicator = learned ? " 📚" : ""
-        print("[\(speakerLabel)] (\(String(format: "%.1f", startTime))s-\(String(format: "%.1f", endTime))s) \(text)  [\(Int(processTime))ms]\(learnIndicator)")
+        // Clean output: [Speaker] (start-end) text
+        print("[\(speakerLabel)] (\(String(format: "%.1f", startTime))s-\(String(format: "%.1f", endTime))s) \(text)")
 
         // Store segment
         segments.append([
@@ -495,7 +609,6 @@ class LivePipeline {
             "end": endTime,
             "text": text,
             "speaker": speakerName ?? "???",
-            "score": speakerScore,
             "confidence": speakerConfidence
         ])
     }
@@ -535,12 +648,17 @@ class LivePipeline {
     func startRecording() async throws {
         guard !isRunning else { return }
 
-        // Reset state
+        // Reset state (matches Python VADProcessor.reset() + FluidAudio VadState.initial())
         speechBuffer = []
         isSpeaking = false
         speechStartSample = 0
         totalSamples = 0
         silenceSamples = 0
+        // Reset Silero VAD LSTM state
+        vadHiddenState = Array(repeating: 0, count: VAD_STATE_SIZE)
+        vadCellState = Array(repeating: 0, count: VAD_STATE_SIZE)
+        vadContext = Array(repeating: 0, count: VAD_CONTEXT_SIZE)
+        vadChunkBuffer = []
         segments = []
 
         // Setup audio engine
@@ -582,7 +700,7 @@ class LivePipeline {
         audioConverter = converter
 
         // Install tap on input node
-        inputNode.installTap(onBus: 0, bufferSize: AVAudioFrameCount(CHUNK_SIZE * 4), format: inputFormat) { [weak self] buffer, _ in
+        inputNode.installTap(onBus: 0, bufferSize: AVAudioFrameCount(VAD_CHUNK_SIZE), format: inputFormat) { [weak self] buffer, _ in
             self?.handleAudioBuffer(buffer, converter: converter, targetFormat: targetFormat)
         }
 
@@ -743,8 +861,6 @@ func extractSpeakerEmbedding(audio: [Float], model: MLModel) -> [Float]? {
         processedAudio = audio + [Float](repeating: 0, count: XVECTOR_SAMPLES - audio.count)
     }
 
-    // Debug: print audio stats
-    print("  Speaker audio: first5=\(processedAudio.prefix(5).map { String(format: "%.6f", $0) })")
 
     do {
         // Create input array [1, 48000] - xvector uses FLOAT16 input
@@ -762,12 +878,8 @@ func extractSpeakerEmbedding(audio: [Float], model: MLModel) -> [Float]? {
 
         // Extract embedding [1, 1, 512] - xvector produces 512-dim embeddings
         guard let embeddingArray = output.featureValue(for: "embedding")?.multiArrayValue else {
-            print("No embedding output")
             return nil
         }
-
-        // Debug: print embedding array shape
-        print("  Embedding shape: \(embeddingArray.shape)")
 
         // Convert to [Float] - xvector output is FLOAT16, shape [1, 1, 512]
         let embeddingDim = 512
@@ -846,20 +958,7 @@ func testWithPythonFeatures(_ path: String) async {
         let model = try MLModel(contentsOf: modelURL, configuration: config)
 
         let logits = try runInference(model: model, features: features)
-        print("✅ Inference complete, logits shape: (\(logits.count), \(logits.first?.count ?? 0))")
-
-        // Debug: print raw logits for first few frames
-        print("   Swift logits[0, :10]: \(logits[0].prefix(10).map { String(format: "%.4f", $0) })")
-        print("   Swift logits[1, :10]: \(logits[1].prefix(10).map { String(format: "%.4f", $0) })")
-        for i in 0..<10 {
-            let maxIdx = logits[i].enumerated().max(by: { $0.element < $1.element })!.offset
-            let maxVal = logits[i].max()!
-            print("   Frame \(i): argmax=\(maxIdx), max_val=\(String(format: "%.4f", maxVal))")
-        }
-
-        let tokens = ctcGreedyDecode(logits)
-        print("✅ Tokens with Python features: \(tokens.prefix(50))...")
-        print("   Total tokens: \(tokens.count)")
+        _ = ctcGreedyDecode(logits)
 
     } catch {
         print("❌ Error: \(error)")
@@ -940,11 +1039,23 @@ func cleanTranscriptText(_ text: String) -> String {
         with: "",
         options: .regularExpression
     )
+    // Also remove any remaining garbage characters (non-printable, control chars)
+    cleaned = cleaned.filter { char in
+        char.isLetter || char.isNumber || char.isPunctuation || char.isWhitespace
+    }
     // Remove extra whitespace
     cleaned = cleaned.components(separatedBy: .whitespaces)
         .filter { !$0.isEmpty }
         .joined(separator: " ")
     return cleaned.trimmingCharacters(in: .whitespaces)
+}
+
+/// Filter out empty/punctuation-only transcripts (matches Python's is_valid_transcript)
+func isValidTranscript(_ text: String) -> Bool {
+    guard !text.isEmpty else { return false }
+    // Remove all punctuation and whitespace, check if anything remains
+    let cleaned = text.filter { $0.isLetter || $0.isNumber }
+    return !cleaned.isEmpty
 }
 
 // MARK: - Transcribe Single Audio
@@ -1016,8 +1127,6 @@ func transcribeAudio(path: String, model: MLModel, filterbankPath: String?, toke
             embedding = extractSpeakerEmbedding(audio: audio, model: spkModel)
 
             if let emb = embedding {
-                let embNorm = sqrt(emb.map { $0 * $0 }.reduce(0, +))
-                print("  Speaker embedding: norm=\(String(format: "%.2f", embNorm)), first5=\(emb.prefix(5).map { String(format: "%.2f", $0) })")
                 // Match against voice library
                 let (name, score, confidence) = library.match(emb)
                 speakerName = name
@@ -1338,14 +1447,12 @@ func computeMelSpectrogram(_ audio: [Float], filterbankPath: String? = nil) -> [
     let melFilterbank: [[Float]]
     if let path = filterbankPath, let loaded = loadMelFilterbank(path: path) {
         melFilterbank = loaded
-        print("   Using torchaudio filterbank from file")
     } else {
         melFilterbank = createMelFilterbank(
             numMels: N_MELS,
             numFFT: frameLength,
             sampleRate: SAMPLE_RATE
         )
-        print("   Using fallback filterbank (may differ from Python)")
     }
 
     // Precompute Hamming window
@@ -1358,9 +1465,6 @@ func computeMelSpectrogram(_ audio: [Float], filterbankPath: String? = nil) -> [
 
     var melFrames: [[Float]] = []
     melFrames.reserveCapacity(numFrames)
-
-    // Debug: print first frame's FFT for comparison
-    var debugPrinted = false
 
     for i in 0..<numFrames {
         let start = i * hopLength
@@ -1378,19 +1482,8 @@ func computeMelSpectrogram(_ audio: [Float], filterbankPath: String? = nil) -> [
         // Apply window: frame = frame * window
         vDSP_vmul(frame, 1, window, 1, &frame, 1, vDSP_Length(frameLength))
 
-        // Debug first frame
-        if i == 0 && !debugPrinted {
-            print("   Debug: first windowed frame max=\(frame.max()!), first 5: \(frame[0..<5])")
-        }
-
         // Compute FFT magnitude using KissFFT
         let magnitude = computeFFTMagnitude(frame)
-
-        // Debug first frame's magnitude
-        if i == 0 && !debugPrinted {
-            print("   Debug: magnitude first 5 bins: \(magnitude[0..<5])")
-            debugPrinted = true
-        }
 
         // Apply mel filterbank to magnitude spectrum
         for m in 0..<N_MELS {
@@ -1458,7 +1551,6 @@ func computeFFT(_ frame: [Float], setup: FFTSetup, log2n: vDSP_Length) -> [Float
 /// Shape: (201 bins, 80 mels) stored as row-major float32
 func loadMelFilterbank(path: String) -> [[Float]]? {
     guard let data = FileManager.default.contents(atPath: path) else {
-        print("Failed to load mel filterbank from \(path)")
         return nil
     }
 
@@ -1467,7 +1559,6 @@ func loadMelFilterbank(path: String) -> [[Float]]? {
     let expectedSize = numBins * numMels * MemoryLayout<Float>.size
 
     guard data.count == expectedSize else {
-        print("Filterbank file size mismatch: expected \(expectedSize), got \(data.count)")
         return nil
     }
 
@@ -1602,9 +1693,6 @@ func runInference(model: MLModel, features: [[Float]]) throws -> [[Float]] {
     // Create input array
     let inputArray = try MLMultiArray(shape: [1, NSNumber(value: frames), NSNumber(value: featureDim)], dataType: .float32)
 
-    // Debug: print MLMultiArray strides
-    print("   MLMultiArray shape: \(inputArray.shape), strides: \(inputArray.strides)")
-
     // Copy features using proper indexing for 3D array [batch, time, feature]
     for i in 0..<frames {
         for j in 0..<featureDim {
@@ -1616,9 +1704,6 @@ func runInference(model: MLModel, features: [[Float]]) throws -> [[Float]] {
             inputArray[index] = NSNumber(value: features[i][j])
         }
     }
-
-    // Debug: print first few input values
-    print("   Input[0,0,0:5]: \(inputArray[0]), \(inputArray[1]), \(inputArray[2]), \(inputArray[3]), \(inputArray[4])")
 
     // Run inference
     let input = try MLDictionaryFeatureProvider(dictionary: ["audio_features": inputArray])
@@ -1632,7 +1717,6 @@ func runInference(model: MLModel, features: [[Float]]) throws -> [[Float]] {
     // Convert to [[Float]]
     let shape = logitsArray.shape.map { $0.intValue }
     let strides = logitsArray.strides.map { $0.intValue }
-    print("   Output shape: \(shape), strides: \(strides)")
 
     let time = shape[1]
     let vocab = shape[2]
