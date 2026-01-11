@@ -6,9 +6,15 @@ import AVFoundation
 import KissFFT
 import SentencepieceTokenizer
 
+// MARK: - Project Configuration
+
+/// YouPu project root - all resources are relative to this path
+let YOUPU_ROOT = "../../../YouPu"
+
 // MARK: - Configuration (matches Python exactly)
 
 let SAMPLE_RATE: Int = 16000
+let XVECTOR_SAMPLES: Int = 48000  // 3 seconds for speaker embedding
 let N_MELS: Int = 80
 let N_FFT: Int = 400      // 25ms at 16kHz
 let HOP_LENGTH: Int = 160 // 10ms at 16kHz
@@ -18,6 +24,372 @@ let FIXED_FRAMES: Int = 500
 
 // Note: Python uses torchaudio.transforms.MelSpectrogram with power=1.0 (magnitude, not power)
 // and NO CMVN normalization. Just: mel -> log -> LFR -> model
+
+// MARK: - Speaker Identification
+
+/// Two-layer speaker profile with core and boundary embeddings
+/// Core: Frequent voice patterns (within 1σ of centroid)
+/// Boundary: Edge case voice patterns (1σ to 2σ from centroid)
+class SpeakerProfile {
+    static let MAX_CORE = 5
+    static let MAX_BOUNDARY = 10
+    static let MIN_DIVERSITY: Float = 0.1
+
+    let name: String
+    var core: [[Float]] = []
+    var boundary: [[Float]] = []
+    var centroid: [Float]?
+    var stdDev: Float = 0.2
+    var allDistances: [Float] = []
+
+    init(name: String, initialEmbedding: [Float]? = nil) {
+        self.name = name
+        if let emb = initialEmbedding {
+            self.core.append(emb)
+            self.centroid = emb
+        }
+    }
+
+    private func updateCentroid() {
+        guard !core.isEmpty else { return }
+        let dim = core[0].count
+        var sum = [Float](repeating: 0, count: dim)
+        for emb in core {
+            for i in 0..<dim {
+                sum[i] += emb[i]
+            }
+        }
+        centroid = sum.map { $0 / Float(core.count) }
+    }
+
+    private func updateStdDev() {
+        guard allDistances.count >= 3 else { return }
+        let mean = allDistances.reduce(0, +) / Float(allDistances.count)
+        let variance = allDistances.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Float(allDistances.count)
+        stdDev = max(sqrt(variance), 0.05)
+    }
+
+    private func isDiverseFrom(_ embedding: [Float], existing: [[Float]], minDist: Float) -> Bool {
+        guard !existing.isEmpty else { return true }
+        for e in existing {
+            if cosineDistance(embedding, e) < minDist {
+                return false
+            }
+        }
+        return true
+    }
+
+    /// Add embedding to appropriate layer based on distance from centroid
+    /// Returns: "core", "boundary", or "rejected"
+    func addEmbedding(_ embedding: [Float], forceBoundary: Bool = false) -> String {
+        guard let cent = centroid else {
+            core.append(embedding)
+            centroid = embedding
+            return "core"
+        }
+
+        let dist = cosineDistance(embedding, cent)
+        allDistances.append(dist)
+        updateStdDev()
+
+        if forceBoundary {
+            if boundary.count < SpeakerProfile.MAX_BOUNDARY {
+                if isDiverseFrom(embedding, existing: boundary, minDist: SpeakerProfile.MIN_DIVERSITY) {
+                    boundary.append(embedding)
+                    return "boundary"
+                }
+            }
+            return "rejected"
+        }
+
+        if dist < 1.0 * stdDev {
+            // Within 1σ → Core candidate
+            if core.count < SpeakerProfile.MAX_CORE {
+                if isDiverseFrom(embedding, existing: core, minDist: SpeakerProfile.MIN_DIVERSITY) {
+                    core.append(embedding)
+                    updateCentroid()
+                    return "core"
+                }
+            }
+            return "rejected"
+        } else if dist < 2.0 * stdDev {
+            // Between 1σ and 2σ → Boundary candidate
+            if boundary.count < SpeakerProfile.MAX_BOUNDARY {
+                if isDiverseFrom(embedding, existing: boundary, minDist: SpeakerProfile.MIN_DIVERSITY) {
+                    boundary.append(embedding)
+                    return "boundary"
+                }
+            }
+            return "rejected"
+        } else {
+            // Beyond 2σ → Too far
+            return "rejected"
+        }
+    }
+
+    func maxSimilarityToCore(_ embedding: [Float]) -> Float {
+        guard !core.isEmpty else { return 0 }
+        return core.map { cosineSimilarity(embedding, $0) }.max() ?? 0
+    }
+
+    func maxSimilarityToBoundary(_ embedding: [Float]) -> Float {
+        let allEmbs = core + boundary
+        guard !allEmbs.isEmpty else { return 0 }
+        return allEmbs.map { cosineSimilarity(embedding, $0) }.max() ?? 0
+    }
+
+    func toDict() -> [String: Any] {
+        return [
+            "core": core,
+            "boundary": boundary,
+            "centroid": centroid as Any,
+            "std_dev": stdDev,
+            "all_distances": Array(allDistances.suffix(100))
+        ]
+    }
+
+    static func fromDict(name: String, data: [String: Any]) -> SpeakerProfile {
+        let profile = SpeakerProfile(name: name)
+        if let coreData = data["core"] as? [[Double]] {
+            profile.core = coreData.map { $0.map { Float($0) } }
+        } else if let coreData = data["core"] as? [[Float]] {
+            profile.core = coreData
+        }
+        if let boundaryData = data["boundary"] as? [[Double]] {
+            profile.boundary = boundaryData.map { $0.map { Float($0) } }
+        } else if let boundaryData = data["boundary"] as? [[Float]] {
+            profile.boundary = boundaryData
+        }
+        if let centroidData = data["centroid"] as? [Double] {
+            profile.centroid = centroidData.map { Float($0) }
+        } else if let centroidData = data["centroid"] as? [Float] {
+            profile.centroid = centroidData
+        }
+        if let sd = data["std_dev"] as? Double {
+            profile.stdDev = Float(sd)
+        }
+        if let dists = data["all_distances"] as? [Double] {
+            profile.allDistances = dists.map { Float($0) }
+        }
+        return profile
+    }
+}
+
+/// Persistent voice library with two-layer speaker profiles
+class VoiceLibrary {
+    static let BOUNDARY_THRESHOLD: Float = 0.35
+    static let CORE_THRESHOLD: Float = 0.45
+    static let AUTO_LEARN_THRESHOLD: Float = 0.55
+    static let CONFLICT_MARGIN: Float = 0.1
+
+    let path: String
+    var speakers: [String: SpeakerProfile] = [:]
+
+    init(path: String) {
+        self.path = path
+        load()
+    }
+
+    func load() {
+        guard FileManager.default.fileExists(atPath: path),
+              let data = FileManager.default.contents(atPath: path),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            print("  No voice library found at \(path)")
+            return
+        }
+
+        for (name, value) in json {
+            if let dict = value as? [String: Any], dict["core"] != nil {
+                speakers[name] = SpeakerProfile.fromDict(name: name, data: dict)
+            }
+        }
+        print("  Loaded \(speakers.count) speakers: \(Array(speakers.keys))")
+    }
+
+    func save() {
+        var data: [String: Any] = [:]
+        for (name, profile) in speakers {
+            data[name] = profile.toDict()
+        }
+        if let jsonData = try? JSONSerialization.data(withJSONObject: data, options: .prettyPrinted) {
+            try? jsonData.write(to: URL(fileURLWithPath: path))
+        }
+    }
+
+    /// Two-phase matching: boundary first, then core if conflict
+    /// Returns: (name, score, confidence) where confidence is "high", "medium", "low", or "conflict"
+    func match(_ embedding: [Float], threshold: Float? = nil) -> (String?, Float, String) {
+        guard !speakers.isEmpty else { return (nil, 0, "low") }
+
+        let thresh = threshold ?? VoiceLibrary.BOUNDARY_THRESHOLD
+
+        // Debug: print all similarity scores
+        print("  Matching against \(speakers.count) speakers:")
+        var allScores: [(String, Float)] = []
+        for (name, profile) in speakers {
+            let score = profile.maxSimilarityToBoundary(embedding)
+            allScores.append((name, score))
+        }
+        allScores.sort { $0.1 > $1.1 }
+        for (name, score) in allScores.prefix(3) {
+            print("    \(name): \(String(format: "%.3f", score))")
+        }
+
+        // Phase 1: Check all boundary layers
+        var boundaryMatches: [(String, Float, SpeakerProfile)] = []
+        for (name, profile) in speakers {
+            let score = profile.maxSimilarityToBoundary(embedding)
+            if score >= thresh {
+                boundaryMatches.append((name, score, profile))
+            }
+        }
+
+        if boundaryMatches.isEmpty {
+            return (nil, 0, "low")
+        }
+
+        if boundaryMatches.count == 1 {
+            let (name, score, _) = boundaryMatches[0]
+            let confidence = score >= VoiceLibrary.AUTO_LEARN_THRESHOLD ? "high" : "medium"
+            return (name, score, confidence)
+        }
+
+        // Phase 2: Conflict - use core scores to distinguish
+        var coreScores: [(String, Float, SpeakerProfile)] = []
+        for (name, _, profile) in boundaryMatches {
+            let coreScore = profile.maxSimilarityToCore(embedding)
+            coreScores.append((name, coreScore, profile))
+        }
+
+        coreScores.sort { $0.1 > $1.1 }
+        let (bestName, bestScore, _) = coreScores[0]
+        let (secondName, secondScore, _) = coreScores[1]
+
+        if bestScore - secondScore >= VoiceLibrary.CONFLICT_MARGIN {
+            let confidence = bestScore >= VoiceLibrary.AUTO_LEARN_THRESHOLD ? "high" : "medium"
+            return (bestName, bestScore, confidence)
+        } else {
+            return ("[\(bestName)/\(secondName)?]", bestScore, "conflict")
+        }
+    }
+
+    func addEmbedding(_ name: String, _ embedding: [Float], forceBoundary: Bool = false) -> String {
+        if speakers[name] == nil {
+            speakers[name] = SpeakerProfile(name: name, initialEmbedding: embedding)
+            save()
+            return "core"
+        }
+
+        let result = speakers[name]!.addEmbedding(embedding, forceBoundary: forceBoundary)
+        if result != "rejected" {
+            save()
+        }
+        return result
+    }
+
+    func autoLearn(_ name: String, _ embedding: [Float], score: Float) -> Bool {
+        if score >= VoiceLibrary.AUTO_LEARN_THRESHOLD, speakers[name] != nil {
+            let result = speakers[name]!.addEmbedding(embedding)
+            if result != "rejected" {
+                save()
+                return true
+            }
+        }
+        return false
+    }
+}
+
+// MARK: - Vector Operations
+
+func cosineSimilarity(_ a: [Float], _ b: [Float]) -> Float {
+    guard a.count == b.count, !a.isEmpty else { return 0 }
+    var dotProduct: Float = 0
+    var normA: Float = 0
+    var normB: Float = 0
+    for i in 0..<a.count {
+        dotProduct += a[i] * b[i]
+        normA += a[i] * a[i]
+        normB += b[i] * b[i]
+    }
+    let denom = sqrt(normA) * sqrt(normB)
+    return denom > 0 ? dotProduct / denom : 0
+}
+
+func cosineDistance(_ a: [Float], _ b: [Float]) -> Float {
+    return 1.0 - cosineSimilarity(a, b)
+}
+
+// MARK: - Speaker Embedding Extraction
+
+func extractSpeakerEmbedding(audio: [Float], model: MLModel) -> [Float]? {
+    // Prepare audio: pad or trim to XVECTOR_SAMPLES (48000 = 3 seconds)
+    var processedAudio: [Float]
+    if audio.count >= XVECTOR_SAMPLES {
+        // Take middle portion for better quality
+        let start = (audio.count - XVECTOR_SAMPLES) / 2
+        processedAudio = Array(audio[start..<(start + XVECTOR_SAMPLES)])
+    } else {
+        // Pad with zeros
+        processedAudio = audio + [Float](repeating: 0, count: XVECTOR_SAMPLES - audio.count)
+    }
+
+    // Debug: print audio stats
+    print("  Speaker audio: first5=\(processedAudio.prefix(5).map { String(format: "%.6f", $0) })")
+
+    do {
+        // Create input array [1, 48000] - xvector uses FLOAT16 input
+        let inputArray = try MLMultiArray(shape: [1, NSNumber(value: XVECTOR_SAMPLES)], dataType: .float16)
+
+        // Convert Float32 audio to Float16 for xvector input using data pointer
+        let inputPointer = inputArray.dataPointer.bindMemory(to: Float16.self, capacity: XVECTOR_SAMPLES)
+        for i in 0..<XVECTOR_SAMPLES {
+            inputPointer[i] = Float16(processedAudio[i])
+        }
+
+        // Run inference
+        let input = try MLDictionaryFeatureProvider(dictionary: ["audio": inputArray])
+        let output = try model.prediction(from: input)
+
+        // Extract embedding [1, 1, 512] - xvector produces 512-dim embeddings
+        guard let embeddingArray = output.featureValue(for: "embedding")?.multiArrayValue else {
+            print("No embedding output")
+            return nil
+        }
+
+        // Debug: print embedding array shape
+        print("  Embedding shape: \(embeddingArray.shape)")
+
+        // Convert to [Float] - xvector output is FLOAT16, shape [1, 1, 512]
+        let embeddingDim = 512
+        var embedding = [Float](repeating: 0, count: embeddingDim)
+        let pointer = embeddingArray.dataPointer.bindMemory(to: Float16.self, capacity: embeddingArray.count)
+        for i in 0..<embeddingDim {
+            embedding[i] = Float(pointer[i])
+        }
+
+        return embedding
+    } catch {
+        print("Speaker embedding error: \(error)")
+        return nil
+    }
+}
+
+func findSpeakerModel() -> URL? {
+    let path = "\(YOUPU_ROOT)/Sources/YouPu/Models/xvector.mlmodelc"
+    let url = URL(fileURLWithPath: path)
+    if FileManager.default.fileExists(atPath: url.path) {
+        return url
+    }
+    return nil
+}
+
+func findVoiceLibrary() -> String? {
+    let path = "\(YOUPU_ROOT)/Resources/voice_library_xvector.json"
+    if FileManager.default.fileExists(atPath: path) {
+        return path
+    }
+    return nil
+}
 
 // MARK: - Test with Python Features
 
@@ -122,6 +494,10 @@ struct TranscriptionResult {
     var tokens: [Int]
     var textTokens: [Int]
     var transcription: String?
+    var speakerName: String?
+    var speakerScore: Float
+    var speakerConfidence: String
+    var embedding: [Float]?
     var timeMs: Double
 }
 
@@ -148,7 +524,7 @@ func decodeSpecialTokens(_ tokens: [Int]) -> (info: [String: String], textTokens
 
 // MARK: - Transcribe Single Audio
 
-func transcribeAudio(path: String, model: MLModel, filterbankPath: String?, tokenizer: SentencepieceTokenizer?) -> TranscriptionResult? {
+func transcribeAudio(path: String, model: MLModel, filterbankPath: String?, tokenizer: SentencepieceTokenizer?, speakerModel: MLModel?, voiceLibrary: VoiceLibrary?) -> TranscriptionResult? {
     let fileName = (path as NSString).lastPathComponent
     print("\n" + String(repeating: "=", count: 60))
     print("Transcribing: \(fileName)")
@@ -180,8 +556,6 @@ func transcribeAudio(path: String, model: MLModel, filterbankPath: String?, toke
         // CTC decode
         let tokens = ctcGreedyDecode(logits)
 
-        let totalTime = (CFAbsoluteTimeGetCurrent() - startTotal) * 1000
-
         // Decode special tokens
         let (info, textTokens) = decodeSpecialTokens(tokens)
 
@@ -194,16 +568,61 @@ func transcribeAudio(path: String, model: MLModel, filterbankPath: String?, toke
             transcription = try? tokenizer.decode(adjustedTokens)
         }
 
+        // Speaker identification
+        var speakerName: String? = nil
+        var speakerScore: Float = 0
+        var speakerConfidence = "low"
+        var embedding: [Float]? = nil
+
+        if let spkModel = speakerModel, let library = voiceLibrary {
+            // Extract speaker embedding
+            embedding = extractSpeakerEmbedding(audio: audio, model: spkModel)
+
+            if let emb = embedding {
+                let embNorm = sqrt(emb.map { $0 * $0 }.reduce(0, +))
+                print("  Speaker embedding: norm=\(String(format: "%.2f", embNorm)), first5=\(emb.prefix(5).map { String(format: "%.2f", $0) })")
+                // Match against voice library
+                let (name, score, confidence) = library.match(emb)
+                speakerName = name
+                speakerScore = score
+                speakerConfidence = confidence
+
+                // Auto-learn from medium-confidence matches (expands boundary)
+                if let matchedName = name, confidence == "medium", !matchedName.hasPrefix("[") {
+                    let learned = library.autoLearn(matchedName, emb, score: score)
+                    if learned {
+                        print("  📚 Auto-learned embedding for \(matchedName)")
+                    }
+                }
+            }
+        }
+
+        let totalTime = (CFAbsoluteTimeGetCurrent() - startTotal) * 1000
+
+        // Format speaker label
+        let speakerLabel: String
+        if let name = speakerName {
+            if speakerConfidence == "high" {
+                speakerLabel = name
+            } else if speakerConfidence == "conflict" {
+                speakerLabel = name  // Already formatted as [A/B?]
+            } else {
+                speakerLabel = "\(name)?"
+            }
+        } else {
+            speakerLabel = "???"
+        }
+
         print("\nResults:")
+        print("  Speaker: \(speakerLabel) (score: \(String(format: "%.2f", speakerScore)), \(speakerConfidence))")
         print("  Language: \(info["language"] ?? "unknown")")
-        print("  Task: \(info["task"] ?? "unknown")")
         print("  Emotion: \(info["emotion"] ?? "unknown")")
         print("  Event: \(info["event"] ?? "unknown")")
         print("  Token count: \(tokens.count) (text tokens: \(textTokens.count))")
         print("  Processing time: \(String(format: "%.0f", totalTime))ms")
 
         if let text = transcription {
-            print("\n  Transcription: \(text)")
+            print("\n  [\(speakerLabel)] \(text)")
         } else {
             print("\n  Token IDs: \(textTokens.prefix(30))...")
         }
@@ -216,6 +635,10 @@ func transcribeAudio(path: String, model: MLModel, filterbankPath: String?, toke
             tokens: tokens,
             textTokens: textTokens,
             transcription: transcription,
+            speakerName: speakerName,
+            speakerScore: speakerScore,
+            speakerConfidence: speakerConfidence,
+            embedding: embedding,
             timeMs: totalTime
         )
     } catch {
@@ -229,10 +652,10 @@ func transcribeAudio(path: String, model: MLModel, filterbankPath: String?, toke
 func main() async {
     print("=== Swift Voice Pipeline Transcription ===\n")
 
-    // Audio files to transcribe (from main branch)
+    // Audio files to transcribe (in YouPu project folder)
     let audioFiles = [
-        "/Users/zhengyishen/Codes/claude-code/voice/recordings/sample.wav",
-        "/Users/zhengyishen/Codes/claude-code/voice/recordings/test_recording.wav",
+        "\(YOUPU_ROOT)/Resources/recordings/sample.wav",
+        "\(YOUPU_ROOT)/Resources/recordings/test_recording.wav",
     ]
 
     // Load model
@@ -271,12 +694,37 @@ func main() async {
         print("Will output token IDs instead of text")
     }
 
+    // Load speaker model
+    var speakerModel: MLModel? = nil
+    if let speakerModelURL = findSpeakerModel() {
+        print("Loading speaker model: \(speakerModelURL.lastPathComponent)")
+        let speakerConfig = MLModelConfiguration()
+        speakerConfig.computeUnits = .all
+        speakerModel = try? MLModel(contentsOf: speakerModelURL, configuration: speakerConfig)
+        if speakerModel != nil {
+            print("Speaker model loaded successfully")
+        } else {
+            print("Warning: Failed to load speaker model")
+        }
+    } else {
+        print("Warning: Speaker model not found")
+    }
+
+    // Load voice library
+    var voiceLibrary: VoiceLibrary? = nil
+    if let libraryPath = findVoiceLibrary() {
+        print("Loading voice library: \(libraryPath)")
+        voiceLibrary = VoiceLibrary(path: libraryPath)
+    } else {
+        print("Warning: Voice library not found")
+    }
+
     // Transcribe each file
     var results: [TranscriptionResult] = []
 
     for audioPath in audioFiles {
         if FileManager.default.fileExists(atPath: audioPath) {
-            if let result = transcribeAudio(path: audioPath, model: model, filterbankPath: filterbankPath, tokenizer: tokenizer) {
+            if let result = transcribeAudio(path: audioPath, model: model, filterbankPath: filterbankPath, tokenizer: tokenizer, speakerModel: speakerModel, voiceLibrary: voiceLibrary) {
                 results.append(result)
             }
         } else {
@@ -291,12 +739,28 @@ func main() async {
 
     for (i, r) in results.enumerated() {
         let fileName = (audioFiles[i] as NSString).lastPathComponent
+
+        // Format speaker label
+        let speakerLabel: String
+        if let name = r.speakerName {
+            if r.speakerConfidence == "high" {
+                speakerLabel = name
+            } else if r.speakerConfidence == "conflict" {
+                speakerLabel = name
+            } else {
+                speakerLabel = "\(name)?"
+            }
+        } else {
+            speakerLabel = "???"
+        }
+
         print("\n\(fileName):")
+        print("  Speaker: \(speakerLabel) (\(String(format: "%.2f", r.speakerScore)))")
         print("  Language: \(r.language ?? "unknown"), Emotion: \(r.emotion ?? "unknown")")
         print("  Tokens: \(r.tokens.count)")
         print("  Time: \(String(format: "%.0f", r.timeMs))ms")
         if let text = r.transcription {
-            print("  Text: \(text)")
+            print("  [\(speakerLabel)] \(text)")
         }
     }
 }
@@ -786,35 +1250,23 @@ func ctcGreedyDecode(_ logits: [[Float]]) -> [Int] {
 
 func findTestAudio() -> String? {
     let candidates = [
-        "test_recording.wav",
-        "../test_recording.wav",
-        "recordings/baseline.wav",
-        "../recordings/baseline.wav"
+        "\(YOUPU_ROOT)/Resources/recordings/test_recording.wav",
+        "\(YOUPU_ROOT)/Resources/recordings/baseline.wav"
     ]
 
-    let cwd = FileManager.default.currentDirectoryPath
-
     for candidate in candidates {
-        let path = (cwd as NSString).appendingPathComponent(candidate)
-        if FileManager.default.fileExists(atPath: path) {
-            return path
+        if FileManager.default.fileExists(atPath: candidate) {
+            return candidate
         }
-    }
-
-    // Try absolute path
-    let absolutePath = "/Users/zhengyishen/Codes/claude-code-voice-isolation/voice/test_recording.wav"
-    if FileManager.default.fileExists(atPath: absolutePath) {
-        return absolutePath
     }
 
     return nil
 }
 
 func findFilterbank() -> String? {
-    // Try relative paths from where the script is run
     let candidates = [
-        "mel_filterbank.bin",           // If run from project root
-        "../mel_filterbank.bin"         // If run from Sources/ directory
+        "\(YOUPU_ROOT)/Resources/mel_filterbank.bin",
+        "mel_filterbank.bin"  // Fallback: local project
     ]
 
     for candidate in candidates {
@@ -827,39 +1279,19 @@ func findFilterbank() -> String? {
 }
 
 func findModel(named name: String, ext: String) -> URL? {
-    let candidates = [
-        // YouPu app models
-        "../YouPu/Sources/YouPu/Models/\(name).\(ext)",
-        // Main project models
-        "/Users/zhengyishen/Codes/claude-code/voice/transcription/models/\(name).\(ext)",
-        "/Users/zhengyishen/Codes/claude-code-voice-isolation/voice/YouPu/Sources/YouPu/Models/\(name).\(ext)"
-    ]
-
-    for candidate in candidates {
-        let url = URL(fileURLWithPath: candidate)
-        if FileManager.default.fileExists(atPath: url.path) {
-            return url
-        }
+    let path = "\(YOUPU_ROOT)/Sources/YouPu/Models/\(name).\(ext)"
+    let url = URL(fileURLWithPath: path)
+    if FileManager.default.fileExists(atPath: url.path) {
+        return url
     }
-
     return nil
 }
 
 func findTokenizerModel() -> String? {
-    let candidates = [
-        // YouPu app models
-        "../YouPu/Sources/YouPu/Models/chn_jpn_yue_eng_ko_spectok.bpe.model",
-        // Main project models
-        "/Users/zhengyishen/Codes/claude-code/voice/YouPu/Sources/YouPu/Models/chn_jpn_yue_eng_ko_spectok.bpe.model",
-        "/Users/zhengyishen/Codes/claude-code/voice/transcription/pytorch/chn_jpn_yue_eng_ko_spectok.bpe.model"
-    ]
-
-    for candidate in candidates {
-        if FileManager.default.fileExists(atPath: candidate) {
-            return candidate
-        }
+    let path = "\(YOUPU_ROOT)/Sources/YouPu/Models/chn_jpn_yue_eng_ko_spectok.bpe.model"
+    if FileManager.default.fileExists(atPath: path) {
+        return path
     }
-
     return nil
 }
 
