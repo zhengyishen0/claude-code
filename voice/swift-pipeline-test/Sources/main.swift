@@ -8,13 +8,21 @@ import SentencepieceTokenizer
 
 // MARK: - Project Configuration
 
-/// YouPu project root - all resources are relative to this path
-let YOUPU_ROOT = "../../../YouPu"
+/// YouPu project root - absolute path for consistent access to models
+/// Note: Models are .gitignored, so always reference the main repo location
+let YOUPU_ROOT = "/Users/zhengyishen/Codes/claude-code/voice/YouPu"
 
 // MARK: - Configuration (matches Python exactly)
 
 let SAMPLE_RATE: Int = 16000
+let SAMPLE_RATE_DOUBLE: Double = 16000.0
 let XVECTOR_SAMPLES: Int = 48000  // 3 seconds for speaker embedding
+
+// VAD Configuration (matches Python live.py)
+let VAD_THRESHOLD: Float = 0.02        // RMS threshold for speech detection
+let MIN_SPEECH_DURATION: Double = 0.3  // Minimum speech duration in seconds
+let MIN_SILENCE_DURATION: Double = 0.5 // Silence duration to end speech segment
+let CHUNK_SIZE: Int = 512              // ~32ms at 16kHz
 let N_MELS: Int = 80
 let N_FFT: Int = 400      // 25ms at 16kHz
 let HOP_LENGTH: Int = 160 // 10ms at 16kHz
@@ -296,6 +304,395 @@ class VoiceLibrary {
             }
         }
         return false
+    }
+}
+
+// MARK: - Live Pipeline
+
+/// Live voice pipeline with VAD-driven streaming (matches Python live.py)
+class LivePipeline {
+    // Models
+    private var asrModel: MLModel?
+    private var speakerModel: MLModel?
+    private var tokenizer: SentencepieceTokenizer?
+    private var voiceLibrary: VoiceLibrary?
+
+    // Audio engine
+    private var audioEngine: AVAudioEngine?
+    private var audioConverter: AVAudioConverter?
+
+    // VAD state (matches Python VADProcessor)
+    private var speechBuffer: [Float] = []
+    private var isSpeaking = false
+    private var speechStartSample: Int = 0
+    private var totalSamples: Int = 0
+    private var silenceSamples: Int = 0
+
+    // Processing
+    private let processingQueue = DispatchQueue(label: "live.processing", qos: .userInitiated)
+    private var isRunning = false
+    private var segments: [[String: Any]] = []
+
+    // Configuration
+    private var useVoiceIsolation: Bool = false
+
+    init(voiceIsolation: Bool = false) {
+        self.useVoiceIsolation = voiceIsolation
+    }
+
+    func loadModels() {
+        print("\n📦 Loading models...")
+        let startTotal = CFAbsoluteTimeGetCurrent()
+
+        // Load ASR model
+        var t0 = CFAbsoluteTimeGetCurrent()
+        if let modelURL = findModel(named: "sensevoice-500-itn", ext: "mlmodelc") {
+            let config = MLModelConfiguration()
+            config.computeUnits = .all
+            asrModel = try? MLModel(contentsOf: modelURL, configuration: config)
+            print("  ASR: \(String(format: "%.2f", CFAbsoluteTimeGetCurrent() - t0))s")
+        }
+
+        // Load speaker model
+        t0 = CFAbsoluteTimeGetCurrent()
+        if let speakerURL = findSpeakerModel() {
+            let config = MLModelConfiguration()
+            config.computeUnits = .all
+            speakerModel = try? MLModel(contentsOf: speakerURL, configuration: config)
+            print("  Speaker (xvector, 512-dim): \(String(format: "%.2f", CFAbsoluteTimeGetCurrent() - t0))s")
+        }
+
+        // Load tokenizer
+        t0 = CFAbsoluteTimeGetCurrent()
+        if let tokenizerPath = findTokenizerModel() {
+            tokenizer = try? SentencepieceTokenizer(modelPath: tokenizerPath)
+            print("  Tokenizer: \(String(format: "%.2f", CFAbsoluteTimeGetCurrent() - t0))s")
+        }
+
+        // Load voice library
+        t0 = CFAbsoluteTimeGetCurrent()
+        if let libraryPath = findVoiceLibrary() {
+            voiceLibrary = VoiceLibrary(path: libraryPath)
+            print("  Voice Library: \(String(format: "%.2f", CFAbsoluteTimeGetCurrent() - t0))s")
+        }
+
+        print("  Total: \(String(format: "%.2f", CFAbsoluteTimeGetCurrent() - startTotal))s")
+    }
+
+    private func calculateRMS(_ samples: [Float]) -> Float {
+        guard !samples.isEmpty else { return 0 }
+        var rms: Float = 0
+        vDSP_rmsqv(samples, 1, &rms, vDSP_Length(samples.count))
+        return rms
+    }
+
+    private func processVADChunk(_ samples: [Float]) {
+        totalSamples += samples.count
+
+        let rms = calculateRMS(samples)
+
+        if rms > VAD_THRESHOLD {
+            // Speech detected
+            silenceSamples = 0
+            if !isSpeaking {
+                // Speech started
+                isSpeaking = true
+                speechStartSample = totalSamples - samples.count
+                speechBuffer = samples
+            } else {
+                // Speech continues
+                speechBuffer.append(contentsOf: samples)
+            }
+        } else {
+            // Silence detected
+            if isSpeaking {
+                silenceSamples += samples.count
+                speechBuffer.append(contentsOf: samples)
+
+                // Check if silence is long enough to end speech
+                let silenceDuration = Double(silenceSamples) / SAMPLE_RATE_DOUBLE
+                if silenceDuration >= MIN_SILENCE_DURATION {
+                    // Speech ended
+                    isSpeaking = false
+
+                    // Check minimum duration
+                    let speechDuration = Double(speechBuffer.count) / SAMPLE_RATE_DOUBLE
+                    if speechDuration >= MIN_SPEECH_DURATION {
+                        let segment = speechBuffer
+                        let startTime = Double(speechStartSample) / SAMPLE_RATE_DOUBLE
+                        let endTime = Double(speechStartSample + speechBuffer.count) / SAMPLE_RATE_DOUBLE
+
+                        // Process segment in background
+                        processingQueue.async { [weak self] in
+                            self?.processSegment(audio: segment, startTime: startTime, endTime: endTime)
+                        }
+                    }
+
+                    speechBuffer = []
+                    silenceSamples = 0
+                }
+            }
+        }
+    }
+
+    private func processSegment(audio: [Float], startTime: Double, endTime: Double) {
+        guard let asrModel = asrModel, let speakerModel = speakerModel else { return }
+
+        let startProcess = CFAbsoluteTimeGetCurrent()
+
+        // Run transcription
+        let transcription = transcribeAudioSegment(audio: audio, model: asrModel)
+
+        // Run speaker identification
+        var speakerName: String? = nil
+        var speakerScore: Float = 0
+        var speakerConfidence = "low"
+        var learned = false
+
+        if let embedding = extractSpeakerEmbedding(audio: audio, model: speakerModel),
+           let library = voiceLibrary {
+            let (name, score, confidence) = library.match(embedding)
+            speakerName = name
+            speakerScore = score
+            speakerConfidence = confidence
+
+            // Auto-learn from high-confidence matches
+            if let matchedName = name, confidence == "high", !matchedName.hasPrefix("[") {
+                learned = library.autoLearn(matchedName, embedding, score: score)
+            }
+        }
+
+        let processTime = (CFAbsoluteTimeGetCurrent() - startProcess) * 1000
+
+        // Skip empty transcriptions
+        guard let text = transcription, !text.isEmpty else { return }
+
+        // Format speaker label
+        let speakerLabel: String
+        if let name = speakerName {
+            if speakerConfidence == "high" {
+                speakerLabel = name
+            } else if speakerConfidence == "conflict" {
+                speakerLabel = name
+            } else {
+                speakerLabel = "\(name)?"
+            }
+        } else {
+            speakerLabel = "???"
+        }
+
+        // Live output
+        let learnIndicator = learned ? " 📚" : ""
+        print("[\(speakerLabel)] (\(String(format: "%.1f", startTime))s-\(String(format: "%.1f", endTime))s) \(text)  [\(Int(processTime))ms]\(learnIndicator)")
+
+        // Store segment
+        segments.append([
+            "start": startTime,
+            "end": endTime,
+            "text": text,
+            "speaker": speakerName ?? "???",
+            "score": speakerScore,
+            "confidence": speakerConfidence
+        ])
+    }
+
+    private func transcribeAudioSegment(audio: [Float], model: MLModel) -> String? {
+        // Compute mel spectrogram
+        let mel = computeMelSpectrogram(audio, filterbankPath: findFilterbank())
+
+        // Apply LFR
+        let lfr = applyLFR(mel)
+
+        // Pad to fixed frames
+        let padded = padToFixedFrames(lfr)
+
+        // Run inference
+        guard let logits = try? runInference(model: model, features: padded) else { return nil }
+
+        // CTC decode
+        let tokens = ctcGreedyDecode(logits)
+
+        // Decode special tokens
+        let (_, textTokens) = decodeSpecialTokens(tokens)
+
+        // Decode to text
+        if let tokenizer = tokenizer {
+            let adjustedTokens = textTokens.map { $0 + 1 }
+            return try? tokenizer.decode(adjustedTokens)
+        }
+
+        return nil
+    }
+
+    func startRecording() async throws {
+        guard !isRunning else { return }
+
+        // Reset state
+        speechBuffer = []
+        isSpeaking = false
+        speechStartSample = 0
+        totalSamples = 0
+        silenceSamples = 0
+        segments = []
+
+        // Setup audio engine
+        audioEngine = AVAudioEngine()
+        guard let engine = audioEngine else {
+            throw NSError(domain: "LivePipeline", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to create audio engine"])
+        }
+
+        let inputNode = engine.inputNode
+
+        // Enable voice isolation if requested
+        if useVoiceIsolation {
+            do {
+                try inputNode.setVoiceProcessingEnabled(true)
+                print("🎤 Voice Isolation enabled")
+            } catch {
+                print("⚠️  Could not enable Voice Isolation: \(error)")
+            }
+        }
+
+        // Get input format
+        let inputFormat = inputNode.outputFormat(forBus: 0)
+        print("📊 Input: \(inputFormat.sampleRate)Hz, \(inputFormat.channelCount) channels")
+
+        // Create target format (16kHz mono)
+        guard let targetFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: SAMPLE_RATE_DOUBLE,
+            channels: 1,
+            interleaved: false
+        ) else {
+            throw NSError(domain: "LivePipeline", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to create target format"])
+        }
+
+        // Create converter
+        guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
+            throw NSError(domain: "LivePipeline", code: 3, userInfo: [NSLocalizedDescriptionKey: "Failed to create converter"])
+        }
+        audioConverter = converter
+
+        // Install tap on input node
+        inputNode.installTap(onBus: 0, bufferSize: AVAudioFrameCount(CHUNK_SIZE * 4), format: inputFormat) { [weak self] buffer, _ in
+            self?.handleAudioBuffer(buffer, converter: converter, targetFormat: targetFormat)
+        }
+
+        // Start engine
+        engine.prepare()
+        try engine.start()
+
+        isRunning = true
+        print("\n🎤 Recording... (press Ctrl+C to stop)\n")
+        print(String(repeating: "-", count: 60))
+    }
+
+    private func handleAudioBuffer(_ buffer: AVAudioPCMBuffer, converter: AVAudioConverter, targetFormat: AVAudioFormat) {
+        // Calculate output frame count
+        let ratio = targetFormat.sampleRate / buffer.format.sampleRate
+        let outputFrameCount = AVAudioFrameCount(Double(buffer.frameLength) * ratio)
+
+        guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outputFrameCount) else {
+            return
+        }
+
+        var error: NSError?
+        let status = converter.convert(to: outputBuffer, error: &error) { inNumPackets, outStatus in
+            outStatus.pointee = .haveData
+            return buffer
+        }
+
+        guard status != .error, error == nil else { return }
+
+        // Get float samples
+        guard let channelData = outputBuffer.floatChannelData else { return }
+        let samples = Array(UnsafeBufferPointer(start: channelData[0], count: Int(outputBuffer.frameLength)))
+
+        // Process through VAD
+        processVADChunk(samples)
+    }
+
+    func stopRecording() {
+        guard isRunning, let engine = audioEngine else { return }
+
+        // Flush any remaining speech
+        if !speechBuffer.isEmpty && isSpeaking {
+            let startTime = Double(speechStartSample) / SAMPLE_RATE_DOUBLE
+            let endTime = Double(speechStartSample + speechBuffer.count) / SAMPLE_RATE_DOUBLE
+            processingQueue.sync {
+                processSegment(audio: speechBuffer, startTime: startTime, endTime: endTime)
+            }
+        }
+
+        engine.inputNode.removeTap(onBus: 0)
+        engine.stop()
+
+        isRunning = false
+        audioEngine = nil
+
+        print(String(repeating: "-", count: 60))
+        print("\n⏹️  Stopped.")
+
+        // Show summary
+        showSummary()
+    }
+
+    private func showSummary() {
+        guard !segments.isEmpty else {
+            print("\n⚠️  No segments detected")
+            return
+        }
+
+        print("\n" + String(repeating: "=", count: 60))
+        print("SUMMARY")
+        print(String(repeating: "=", count: 60))
+
+        let totalAudio = segments.reduce(0.0) { $0 + (($1["end"] as? Double ?? 0) - ($1["start"] as? Double ?? 0)) }
+        print("\nSegments: \(segments.count)")
+        print("Total audio: \(String(format: "%.1f", totalAudio))s")
+
+        // Show transcript
+        print("\n" + String(repeating: "-", count: 60))
+        print("TRANSCRIPT")
+        print(String(repeating: "-", count: 60) + "\n")
+
+        for s in segments {
+            let speaker = s["speaker"] as? String ?? "???"
+            let start = s["start"] as? Double ?? 0
+            let end = s["end"] as? Double ?? 0
+            let text = s["text"] as? String ?? ""
+            print("[\(speaker)] (\(String(format: "%.1f", start))s-\(String(format: "%.1f", end))s) \(text)")
+        }
+    }
+
+    func run() async {
+        print(String(repeating: "=", count: 60))
+        print("SWIFT LIVE VOICE PIPELINE (VAD Streaming)")
+        print(String(repeating: "=", count: 60))
+        print("\n📢 Live output appears as you speak!")
+        print("• Press Ctrl+C to stop\n")
+
+        loadModels()
+
+        do {
+            try await startRecording()
+
+            // Wait for interrupt signal
+            let sigintSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+            signal(SIGINT, SIG_IGN)
+
+            sigintSource.setEventHandler { [weak self] in
+                self?.stopRecording()
+                exit(0)
+            }
+            sigintSource.resume()
+
+            // Keep running
+            RunLoop.main.run()
+
+        } catch {
+            print("❌ Error: \(error)")
+        }
     }
 }
 
@@ -1295,5 +1692,35 @@ func findTokenizerModel() -> String? {
     return nil
 }
 
-// Run
-await main()
+// MARK: - Command Line Interface
+
+func printUsage() {
+    print("""
+    Swift Voice Pipeline
+
+    USAGE:
+      swift run                         # Process sample audio files
+      swift run -- --live               # Live microphone transcription
+      swift run -- --live --voice-isolation  # Live with noise reduction
+
+    OPTIONS:
+      --live              Enable live microphone mode
+      --voice-isolation   Enable Apple Voice Isolation (macOS 26)
+      --help              Show this help message
+    """)
+}
+
+// Parse command line arguments
+let args = CommandLine.arguments.dropFirst()
+
+if args.contains("--help") || args.contains("-h") {
+    printUsage()
+} else if args.contains("--live") {
+    // Live mode
+    let useVoiceIsolation = args.contains("--voice-isolation")
+    let pipeline = LivePipeline(voiceIsolation: useVoiceIsolation)
+    await pipeline.run()
+} else {
+    // Default: process sample files
+    await main()
+}
