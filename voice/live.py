@@ -18,10 +18,22 @@ After stop:
 
 # Suppress warnings before any imports
 import warnings
+import os
+
+# Suppress noisy library warnings
 warnings.filterwarnings('ignore', message='.*scikit-learn.*')
 warnings.filterwarnings('ignore', message='.*Torch version.*')
 warnings.filterwarnings('ignore', message='.*urllib3.*')
 warnings.filterwarnings('ignore', message='.*torchaudio.*')
+warnings.filterwarnings('ignore', message='.*custom_fwd.*')  # torch.cuda.amp deprecation
+warnings.filterwarnings('ignore', message='.*speechbrain.pretrained.*')  # speechbrain deprecation
+warnings.filterwarnings('ignore', category=FutureWarning)
+warnings.filterwarnings('ignore', category=UserWarning, module='speechbrain')
+warnings.filterwarnings('ignore', category=UserWarning, module='coremltools')
+
+# Suppress torch hub progress bars and messages
+os.environ['TORCH_HOME'] = os.path.expanduser('~/.cache/torch')
+os.environ['HF_HUB_DISABLE_PROGRESS_BARS'] = '1'
 
 import sys
 from pathlib import Path as _Path
@@ -449,11 +461,14 @@ class LivePipeline:
         t0 = time.time()
         self.vad_model, self.vad_utils = torch.hub.load(
             'snakers4/silero-vad', 'silero_vad',
-            force_reload=False, onnx=False
+            force_reload=False, onnx=False, verbose=False
         )
         print(f"  VAD: {time.time()-t0:.2f}s")
 
         t0 = time.time()
+        # Suppress speechbrain logging
+        import logging
+        logging.getLogger('speechbrain').setLevel(logging.ERROR)
         from speechbrain.inference.speaker import EncoderClassifier
         self.speaker_model = EncoderClassifier.from_hparams(
             source='speechbrain/spkrec-ecapa-voxceleb',

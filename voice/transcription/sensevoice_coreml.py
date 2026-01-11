@@ -8,11 +8,21 @@ Supports Chinese, English, Japanese, Korean, and Cantonese.
 
 # Suppress coremltools version warnings before import
 import warnings
+import sys
+import os
 warnings.filterwarnings('ignore', message='.*scikit-learn.*')
 warnings.filterwarnings('ignore', message='.*Torch version.*')
 
 import numpy as np
-import coremltools as ct
+
+# Suppress stderr during coremltools import (it prints version warnings directly)
+_stderr = sys.stderr
+sys.stderr = open(os.devnull, 'w')
+try:
+    import coremltools as ct
+finally:
+    sys.stderr.close()
+    sys.stderr = _stderr
 import sentencepiece as spm
 from pathlib import Path
 import time
