@@ -1,6 +1,8 @@
 #!/bin/bash
 # Search Claude sessions
-# Syntax: memory search "OR terms" [--require "required terms"] [--exclude "excluded terms"] [--recall "question"]
+# Two modes (auto-detected):
+#   - Simple: "word1 word2 word3" → OR-all, ranked by keyword hits
+#   - Strict: "a|b|c d|e" → (a OR b OR c) AND (d OR e), filtered
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -49,29 +51,30 @@ if [ -z "$QUERY" ]; then
   echo "" >&2
   echo "Usage: memory search \"<query>\" [--recall QUESTION]" >&2
   echo "" >&2
-  echo "Query Syntax:" >&2
-  echo "  | (pipe)  = OR within group" >&2
-  echo "  (space)  = AND between groups" >&2
+  echo "Two modes (auto-detected by presence of | pipes):" >&2
   echo "" >&2
-  echo "Format: \"a1|a2|a3 b1|b2|b3 c1|c2\"" >&2
-  echo "Means:  (a1 OR a2 OR a3) AND (b1 OR b2 OR b3) AND (c1 OR c2)" >&2
+  echo "SIMPLE MODE (recommended) - no pipes:" >&2
+  echo "  • Just list keywords separated by spaces" >&2
+  echo "  • All keywords OR'd together (broader search)" >&2
+  echo "  • Ranked by: keyword hits → match count → recency" >&2
+  echo "  • Sessions matching more keywords appear first" >&2
   echo "" >&2
-  echo "Examples:" >&2
-  echo "  # Chrome automation implementation" >&2
-  echo "  memory search \"chrome|browser|automation implement|build|create\"" >&2
-  echo "  → (chrome OR browser OR automation) AND (implement OR build OR create)" >&2
+  echo "  Examples:" >&2
+  echo "    memory search \"chrome automation workflow\"" >&2
+  echo "    memory search \"JWT OAuth authentication\"" >&2
+  echo "    memory search \"error debug fix\"" >&2
   echo "" >&2
-  echo "  # Authentication with JWT/OAuth" >&2
-  echo "  memory search \"JWT|OAuth|authentication implement\"" >&2
-  echo "  → (JWT OR OAuth OR authentication) AND implement" >&2
+  echo "STRICT MODE (advanced) - use pipes for AND/OR:" >&2
+  echo "  • Pipes (|) = OR within group" >&2
+  echo "  • Spaces = AND between groups" >&2
+  echo "  • Must match at least one term from EACH group" >&2
   echo "" >&2
-  echo "  # Error fixing (not discussion)" >&2
-  echo "  memory search \"error|bug fix|solve|patch\"" >&2
-  echo "  → (error OR bug) AND (fix OR solve OR patch)" >&2
+  echo "  Examples:" >&2
+  echo "    memory search \"chrome|browser automation|workflow\"" >&2
+  echo "    → (chrome OR browser) AND (automation OR workflow)" >&2
   echo "" >&2
-  echo "  # Simple single-word query (no pipes needed)" >&2
-  echo "  memory search \"chrome\"" >&2
-  echo "  → chrome" >&2
+  echo "Tip: Start with simple mode. Use strict mode only when you need" >&2
+  echo "     to ensure specific terms are present together." >&2
   exit 1
 fi
 
@@ -178,15 +181,45 @@ to_pattern() {
   echo "$1" | sed 's/_/./g'
 }
 
-# Search with pipe format: "a1|a2|a3 b1|b2" means (a1 OR a2 OR a3) AND (b1 OR b2)
-run_search() {
+# Detect mode: pipes present = strict mode, no pipes = simple mode
+if [[ "$QUERY" == *"|"* ]]; then
+  SEARCH_MODE="strict"
+else
+  SEARCH_MODE="simple"
+fi
+
+# SIMPLE MODE: OR-all keywords, ranking done by formatter
+run_search_simple() {
+  # Split query by spaces to get keywords
+  read -ra KEYWORDS <<< "$QUERY"
+
+  # Build OR pattern for all keywords
+  OR_PATTERNS=()
+  for keyword in "${KEYWORDS[@]}"; do
+    OR_PATTERNS+=("$(to_pattern "$keyword")")
+  done
+
+  # Combine all keywords with OR
+  if [ ${#OR_PATTERNS[@]} -eq 1 ]; then
+    PATTERN="${OR_PATTERNS[0]}"
+  else
+    PATTERN=$(IFS='|'; echo "${OR_PATTERNS[*]}")
+    PATTERN="($PATTERN)"
+  fi
+
+  # Single rg call with OR pattern
+  rg -i "$PATTERN" "$INDEX_FILE" 2>/dev/null || true
+}
+
+# STRICT MODE: AND/OR with pipes (backward compatible)
+# "a|b c|d" means (a OR b) AND (c OR d)
+run_search_strict() {
   # Split query by spaces to get AND groups
   read -ra AND_GROUPS <<< "$QUERY"
 
-  # Start with initial match-all pattern
+  # Start with cat, chain rg for each AND group
   CMD="cat '$INDEX_FILE'"
 
-  # Process each AND group
   for group in "${AND_GROUPS[@]}"; do
     # Split group by pipes to get OR terms
     IFS='|' read -ra OR_TERMS <<< "$group"
@@ -199,10 +232,8 @@ run_search() {
 
     # Combine OR terms into a pattern
     if [ ${#OR_PATTERNS[@]} -eq 1 ]; then
-      # Single term, no parentheses needed
       PATTERN="${OR_PATTERNS[0]}"
     else
-      # Multiple terms, use (term1|term2|term3) format
       PATTERN=$(IFS='|'; echo "${OR_PATTERNS[*]}")
       PATTERN="($PATTERN)"
     fi
@@ -214,8 +245,18 @@ run_search() {
   eval "$CMD" 2>/dev/null || true
 }
 
+# Run appropriate search based on mode
+run_search() {
+  if [ "$SEARCH_MODE" = "simple" ]; then
+    run_search_simple
+  else
+    run_search_strict
+  fi
+}
+
 # Execute search
 TIMING_SEARCH_START=$(date +%s.%N)
+echo "[MODE] $SEARCH_MODE" >&2
 RESULTS=$(run_search | sort -u || true)
 
 TIMING_SEARCH_END=$(date +%s.%N)
@@ -224,12 +265,18 @@ echo "[TIMING] Search + filter: $(echo "$TIMING_SEARCH_END - $TIMING_SEARCH_STAR
 if [ -z "$RESULTS" ]; then
   echo "No matches found."
   echo ""
-  echo "Query: $QUERY"
+  echo "Query: $QUERY (mode: $SEARCH_MODE)"
   echo ""
-  echo "Tips:"
-  echo "  • Add more OR synonyms: chrome|browser|firefox"
-  echo "  • Reduce AND groups if too restrictive"
-  echo "  • Use underscore for phrases: reset_windows"
+  if [ "$SEARCH_MODE" = "strict" ]; then
+    echo "Tips for strict mode:"
+    echo "  • Add more OR synonyms: chrome|browser|firefox"
+    echo "  • Reduce AND groups if too restrictive"
+    echo "  • Try simple mode (remove pipes) for broader search"
+  else
+    echo "Tips for simple mode:"
+    echo "  • Try different keywords or synonyms"
+    echo "  • Use underscore for phrases: reset_windows"
+  fi
   exit 0
 fi
 
@@ -238,13 +285,9 @@ shorten_path() {
   echo "$1" | sed "s|^$HOME|~|"
 }
 
-# Extract first term for formatting (from first AND group, first OR term)
-FIRST_GROUP="${QUERY%% *}"  # Get first space-separated group
-FIRST_TERM="${FIRST_GROUP%%|*}"  # Get first pipe-separated term
-
-# Normal search path: group by session, format output
+# Pass query and mode to formatter
 TIMING_FORMAT_START=$(date +%s.%N)
-OUTPUT=$(echo "$RESULTS" | python3 "$SCRIPT_DIR/format-results.py" "$SESSIONS" "$MESSAGES" "$CONTEXT" "$FIRST_TERM")
+OUTPUT=$(echo "$RESULTS" | python3 "$SCRIPT_DIR/format-results.py" "$SESSIONS" "$MESSAGES" "$CONTEXT" "$QUERY" "$SEARCH_MODE")
 TIMING_FORMAT_END=$(date +%s.%N)
 echo "[TIMING] Format output: $(echo "$TIMING_FORMAT_END - $TIMING_FORMAT_START" | bc)s" >&2
 echo "[TIMING] TOTAL: $(echo "$TIMING_FORMAT_END - $TIMING_START" | bc)s" >&2

@@ -6,67 +6,92 @@ Cross-session knowledge sharing for Claude Code - search and consult previous se
 
 ### search
 
-Search all sessions for matching content with boolean logic.
+Search all sessions for matching content.
 
-**Syntax:**
+**Two modes (auto-detected by presence of pipes):**
+
+#### Simple Mode (recommended)
+
+Just list keywords separated by spaces. All keywords are OR'd together, and results are ranked by how many keywords match.
+
 ```bash
-claude-tools memory search "OR terms" --require "required terms" [--exclude "excluded terms"] [--recall "question"]
+claude-tools memory search "keyword1 keyword2 keyword3"
 ```
 
-**Arguments:**
-- First arg (required): OR terms - broaden search with synonyms/alternatives
-- `--require` (required): ALL of these terms must be present (AND logic)
-- `--exclude` (optional): NONE of these terms can be present (NOT logic)
+**How it works:**
+- Matches ANY keyword (broad search)
+- Ranks by: keyword hits → match count → recency
+- Sessions matching more keywords appear first
+- Best for exploratory searches
 
-**Flags:**
-- `--sessions N` - Number of sessions to return (default: 5)
+**Examples:**
+```bash
+# Find sessions about chrome automation
+claude-tools memory search "chrome automation workflow"
+# → Sessions matching all 3 keywords rank highest
+# → Sessions matching 2 keywords rank next
+# → Sessions matching 1 keyword still shown (lower)
+
+# Find authentication discussions
+claude-tools memory search "JWT OAuth authentication tokens"
+
+# Find debugging sessions
+claude-tools memory search "error debug fix bug"
+```
+
+#### Strict Mode (advanced)
+
+Use pipes (`|`) for OR within groups and spaces for AND between groups. Requires matching at least one term from EACH group.
+
+```bash
+claude-tools memory search "group1term1|group1term2 group2term1|group2term2"
+```
+
+**How it works:**
+- Pipes = OR within group
+- Spaces = AND between groups
+- Must match at least one term from EACH group
+- Best when you need specific term combinations
+
+**Examples:**
+```bash
+# (chrome OR browser) AND (automation OR workflow)
+claude-tools memory search "chrome|browser automation|workflow"
+
+# (JWT OR OAuth) AND implementation
+claude-tools memory search "JWT|OAuth implementation"
+
+# (error OR bug) AND (fix OR solve OR patch)
+claude-tools memory search "error|bug fix|solve|patch"
+```
+
+#### Common Flags
+
+- `--sessions N` - Number of sessions to return (default: 10)
 - `--messages N` - Messages per session to show (default: 5)
 - `--context N` - Characters of context per snippet (default: 300)
 - `--recall "question"` - Ask matching sessions a question (parallel)
 
 **Phrase support:** Use underscore to join words: `reset_windows` matches "reset windows"
 
-**Boolean Logic:**
-- OR terms (first arg): Match ANY of these → `"chrome playwright"` finds sessions with chrome OR playwright
-- --require terms: Match ALL of these → `--require "click selector"` requires BOTH click AND selector
-- --exclude terms: Match NONE of these → `--exclude "test mock"` excludes sessions with test OR mock
-
-**Examples:**
-```bash
-# Basic search: find sessions about (chrome OR playwright) that mention click
-claude-tools memory search "chrome playwright" --require "click"
-
-# Require multiple terms: must have ALL of spec, hardware, AND ram
-claude-tools memory search "laptop asus" --require "spec hardware ram"
-
-# Exclude test sessions
-claude-tools memory search "chrome playwright" --require "click" --exclude "test mock"
-
-# Search + recall in one step
-claude-tools memory search "ollama devstral" --require "slow error" --recall "What problems with local LLMs?"
-
-# Limit to 3 sessions
-claude-tools memory search "auth" --require "jwt" --recall "How was JWT implemented?" --sessions 3
+**Output format (simple mode):**
 ```
-
-**Output format (search only):**
-```
-~/Codes/claude-code | 5a4020c4-ab2c-42b6-931e-0105c2060de8
-Matches: 12 | Latest: 2025-12-04T08:59:42.725Z
+~/Codes/claude-code | 5a4020c4-ab2c-42b6-931e-0105c2060de8 | 3/3 keywords, 47 matches | 2025-12-04T08:59:42.725Z
 [user] why did you propose the click and input command...
 [asst] I see the button is showing up. Let me try...
-... and 2 more
+... and 42 more matches
 
-Found 72 matches across 26 sessions
+Found matches in 10 sessions (searched 3 keywords)
 ```
 
-**Output format (with --recall):**
+**Output format (strict mode):**
 ```
-~/Codes/claude-code | 5a4020c4-ab2c-42b6-931e-0105c2060de8
-The ASUS laptop has 32GB RAM, Intel i7-12700H, RTX 3060...
+~/Codes/claude-code | 5a4020c4-ab2c-42b6-931e-0105c2060de8 | 47 matches | 2025-12-04T08:59:42.725Z
+[user] why did you propose the click and input command...
+[asst] I see the button is showing up. Let me try...
+... and 42 more matches
 
-~/Codes/other-project | abc123-def456-...
-I found that the user mentioned an ASUS ROG laptop...
+Found matches in 10 sessions (strict mode)
 ```
 
 ### recall
@@ -93,165 +118,48 @@ claude-tools memory recall --resume "abc-123:What about edge cases?"
 claude-tools memory recall "session1:question1" "session2:question2"
 ```
 
-**Behavior:**
-- By default, creates a fresh fork for each recall (predictable, consistent answers)
-- Use `--resume` to reuse an existing fork for follow-up questions
-- Fresh forks prevent context pollution and ensure independent answers
-
 ## Key Principles
 
-1. **Incremental Indexing** - Full index on first run (~12s), incremental updates after (~0.5s)
-2. **Clean Output** - Filters noise (tool results, IDE events, system messages)
-3. **Grouped Results** - Messages grouped by session, sorted by recency
-4. **Fresh Fork by Default** - Each recall creates a fresh fork for consistent, independent answers; use `--resume` for follow-up questions
-5. **Parallel Recall** - Multiple sessions can be consulted in parallel
-6. **Cross-Project Recall** - Sessions from any project can be recalled; resolves original project directory automatically
-7. **Search + Recall** - Use `--recall` to search and ask in one step
-8. **Clear Boolean Logic** - `--require` (ALL must match) and `--exclude` (NONE can match) flags make intent explicit
+1. **Simple by Default** - Just list keywords, no special syntax needed
+2. **Smart Ranking** - Sessions matching more keywords rank higher (soft AND)
+3. **Backward Compatible** - Use pipes for strict AND/OR when needed
+4. **Incremental Indexing** - Full index on first run (~12s), incremental updates after (~0.5s)
+5. **Clean Output** - Filters noise (tool results, IDE events, system messages)
+6. **Fresh Fork by Default** - Each recall creates a fresh fork; use `--resume` for follow-ups
+7. **Cross-Project Recall** - Sessions from any project can be recalled
 
-## Two-Quality Framework for Effective Memory Retrieval
+## When to Use Each Mode
 
-Successful memory recall requires both **query quality** (finding the right sessions) and **question quality** (getting relevant answers).
+| Use Case | Mode | Example |
+|----------|------|---------|
+| Exploratory search | Simple | `"chrome automation debug"` |
+| Find related topics | Simple | `"JWT OAuth tokens security"` |
+| Require specific terms together | Strict | `"chrome\|browser automation"` |
+| Complex boolean logic | Strict | `"error\|bug fix\|solve\|patch"` |
 
-### 1. Query Quality (Search)
-
-**Goal:** Find sessions that actually contain the information you need.
-
-**Strategy:**
-- **OR terms** (first argument): Broad synonyms and alternatives to maximize coverage
-  - Example: `"asus laptop machine device"` - cast a wide net
-- **REQUIRE terms** (`--require` flag): Specific terms that ALL must be present
-  - Example: `--require "spec hardware"` - session must have BOTH spec AND hardware
-- **EXCLUDE terms** (`--exclude` flag): Terms that should NOT appear
-  - Example: `--exclude "test mock"` - exclude if either test OR mock appears
-
-**Good query example:**
-```bash
-# Looking for laptop specs - requires BOTH spec AND hardware to appear
-claude-tools memory search "asus laptop machine" --require "spec hardware"
-```
-
-**Bad query example:**
-```bash
-# Too narrow OR terms, too many required terms
-claude-tools memory search "asus" --require "specification hardware ram cpu gpu"
-```
-
-### 2. Question Quality (Recall)
-
-**Goal:** Ask questions that lead to relevant, specific answers.
-
-**Key principles:**
-- **Be explicit about domain** - Don't assume context carries over
-- **Use specific terminology** - "hardware specs" not just "specs"
-- **State what you're looking for** - List specific items you want
-
-**Good question example:**
-```bash
-# Explicit, domain-specific, lists what we want
-claude-tools memory recall "abc-123:What hardware specifications did the user mention about their ASUS laptop - specifically model name, GPU type, RAM amount, CPU, and ability to run LLMs locally?"
-```
-
-**Bad question example:**
-```bash
-# Vague - "specs" could mean anything (tool specs, API specs, etc.)
-claude-tools memory recall "abc-123:What are the complete specs?"
-```
-
-**Why question quality matters:**
-- The forked session sees your question without the current conversation context
-- Vague terms like "specs" can be misinterpreted based on what the session discusses
-- Example: A session about browser automation tools might interpret "specs" as "tool specifications" rather than "hardware specifications"
-
-### 3. When to Use Each Approach
-
-**Search only** (no recall):
-- Exploratory: Want to see what sessions exist
-- Quick reference: Just need to confirm something was discussed
-- Multiple relevant sessions: Want to manually pick which one to consult
-
-**Search + selective recall** (two-step):
-- Need to review search results first
-- Want to ask different questions to different sessions
-- Iterative refinement: Adjust questions based on initial results
-
-**Search + parallel recall** (--recall flag):
-- Know exactly what you want to ask
-- Same question applicable to all matching sessions
-- Want fastest results (one command does everything)
-- Most common use case
-
-**Example decision tree:**
-```bash
-# "I know ASUS was mentioned somewhere, what sessions was that?"
-claude-tools memory search "asus laptop" --require "spec"
-
-# "I need the actual hardware specs - must have BOTH spec AND hardware mentioned"
-claude-tools memory search "asus laptop" --require "spec hardware" \
-  --recall "What hardware specs: model, GPU, RAM, CPU?"
-
-# "I found the right session, now I have follow-up questions"
-claude-tools memory recall "abc-123:What was the RAM?"
-claude-tools memory recall --resume "abc-123:And the GPU?"  # reuse fork
-```
+**Rule of thumb:** Start with simple mode. Use strict mode only when simple mode returns too many irrelevant results.
 
 ## Technical Details
 
 **Index:**
 - Location: `~/.claude/memory-index.tsv`
 - Format: `session_id\ttimestamp\ttype\ttext_preview\tproject_path`
-- Extracts user/assistant messages, filters noise
 - Incremental: only processes files newer than index
-
-**Fork state:**
-- Location: `~/.claude/memory-state/<session-id>.fork`
-- Stores fork session ID for follow-up questions
 
 **Search pipeline:**
 ```bash
-# Query: memory search "chrome playwright" --require "click selector" --exclude "test"
-# Parsed as: OR(chrome, playwright) REQUIRE(click AND selector) EXCLUDE(test)
-# Becomes:
-rg -i '(chrome|playwright)' index.tsv | rg -i 'click' | rg -i 'selector' | grep -iv 'test'
+# Simple mode: "chrome automation workflow"
+# → OR all keywords, rank by keyword hits
+rg -i '(chrome|automation|workflow)' index.tsv | python3 format-results.py
 
-# Phrase: "reset_windows" -> "reset.windows" (regex matches any separator)
+# Strict mode: "chrome|browser automation|workflow"
+# → Chain rg for each AND group
+cat index.tsv | rg -i '(chrome|browser)' | rg -i '(automation|workflow)'
 ```
-
-## Cross-Project Session Resolution
-
-When recalling a session from a different project, the tool:
-1. Searches all projects in `~/.claude/projects/` for the session ID
-2. Extracts the project path from the directory name (e.g., `-Users-foo-bar` -> `/Users/foo/bar`)
-3. Handles directory names with dashes by testing each segment against the filesystem
-4. Runs `claude --resume` from the original project directory so file references work correctly
 
 ## Requirements
 
 - **ripgrep** (rg) - Fast text search
 - **jq** - JSON processing
+- **pandas** - Python data processing
 - **Claude Code CLI** - For recall/fork functionality
-
-## Workflow
-
-**Search + recall in one step:**
-```bash
-claude-tools memory search "asus laptop" --require "spec" --recall "What are the specs?"
-```
-
-**Two-step workflow:**
-```bash
-# 1. Search with OR (broaden) and REQUIRE (narrow)
-claude-tools memory search "asus laptop machine" --require "spec"
-# Returns: ~/Codes/project | abc-123, ...
-
-# 2. Found a promising session? Ask it directly (creates fresh fork)
-claude-tools memory recall "abc-123:What ASUS laptop specs did the user mention?"
-
-# 3. Follow-up questions? Use --resume to reuse the same fork
-claude-tools memory recall --resume "abc-123:What was the RAM size?"
-```
-
-**Parallel recall for multiple sessions:**
-```bash
-claude-tools memory recall "abc:question1" "def:question2" "ghi:question3"
-```

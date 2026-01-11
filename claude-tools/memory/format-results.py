@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
-"""Fast formatting of memory search results using pandas."""
+"""Fast formatting of memory search results using pandas.
+
+Two modes:
+- simple: Rank by keyword hits → match count → recency
+- strict: Rank by match count → recency (hits not relevant since AND-filtered)
+"""
 
 import sys
+import re
 import pandas as pd
 from pathlib import Path
 
@@ -10,19 +16,46 @@ def shorten_path(path):
     home = str(Path.home())
     return path.replace(home, "~")
 
+def count_keyword_hits(text, keywords):
+    """Count how many unique keywords appear in the text."""
+    text_lower = text.lower()
+    hits = 0
+    for keyword in keywords:
+        # Convert underscore to regex pattern (same as shell script)
+        pattern = keyword.replace('_', '.')
+        if re.search(pattern, text_lower, re.IGNORECASE):
+            hits += 1
+    return hits
+
+def parse_keywords(query, mode):
+    """Extract keywords from query based on mode."""
+    if mode == 'strict':
+        # For strict mode, extract individual terms from pipe groups
+        # "chrome|browser automation|workflow" → [chrome, browser, automation, workflow]
+        terms = []
+        for group in query.split():
+            terms.extend(group.split('|'))
+        return [t.lower() for t in terms]
+    else:
+        # Simple mode: just split by spaces
+        return [k.lower() for k in query.split()]
+
 def main():
-    if len(sys.argv) < 5:
-        print("Usage: format-results.py <sessions> <messages> <context> <query>", file=sys.stderr)
+    if len(sys.argv) < 6:
+        print("Usage: format-results.py <sessions> <messages> <context> <query> <mode>", file=sys.stderr)
         sys.exit(1)
 
     sessions = int(sys.argv[1])
     messages = int(sys.argv[2])
     context = int(sys.argv[3])
-    query = sys.argv[4].lower()
+    query = sys.argv[4]
+    mode = sys.argv[5]  # 'simple' or 'strict'
+
+    # Parse keywords based on mode
+    keywords = parse_keywords(query, mode)
 
     # Read TSV from stdin manually (text field may contain tabs)
     # Columns: session_id, timestamp, type, text, project_path
-    # NOTE: These are already filtered by search terms, so all rows match the query
     rows = []
     for line in sys.stdin:
         parts = line.rstrip('\n').split('\t', 4)  # Max split 4 times
@@ -35,47 +68,86 @@ def main():
         print("No matches found.")
         return
 
-    # No need for session chain deduplication - the indexer now uses filename as session ID,
-    # so all compacted sessions in the same file are automatically grouped together
+    # Group by session and calculate stats
+    if mode == 'simple':
+        # Simple mode: count keyword hits for ranking
+        def session_stats(group):
+            all_text = ' '.join(group['text'].tolist())
+            unique_hits = count_keyword_hits(all_text, keywords)
+            return pd.Series({
+                'hits': unique_hits,
+                'matches': len(group),
+                'timestamp': group['timestamp'].max(),
+                'project_path': group['project_path'].iloc[0]
+            })
 
-    # Group by session and get stats
-    session_stats = df.groupby('session_id').agg({
-        'timestamp': 'max',  # Latest timestamp
-        'project_path': 'first',  # First project path
-        'session_id': 'count'  # Count of matches
-    }).rename(columns={'session_id': 'count'})
+        session_stats_df = df.groupby('session_id').apply(session_stats, include_groups=False)
 
-    # Filter: require minimum 5 matches to avoid trivial mentions
-    session_stats = session_stats[session_stats['count'] >= 5]
+        # Sort by: hits → matches → timestamp
+        session_stats_df = session_stats_df.sort_values(
+            ['hits', 'matches', 'timestamp'],
+            ascending=[False, False, False]
+        )
+    else:
+        # Strict mode: just count matches (AND-filtering already done)
+        def session_stats(group):
+            return pd.Series({
+                'hits': 0,  # Not used in strict mode
+                'matches': len(group),
+                'timestamp': group['timestamp'].max(),
+                'project_path': group['project_path'].iloc[0]
+            })
 
-    # Sort by relevance (match count) first, then by recency (timestamp)
-    # This prioritizes sessions with more matches as they're likely more relevant
-    session_stats = session_stats.sort_values(['count', 'timestamp'], ascending=[False, False])
+        session_stats_df = df.groupby('session_id').apply(session_stats, include_groups=False)
+
+        # Filter: require minimum 5 matches to avoid trivial mentions
+        session_stats_df = session_stats_df[session_stats_df['matches'] >= 5]
+
+        # Sort by: matches → timestamp
+        session_stats_df = session_stats_df.sort_values(
+            ['matches', 'timestamp'],
+            ascending=[False, False]
+        )
 
     # Limit to top N sessions
-    session_stats = session_stats.head(sessions)
+    session_stats_df = session_stats_df.head(sessions)
 
     # Print results
-    total_sessions = len(session_stats)
+    total_sessions = len(session_stats_df)
+    total_keywords = len(keywords)
 
-    for session_id in session_stats.index:
-        project = shorten_path(session_stats.loc[session_id, 'project_path'])
-        count = session_stats.loc[session_id, 'count']
-        timestamp = session_stats.loc[session_id, 'timestamp']
+    for session_id in session_stats_df.index:
+        stats = session_stats_df.loc[session_id]
+        project = shorten_path(stats['project_path'])
+        hits = int(stats['hits'])
+        matches = int(stats['matches'])
+        timestamp = stats['timestamp']
 
-        print(f"{project} | {session_id} | {count} matches | {timestamp}")
+        # Format header based on mode
+        if mode == 'simple':
+            print(f"{project} | {session_id} | {hits}/{total_keywords} keywords, {matches} matches | {timestamp}")
+        else:
+            print(f"{project} | {session_id} | {matches} matches | {timestamp}")
 
-        # Get messages for this session (these already match the search query)
+        # Get messages for this session
         session_msgs = df[df['session_id'] == session_id].head(messages)
 
         for _, row in session_msgs.iterrows():
             role = "[user]" if row['type'] == 'user' else "[asst]"
             text = row['text']
 
-            # Extract snippet around the query term if text is long
+            # Extract snippet around a matched keyword if text is long
             if len(text) > context:
                 text_lower = text.lower()
-                pos = text_lower.find(query)
+                # Find first matching keyword
+                pos = -1
+                for keyword in keywords:
+                    pattern = keyword.replace('_', '.')
+                    match = re.search(pattern, text_lower, re.IGNORECASE)
+                    if match:
+                        pos = match.start()
+                        break
+
                 if pos >= 0:
                     # Show context around the match (1/3 before, 2/3 after)
                     before = context // 3
@@ -93,12 +165,15 @@ def main():
 
             print(f"{role} {text}")
 
-        if count > messages:
-            print(f"... and {count - messages} more matches")
+        if matches > messages:
+            print(f"... and {matches - messages} more matches")
 
         print()
 
-    print(f"\nFound matches in {total_sessions} sessions")
+    if mode == 'simple':
+        print(f"\nFound matches in {total_sessions} sessions (searched {total_keywords} keywords)")
+    else:
+        print(f"\nFound matches in {total_sessions} sessions (strict mode)")
 
 if __name__ == '__main__':
     main()
