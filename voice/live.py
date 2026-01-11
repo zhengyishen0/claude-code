@@ -916,10 +916,20 @@ class LivePipeline:
             print(f"\n📚 Auto-learned {total_auto_learned} boundary embeddings")
 
         # Phase 2: Ask about outliers (sorted by distance, furthest first)
+        # Filter out outliers that would be rejected anyway (not diverse enough)
         all_outliers = []
+        skipped_not_diverse = 0
         for name, groups in by_speaker.items():
+            profile = self.library.speakers.get(name)
             for seg_idx, s, dist, sigma_dist in groups['outliers']:
+                # Check if this would be diverse enough to add
+                if profile and not profile._is_diverse_from(s['embedding'], profile.boundary, profile.MIN_DIVERSITY):
+                    skipped_not_diverse += 1
+                    continue  # Skip - would be rejected anyway
                 all_outliers.append((name, seg_idx, s, dist, sigma_dist))
+
+        if skipped_not_diverse:
+            print(f"\n⏭️  Skipped {skipped_not_diverse} outliers (too similar to existing boundary)")
 
         if not all_outliers:
             return
@@ -947,7 +957,8 @@ class LivePipeline:
                     self.segments[seg_idx]['learned'] = True
                     print(f"  ✅ Learned ({result})")
                 else:
-                    print(f"  ⏭️  Rejected (too similar to existing)")
+                    # This shouldn't happen now, but keep as safety net
+                    print(f"  ⏭️  Rejected (boundary full or other reason)")
             else:
                 print(f"  ⏭️  Skipped")
 
