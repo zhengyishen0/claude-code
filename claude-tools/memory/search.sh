@@ -6,8 +6,9 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DATA_DIR="$SCRIPT_DIR/data"
 SESSION_DIR="$HOME/.claude/projects"
-INDEX_FILE="$HOME/.claude/memory-index.tsv"
+INDEX_FILE="$DATA_DIR/memory-index.tsv"
 
 # Parse args
 SESSIONS=10   # Default: 10 sessions (for recall with filtering)

@@ -3,7 +3,8 @@
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INDEX_FILE="$HOME/.claude/memory-index.tsv"
+DATA_DIR="$SCRIPT_DIR/data"
+INDEX_FILE="$DATA_DIR/memory-index.tsv"
 CLAUDE_FAST="/Users/zhengyishen/.local/bin/claude-fast"
 
 # Use gdate if available (brew install coreutils), otherwise use date

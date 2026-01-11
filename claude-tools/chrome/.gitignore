@@ -5,3 +5,9 @@ package-lock.json
 # Runtime state
 /tmp/
 *.log
+
+# Chrome profiles (user data)
+profiles/
+
+# Chrome runtime data
+data/

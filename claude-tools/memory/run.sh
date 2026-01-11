@@ -59,8 +59,8 @@ WORKFLOW
      $ memory search "auth" --and "jwt" --recall "How was JWT implemented?"
 
 TECHNICAL NOTES
-  - Index: ~/.claude/memory-index.tsv
-  - Fork state: ~/.claude/memory-state/<session-id>.fork
+  - Index: claude-tools/memory/data/memory-index.tsv
+  - Sessions: ~/.claude/projects/ (read-only, managed by Claude Code)
   - First search builds index (~12s), subsequent ~0.5s
 
 EOF

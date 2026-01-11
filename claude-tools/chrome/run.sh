@@ -12,8 +12,10 @@ CDP_PORT=${CDP_PORT:-9222}
 CDP_HOST=${CDP_HOST:-localhost}
 CHROME_APP="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
-# Default profile location
-DEFAULT_PROFILE="$HOME/.claude/chrome/default"
+# Profile locations - profiles stored in tool directory
+PROFILES_DIR="$SCRIPT_DIR/profiles"
+DATA_DIR="$SCRIPT_DIR/data"
+DEFAULT_PROFILE="$DATA_DIR/default"
 
 # Export for cdp-cli.js
 export CDP_PORT CDP_HOST
@@ -34,7 +36,7 @@ expand_profile_path() {
     echo "$profile"
   else
     local normalized=$(normalize_profile_name "$profile")
-    echo "$HOME/.claude/profiles/$normalized"
+    echo "$PROFILES_DIR/$normalized"
   fi
 }
 
@@ -118,13 +120,13 @@ fuzzy_match_profile() {
   local search="$1"
   local matches=()
 
-  if [ ! -d "$HOME/.claude/profiles" ]; then
+  if [ ! -d "$PROFILES_DIR" ]; then
     return 1
   fi
 
   local search_normalized=$(echo "$search" | tr '[:upper:]' '[:lower:]')
 
-  for dir in "$HOME/.claude/profiles"/*; do
+  for dir in "$PROFILES_DIR"/*; do
     if [ ! -d "$dir" ]; then
       continue
     fi
@@ -165,7 +167,7 @@ prompt_fuzzy_match() {
 
   local i=1
   for match in "${matches[@]}"; do
-    local display=$(read_profile_metadata "$HOME/.claude/profiles/$match" "display")
+    local display=$(read_profile_metadata "$PROFILES_DIR/$match" "display")
     if [ -n "$display" ]; then
       echo "  [$i] $display" >&2
     else
@@ -331,7 +333,7 @@ detect_chrome_accounts() {
 # ============================================================================
 
 # Port registry file location
-PORT_REGISTRY="$HOME/.claude/chrome/port-registry"
+PORT_REGISTRY="$DATA_DIR/port-registry"
 
 # Initialize registry directory
 init_registry() {
@@ -1450,7 +1452,7 @@ cmd_profile() {
 
   case "$subcommand" in
     list)
-      if [ ! -d "$HOME/.claude/profiles" ] || [ -z "$(ls -A "$HOME/.claude/profiles" 2>/dev/null)" ]; then
+      if [ ! -d "$PROFILES_DIR" ] || [ -z "$(ls -A "$PROFILES_DIR" 2>/dev/null)" ]; then
         echo "No profiles found"
         echo ""
         echo "Create a profile:"
@@ -1464,7 +1466,7 @@ cmd_profile() {
       echo "Profiles:"
       echo ""
 
-      for dir in "$HOME/.claude/profiles"/*; do
+      for dir in "$PROFILES_DIR"/*; do
         if [ ! -d "$dir" ]; then
           continue
         fi
@@ -1504,9 +1506,9 @@ cmd_profile() {
       echo ""
 
       # Show existing profiles for this service
-      if [ -d "$HOME/.claude/profiles" ]; then
+      if [ -d "$PROFILES_DIR" ]; then
         local service_profiles=()
-        for dir in "$HOME/.claude/profiles"/*; do
+        for dir in "$PROFILES_DIR"/*; do
           if [ -d "$dir" ]; then
             local prof_service=$(read_profile_metadata "$dir" "service")
             if [ "$prof_service" = "$service" ]; then
@@ -1537,7 +1539,7 @@ cmd_profile() {
 
       local normalized_account=$(echo "$account" | tr '[:upper:]' '[:lower:]' | tr -s ' @.:-' '_' | sed 's/[^a-z0-9_]//g')
       local profile_name="${service}-${normalized_account}"
-      local profile_path="$HOME/.claude/profiles/$profile_name"
+      local profile_path="$PROFILES_DIR/$profile_name"
 
       if [ -d "$profile_path" ]; then
         echo "Error: Profile '$profile_name' already exists" >&2
@@ -1766,7 +1768,7 @@ cmd_profile() {
 
       local normalized_account=$(echo "$account" | tr '[:upper:]' '[:lower:]' | tr -s ' @.:-' '_' | sed 's/[^a-z0-9_]//g')
       local profile_name="${service}-${normalized_account}"
-      local dest_path="$HOME/.claude/profiles/$profile_name"
+      local dest_path="$PROFILES_DIR/$profile_name"
 
       if [ -d "$dest_path" ]; then
         echo "Error: Profile '$profile_name' already exists" >&2
@@ -1777,7 +1779,7 @@ cmd_profile() {
       echo "Copying Chrome.app profile..."
 
       # Copy entire Chrome.app profile
-      mkdir -p "$HOME/.claude/profiles"
+      mkdir -p "$PROFILES_DIR"
       cp -r "$source_path" "$dest_path"
 
       # Write metadata
@@ -1805,7 +1807,7 @@ cmd_profile() {
         return 1
       fi
 
-      local profile_path="$HOME/.claude/profiles/$name"
+      local profile_path="$PROFILES_DIR/$name"
 
       # Try fuzzy match if exact match doesn't exist
       if [ ! -d "$profile_path" ]; then
@@ -1815,7 +1817,7 @@ cmd_profile() {
           return 1
         fi
         name="$matched_name"
-        profile_path="$HOME/.claude/profiles/$name"
+        profile_path="$PROFILES_DIR/$name"
       fi
 
       local status=$(read_profile_metadata "$profile_path" "status")
@@ -1835,7 +1837,7 @@ cmd_profile() {
         return 1
       fi
 
-      local profile_path="$HOME/.claude/profiles/$name"
+      local profile_path="$PROFILES_DIR/$name"
 
       # Try fuzzy match if exact match doesn't exist
       if [ ! -d "$profile_path" ]; then
@@ -1845,7 +1847,7 @@ cmd_profile() {
           return 1
         fi
         name="$matched_name"
-        profile_path="$HOME/.claude/profiles/$name"
+        profile_path="$PROFILES_DIR/$name"
       fi
 
       local status=$(read_profile_metadata "$profile_path" "status")
@@ -1869,8 +1871,8 @@ cmd_profile() {
 
       local old_normalized=$(normalize_profile_name "$old_name")
       local new_normalized=$(normalize_profile_name "$new_name")
-      local old_path="$HOME/.claude/profiles/$old_normalized"
-      local new_path="$HOME/.claude/profiles/$new_normalized"
+      local old_path="$PROFILES_DIR/$old_normalized"
+      local new_path="$PROFILES_DIR/$new_normalized"
 
       if [ ! -d "$old_path" ]; then
         echo "Error: Profile '$old_normalized' does not exist" >&2

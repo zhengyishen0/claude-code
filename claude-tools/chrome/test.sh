@@ -43,11 +43,11 @@ info() {
 setup() {
   # Clean up any leftover test profiles from previous runs
   # Use wildcards to catch all variants (github-*, github_*, slack-*, slack_*)
-  rm -rf "$HOME/.claude/profiles"/github-*
-  rm -rf "$HOME/.claude/profiles"/github_*
-  rm -rf "$HOME/.claude/profiles"/slack-*
-  rm -rf "$HOME/.claude/profiles"/slack_*
-  rm -f "$HOME/.claude/chrome/port-registry"
+  rm -rf "$PROFILES_DIR"/github-*
+  rm -rf "$PROFILES_DIR"/github_*
+  rm -rf "$PROFILES_DIR"/slack-*
+  rm -rf "$PROFILES_DIR"/slack_*
+  rm -f "$DATA_DIR/port-registry"
 
   mkdir -p "$TEST_DIR"
   info "Test directory: $TEST_DIR"
@@ -60,13 +60,13 @@ cleanup() {
 
   # Clean up any test profiles that might have been created
   # Use wildcards to catch all variants (github-*, github_*, slack-*, slack_*)
-  rm -rf "$HOME/.claude/profiles"/github-*
-  rm -rf "$HOME/.claude/profiles"/github_*
-  rm -rf "$HOME/.claude/profiles"/slack-*
-  rm -rf "$HOME/.claude/profiles"/slack_*
+  rm -rf "$PROFILES_DIR"/github-*
+  rm -rf "$PROFILES_DIR"/github_*
+  rm -rf "$PROFILES_DIR"/slack-*
+  rm -rf "$PROFILES_DIR"/slack_*
 
   # Clean up test registry
-  rm -f "$HOME/.claude/chrome/port-registry"
+  rm -f "$DATA_DIR/port-registry"
 }
 
 # ============================================================================
@@ -145,7 +145,7 @@ test_expand_profile_path() {
 
   # Test: Relative path (should expand to ~/.claude/profiles/)
   result=$(expand_profile_path "test-profile")
-  expected="$HOME/.claude/profiles/test_profile"
+  expected="$PROFILES_DIR/test_profile"
   [ "$result" = "$expected" ] && pass "Relative path expansion" || fail "Relative path" "$expected" "$result"
 
   # Test: Absolute path (should stay as-is)
@@ -273,17 +273,17 @@ test_fuzzy_match_profile() {
   echo "A4.1: fuzzy_match_profile()"
 
   # Clean up any leftover test profiles first
-  rm -rf "$HOME/.claude/profiles/github-alice"
-  rm -rf "$HOME/.claude/profiles/github-bob"
-  rm -rf "$HOME/.claude/profiles/slack-alice"
-  rm -rf "$HOME/.claude/profiles/github_alice"
-  rm -rf "$HOME/.claude/profiles/github_bob"
-  rm -rf "$HOME/.claude/profiles/slack_alice"
+  rm -rf "$PROFILES_DIR/github-alice"
+  rm -rf "$PROFILES_DIR/github-bob"
+  rm -rf "$PROFILES_DIR/slack-alice"
+  rm -rf "$PROFILES_DIR/github_alice"
+  rm -rf "$PROFILES_DIR/github_bob"
+  rm -rf "$PROFILES_DIR/slack_alice"
 
   # Create test profiles
-  mkdir -p "$HOME/.claude/profiles/github-alice"
-  mkdir -p "$HOME/.claude/profiles/github-bob"
-  mkdir -p "$HOME/.claude/profiles/slack-alice"
+  mkdir -p "$PROFILES_DIR/github-alice"
+  mkdir -p "$PROFILES_DIR/github-bob"
+  mkdir -p "$PROFILES_DIR/slack-alice"
 
   # Test: Exact substring match
   local matches=$(fuzzy_match_profile "github")
@@ -305,12 +305,12 @@ test_fuzzy_match_profile() {
   [ -z "$matches" ] && pass "No match returns empty" || fail "No match" "empty" "$matches"
 
   # Cleanup test profiles
-  rm -rf "$HOME/.claude/profiles/github-alice"
-  rm -rf "$HOME/.claude/profiles/github-bob"
-  rm -rf "$HOME/.claude/profiles/slack-alice"
-  rm -rf "$HOME/.claude/profiles/github_alice"
-  rm -rf "$HOME/.claude/profiles/github_bob"
-  rm -rf "$HOME/.claude/profiles/slack_alice"
+  rm -rf "$PROFILES_DIR/github-alice"
+  rm -rf "$PROFILES_DIR/github-bob"
+  rm -rf "$PROFILES_DIR/slack-alice"
+  rm -rf "$PROFILES_DIR/github_alice"
+  rm -rf "$PROFILES_DIR/github_bob"
+  rm -rf "$PROFILES_DIR/slack_alice"
 
   echo ""
 }
@@ -349,7 +349,7 @@ test_profile_locking_acquisition() {
   local test_profile="test-lock-profile"
 
   # Clean up any previous test data
-  rm -f "$HOME/.claude/chrome/port-registry"
+  rm -f "$DATA_DIR/port-registry"
   init_registry
 
   # Test: Acquire lock
@@ -357,7 +357,7 @@ test_profile_locking_acquisition() {
   [ $? -eq 0 ] && pass "Lock acquired successfully (port $port)" || fail "Lock acquisition" "success" "failed"
 
   # Test: Registry entry exists
-  if grep -q "^$test_profile:" "$HOME/.claude/chrome/port-registry"; then
+  if grep -q "^$test_profile:" "$DATA_DIR/port-registry"; then
     pass "Registry entry created"
   else
     fail "Registry entry" "exists" "missing"
@@ -365,7 +365,7 @@ test_profile_locking_acquisition() {
 
   # Test: Release lock
   release_profile "$test_profile"
-  if ! grep -q "^$test_profile:" "$HOME/.claude/chrome/port-registry"; then
+  if ! grep -q "^$test_profile:" "$DATA_DIR/port-registry"; then
     pass "Registry entry removed"
   else
     fail "Registry entry removal" "removed" "still exists"
@@ -380,16 +380,16 @@ test_profile_locking_conflict() {
   local test_profile="test-conflict-profile"
 
   # Clean up
-  rm -f "$HOME/.claude/chrome/port-registry"
+  rm -f "$DATA_DIR/port-registry"
   init_registry
 
   # Create a simulated lock by adding registry entry
   # We simulate a running Chrome by using our own PID
   local test_port=$(get_profile_port "$test_profile")
-  echo "$test_profile:$test_port:$$:$(date +%s)" >> "$HOME/.claude/chrome/port-registry"
+  echo "$test_profile:$test_port:$$:$(date +%s)" >> "$DATA_DIR/port-registry"
 
   # Verify registry entry was created
-  if grep -q "^$test_profile:" "$HOME/.claude/chrome/port-registry"; then
+  if grep -q "^$test_profile:" "$DATA_DIR/port-registry"; then
     pass "Simulated lock created in registry"
   else
     fail "Lock simulation" "created" "failed"
@@ -413,11 +413,11 @@ test_stale_lock_cleanup() {
   local test_profile="test-stale-profile"
 
   # Clean up
-  rm -f "$HOME/.claude/chrome/port-registry"
+  rm -f "$DATA_DIR/port-registry"
   init_registry
 
   # Create a stale lock entry (non-existent PID)
-  echo "$test_profile:9222:999999:$(date +%s)" >> "$HOME/.claude/chrome/port-registry"
+  echo "$test_profile:9222:999999:$(date +%s)" >> "$DATA_DIR/port-registry"
 
   # Try to check if in use (should clean up stale entry)
   if ! is_profile_in_use "$test_profile"; then
