@@ -193,15 +193,23 @@ Run `claude-tools memory` for full help.
 
 **Commands:** search, recall
 
+**Search Syntax (two modes, auto-detected by presence of pipes):**
+
+- **Simple mode** (recommended): `"chrome automation workflow"` → OR all keywords, rank by hits
+- **Strict mode** (advanced): `"chrome|browser automation"` → (chrome OR browser) AND automation
+
+**When to use each:**
+- Simple: Exploratory searches, finding related topics - just list keywords
+- Strict: Need specific term combinations - use pipes for AND/OR logic
+
 **Key Principles:**
-1. **Pipe-Based Query Syntax** - Intuitive OR/AND logic: `"a1|a2|a3 b1|b2"` means (a1 OR a2 OR a3) AND (b1 OR b2)
-2. **Incremental Indexing** - Full index on first run (~12s), incremental updates after (~0.5s)
-3. **Clean Output** - Filters noise (tool results, IDE events, system messages, agent sessions)
-4. **Quality Filtering** - 5-match threshold removes trivial mentions while preserving relevant sessions
-5. **Grouped Results** - Messages grouped by session, sorted by match count then recency
-6. **Fast Search** - ~0.5s average query time with informative 300-char snippets
-7. **Fresh Fork by Default** - Each recall creates a fresh fork for consistent, independent answers; use `--resume` for follow-up questions
-8. **Cross-Project Recall** - Sessions from any project can be recalled; resolves original project directory automatically
+1. **Simple by Default** - Just list keywords, sessions matching more rank higher
+2. **Smart Ranking** - Keyword hits → match count → recency (soft AND effect)
+3. **Backward Compatible** - Pipes trigger strict AND/OR mode for power users
+4. **Incremental Indexing** - Full index on first run (~12s), incremental updates after (~0.5s)
+5. **Clean Output** - Filters noise (tool results, IDE events, system messages)
+6. **Fresh Fork by Default** - Each recall creates a fresh fork; use `--resume` for follow-ups
+7. **Cross-Project Recall** - Sessions from any project can be recalled
 
 ### proxy
 Automatically enable HTTP/HTTPS proxy when VPN is connected - no manual toggling needed!
