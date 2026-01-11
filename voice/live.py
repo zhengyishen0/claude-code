@@ -16,6 +16,13 @@ After stop:
   - Option to name speakers
 """
 
+# Suppress warnings before any imports
+import warnings
+warnings.filterwarnings('ignore', message='.*scikit-learn.*')
+warnings.filterwarnings('ignore', message='.*Torch version.*')
+warnings.filterwarnings('ignore', message='.*urllib3.*')
+warnings.filterwarnings('ignore', message='.*torchaudio.*')
+
 import sys
 sys.path.insert(0, '.')
 sys.path.insert(0, 'transcription')
@@ -33,8 +40,6 @@ from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from sklearn.cluster import AgglomerativeClustering
 from pynput import keyboard
-import warnings
-warnings.filterwarnings('ignore')
 
 VOICE_DIR = Path(__file__).parent
 LIBRARY_PATH = VOICE_DIR / "speaker_id" / "voice_library.json"
