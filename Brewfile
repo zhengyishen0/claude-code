@@ -16,6 +16,9 @@ brew "git"               # Version control (usually pre-installed on macOS)
 # Runtime with version constraint
 brew "node@18"           # Node.js 18.x for tool scripts (CDP browser automation)
 
+# Browser for automation (separate from user's Chrome to avoid conflicts)
+cask "chromium"          # Open-source browser for CDP automation
+
 # Claude CLI (cask, not formula)
 cask "claude-code"       # Claude Code CLI tool
 

@@ -18,7 +18,7 @@ const readline = require('readline');
 
 const SCRIPT_DIR = __dirname;
 const TOOL_NAME = path.basename(SCRIPT_DIR);
-const CHROME_APP = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+const CHROME_APP = '/Applications/Chromium.app/Contents/MacOS/Chromium';
 
 // Directories
 const DATA_DIR = path.join(SCRIPT_DIR, 'data');
