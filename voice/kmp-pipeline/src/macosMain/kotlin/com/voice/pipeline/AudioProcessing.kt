@@ -4,6 +4,7 @@ import kotlinx.cinterop.*
 import platform.Foundation.*
 import platform.posix.memcpy
 import kotlin.math.*
+import kissfft.*
 
 /**
  * Audio processing utilities for voice pipeline
@@ -21,6 +22,16 @@ object AudioProcessing {
 
     // Mel filterbank (loaded from file or computed)
     private var melFilterbank: List<FloatArray>? = null
+
+    // KissFFT config (lazily initialized)
+    private var fftConfig: kiss_fftr_cfg? = null
+
+    private fun getFFTConfig(): kiss_fftr_cfg {
+        if (fftConfig == null) {
+            fftConfig = kiss_fftr_alloc(N_FFT, 0, null, null)
+        }
+        return fftConfig!!
+    }
 
     /**
      * Load mel filterbank from binary file (exported from torchaudio)
@@ -179,27 +190,34 @@ object AudioProcessing {
     }
 
     /**
-     * Compute FFT magnitude using DFT
-     * Note: This is O(N²) - can be optimized with KissFFT cinterop later
+     * Compute FFT magnitude using KissFFT
+     * O(N log N) complexity
      */
     private fun computeFFTMagnitude(frame: FloatArray): FloatArray {
         val n = frame.size
         val numBins = n / 2 + 1
         val magnitude = FloatArray(numBins)
 
-        // DFT for each frequency bin
-        for (k in 0 until numBins) {
-            var real = 0f
-            var imag = 0f
-            val omega = -2.0 * PI * k / n
-
-            for (t in 0 until n) {
-                val angle = omega * t
-                real += frame[t] * cos(angle).toFloat()
-                imag += frame[t] * sin(angle).toFloat()
+        memScoped {
+            // Allocate input buffer
+            val input = allocArray<FloatVar>(n)
+            for (i in 0 until n) {
+                input[i] = frame[i]
             }
 
-            magnitude[k] = sqrt(real * real + imag * imag)
+            // Allocate output buffer (complex)
+            val output = allocArray<kiss_fft_cpx>(numBins)
+
+            // Run FFT
+            val cfg = getFFTConfig()
+            kiss_fftr(cfg, input, output)
+
+            // Compute magnitude
+            for (k in 0 until numBins) {
+                val real = output[k].r
+                val imag = output[k].i
+                magnitude[k] = sqrt(real * real + imag * imag)
+            }
         }
 
         return magnitude

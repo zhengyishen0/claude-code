@@ -11,6 +11,9 @@ build/
 *.kexe
 *.klib
 
+# Object files (keep .a static libraries)
+*.o
+
 # macOS
 .DS_Store
 

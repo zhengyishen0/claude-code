@@ -19,8 +19,11 @@ kotlin {
             }
         }
 
-        // Using platform.CoreML, platform.AVFoundation, platform.Accelerate
-        // which are built-in to Kotlin/Native for macOS
+        compilations["main"].cinterops {
+            create("KissFFT") {
+                defFile = file("src/nativeInterop/cinterop/KissFFT.def")
+            }
+        }
     }
 
     sourceSets {

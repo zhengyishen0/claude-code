@@ -5,4 +5,5 @@ headerFilter = kiss_fft.h kiss_fftr.h
 
 compilerOpts = -I/Users/zhengyishen/Codes/claude-code/voice/swift-pipeline-test/.build/checkouts/KissFFT/Sources/KissFFT/include
 
-linkerOpts = -L/Users/zhengyishen/Codes/claude-code/voice/swift-pipeline-test/.build/release -lKissFFT
+staticLibraries = libKissFFT.a
+libraryPaths = /Users/zhengyishen/Codes/claude-code/voice/claude-code-kmp-voice-pipeline/voice/kmp-pipeline/libs
