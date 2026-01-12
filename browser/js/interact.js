@@ -1,11 +1,13 @@
-// interact.js - Universal element interaction (click or input)
-// Used internally by: chrome interact SELECTOR [--input VALUE]
+// interact.js - Universal element interaction (click, input, hover, drag)
+// Used internally by: chrome interact SELECTOR [--input VALUE] [--action ACTION]
 
-// Expects: INTERACT_SELECTOR, INTERACT_INPUT (optional), INTERACT_INDEX (optional)
+// Expects: INTERACT_SELECTOR, INTERACT_INPUT (optional), INTERACT_INDEX (optional), INTERACT_ACTION (optional)
 // Use var to avoid "already declared" errors between runs
 var SELECTOR = INTERACT_SELECTOR;
 var INPUT_VALUE = typeof INTERACT_INPUT !== 'undefined' ? INTERACT_INPUT : null;
 var INDEX = typeof INTERACT_INDEX !== 'undefined' ? INTERACT_INDEX : null;
+var ACTION = typeof INTERACT_ACTION !== 'undefined' ? INTERACT_ACTION : 'click';
+var DRAG_TARGET = typeof INTERACT_DRAG_TARGET !== 'undefined' ? INTERACT_DRAG_TARGET : null;
 
 // ============================================================================
 // Configuration
@@ -136,10 +138,15 @@ function getCaptureContext(el) {
 // ============================================================================
 
 function findInteractiveElements(selector) {
-  // Tier 1: CSS Selector (starts with #, ., [)
-  if (/^[#.\[]/.test(selector)) {
-    const el = document.querySelector(selector);
-    return el ? [el] : [];
+  // Tier 1: CSS Selector
+  // Matches: #id, .class, [attr], tag#id, tag.class, tag[attr], tag:pseudo
+  if (/^[#.\[]/.test(selector) || /^[a-z]+[#.\[:]/.test(selector)) {
+    try {
+      const el = document.querySelector(selector);
+      return el ? [el] : [];
+    } catch (e) {
+      // Invalid CSS selector, fall through to text matching
+    }
   }
 
   // Get all interactive elements
@@ -253,13 +260,108 @@ function inputIntoElement(el, value) {
   });
 }
 
+function hoverElement(el) {
+  try {
+    const contextBefore = getCaptureContext(el);
+
+    // Scroll into view if needed
+    const rect = el.getBoundingClientRect();
+    const isVisible = (
+      rect.top >= 0 &&
+      rect.left >= 0 &&
+      rect.bottom <= window.innerHeight &&
+      rect.right <= window.innerWidth
+    );
+
+    if (!isVisible) {
+      el.scrollIntoView({block: 'center', behavior: 'instant'});
+    }
+
+    // Dispatch mouse events for hover
+    el.dispatchEvent(new MouseEvent('mouseenter', {bubbles: true, cancelable: true}));
+    el.dispatchEvent(new MouseEvent('mouseover', {bubbles: true, cancelable: true}));
+
+    return JSON.stringify({
+      status: 'OK',
+      message: 'hovered ' + getElementDescription(el),
+      context: contextBefore
+    });
+  } catch (e) {
+    return JSON.stringify({
+      status: 'ERROR',
+      message: 'hoverElement failed: ' + e.toString(),
+      context: null
+    });
+  }
+}
+
+function dragElement(sourceEl, targetEl) {
+  try {
+    const contextBefore = getCaptureContext(sourceEl);
+
+    // Scroll source into view
+    sourceEl.scrollIntoView({block: 'center', behavior: 'instant'});
+
+    const sourceRect = sourceEl.getBoundingClientRect();
+    const targetRect = targetEl.getBoundingClientRect();
+
+    const sourceX = sourceRect.left + sourceRect.width / 2;
+    const sourceY = sourceRect.top + sourceRect.height / 2;
+    const targetX = targetRect.left + targetRect.width / 2;
+    const targetY = targetRect.top + targetRect.height / 2;
+
+    // Simulate drag sequence
+    const dataTransfer = new DataTransfer();
+
+    sourceEl.dispatchEvent(new MouseEvent('mousedown', {
+      bubbles: true, cancelable: true, clientX: sourceX, clientY: sourceY
+    }));
+
+    sourceEl.dispatchEvent(new DragEvent('dragstart', {
+      bubbles: true, cancelable: true, clientX: sourceX, clientY: sourceY, dataTransfer
+    }));
+
+    targetEl.dispatchEvent(new DragEvent('dragenter', {
+      bubbles: true, cancelable: true, clientX: targetX, clientY: targetY, dataTransfer
+    }));
+
+    targetEl.dispatchEvent(new DragEvent('dragover', {
+      bubbles: true, cancelable: true, clientX: targetX, clientY: targetY, dataTransfer
+    }));
+
+    targetEl.dispatchEvent(new DragEvent('drop', {
+      bubbles: true, cancelable: true, clientX: targetX, clientY: targetY, dataTransfer
+    }));
+
+    sourceEl.dispatchEvent(new DragEvent('dragend', {
+      bubbles: true, cancelable: true, clientX: targetX, clientY: targetY, dataTransfer
+    }));
+
+    targetEl.dispatchEvent(new MouseEvent('mouseup', {
+      bubbles: true, cancelable: true, clientX: targetX, clientY: targetY
+    }));
+
+    return JSON.stringify({
+      status: 'OK',
+      message: 'dragged ' + getElementDescription(sourceEl) + ' to ' + getElementDescription(targetEl),
+      context: contextBefore
+    });
+  } catch (e) {
+    return JSON.stringify({
+      status: 'ERROR',
+      message: 'dragElement failed: ' + e.toString(),
+      context: null
+    });
+  }
+}
+
 // ============================================================================
 // Main Execution
 // ============================================================================
 
 var __result;
 try {
-const matches = findInteractiveElements(SELECTOR);
+  const matches = findInteractiveElements(SELECTOR);
 
   // No matches found
   if (matches.length === 0) {
@@ -298,8 +400,36 @@ const matches = findInteractiveElements(SELECTOR);
         context: null
       });
     } else {
-      // Perform action
-      if (INPUT_VALUE !== null) {
+      // Perform action based on ACTION type
+      if (ACTION === 'hover') {
+        __result = hoverElement(element);
+      } else if (ACTION === 'drag') {
+        // Drag requires a target element
+        if (!DRAG_TARGET) {
+          __result = JSON.stringify({
+            status: 'FAIL',
+            message: 'drag requires a target selector',
+            context: null
+          });
+        } else {
+          const targetMatches = findInteractiveElements(DRAG_TARGET);
+          if (targetMatches.length === 0) {
+            __result = JSON.stringify({
+              status: 'FAIL',
+              message: 'no element found for drag target "' + DRAG_TARGET + '"',
+              context: null
+            });
+          } else if (targetMatches.length > 1) {
+            __result = JSON.stringify({
+              status: 'FAIL',
+              message: 'drag target "' + DRAG_TARGET + '" matched ' + targetMatches.length + ' elements, need unique target',
+              context: null
+            });
+          } else {
+            __result = dragElement(element, targetMatches[0]);
+          }
+        }
+      } else if (INPUT_VALUE !== null) {
         __result = inputIntoElement(element, INPUT_VALUE);
       } else {
         __result = clickElement(element);
@@ -308,11 +438,11 @@ const matches = findInteractiveElements(SELECTOR);
   }
 
 } catch (e) {
-__result = JSON.stringify({
-  status: 'ERROR',
-  message: e.toString(),
-  context: null
-});
+  __result = JSON.stringify({
+    status: 'ERROR',
+    message: e.toString(),
+    context: null
+  });
 }
 
 __result;

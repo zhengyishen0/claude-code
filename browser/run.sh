@@ -6,6 +6,18 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TOOL_NAME="$(basename "$SCRIPT_DIR")"
 
+# ============================================================================
+# Auto-install npm dependencies if missing
+# ============================================================================
+if [ ! -d "$SCRIPT_DIR/node_modules" ]; then
+  echo "Installing npm dependencies..." >&2
+  (cd "$SCRIPT_DIR" && npm install --silent) || {
+    echo "ERROR: Failed to install npm dependencies" >&2
+    echo "Please run: cd $SCRIPT_DIR && npm install" >&2
+    exit 1
+  }
+fi
+
 # CDP configuration
 CDP_CLI="node $SCRIPT_DIR/cdp-cli.js"
 CDP_PORT=${CDP_PORT:-9222}
@@ -1111,9 +1123,7 @@ cmd_hover() {
   if is_coordinates "$@"; then
     cmd_hover_coordinates "$@"
   else
-    # Selector mode not fully implemented yet
-    echo "Note: Hover by selector not fully implemented yet. Use coordinates: hover X Y" >&2
-    return 1
+    cmd_hover_selector "$@"
   fi
 }
 
@@ -1139,19 +1149,98 @@ cmd_hover_coordinates() {
   return $exit_code
 }
 
+cmd_hover_selector() {
+  local SELECTOR=""
+  local INDEX=""
+
+  # Parse arguments
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --index)
+        INDEX="$2"
+        shift 2
+        ;;
+      *)
+        if [ -z "$SELECTOR" ]; then
+          SELECTOR="$1"
+          shift
+        else
+          echo "Unknown argument: $1" >&2
+          return 1
+        fi
+        ;;
+    esac
+  done
+
+  if [ -z "$SELECTOR" ]; then
+    echo "Usage: hover 'selector or text' [--index N]" >&2
+    echo "       hover X Y (coordinates)" >&2
+    return 1
+  fi
+
+  # Escape for JavaScript
+  SELECTOR_ESC=$(printf '%s' "$SELECTOR" | sed "s/'/\\\\'/g")
+
+  # Build JavaScript
+  local temp_js=$(mktemp)
+  echo "var INTERACT_SELECTOR='$SELECTOR_ESC';" > "$temp_js"
+  echo "var INTERACT_INPUT=undefined;" >> "$temp_js"
+  echo "var INTERACT_INDEX=undefined;" >> "$temp_js"
+  echo "var INTERACT_ACTION='hover';" >> "$temp_js"
+  echo "var INTERACT_DRAG_TARGET=undefined;" >> "$temp_js"
+
+  if [ -n "$INDEX" ]; then
+    echo "INTERACT_INDEX=$INDEX;" >> "$temp_js"
+  fi
+
+  # Append interact.js
+  cat "$SCRIPT_DIR/js/interact.js" >> "$temp_js"
+
+  # Execute
+  result=$($CDP_CLI execute "$(cat "$temp_js")")
+  rm -f "$temp_js"
+
+  # Parse JSON result
+  status=$(echo "$result" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','UNKNOWN'))" 2>/dev/null || echo "UNKNOWN")
+  message=$(echo "$result" | python3 -c "import sys,json; print(json.load(sys.stdin).get('message',''))" 2>/dev/null || echo "$result")
+  context=$(echo "$result" | python3 -c "import sys,json; import base64; ctx=json.load(sys.stdin).get('context'); print(base64.b64encode(json.dumps(ctx).encode()).decode() if ctx else '')" 2>/dev/null || echo "")
+
+  echo "$status: $message"
+
+  if [ "$status" = "FAIL" ] || [ "$status" = "ERROR" ]; then
+    return 1
+  fi
+
+  if [ "$status" = "DISAMBIGUATE" ]; then
+    return 0
+  fi
+
+  # Auto-feedback
+  if [ "$status" = "OK" ]; then
+    if [ -n "$context" ]; then
+      smart_wait_with_context "$context"
+    else
+      cmd_wait > /dev/null 2>&1
+    fi
+    cmd_snapshot
+  fi
+}
+
 # ============================================================================
 # Command: drag
 # ============================================================================
 cmd_drag() {
   ensure_chrome_running || return 1
 
-  # Only coordinates supported initially
-  if ! is_coordinates "$@"; then
-    echo "Error: drag requires 4 coordinates (x1 y1 x2 y2)" >&2
-    echo "Usage: drag X1 Y1 X2 Y2" >&2
-    return 1
+  # Check if it's coordinates mode (4 numeric arguments)
+  if [ $# -eq 4 ] && is_coordinates "$1" "$2"; then
+    cmd_drag_coordinates "$@"
+  else
+    cmd_drag_selector "$@"
   fi
+}
 
+cmd_drag_coordinates() {
   local x1=$1
   local y1=$2
   local x2=$3
@@ -1173,6 +1262,88 @@ cmd_drag() {
   fi
 
   return $exit_code
+}
+
+cmd_drag_selector() {
+  local SOURCE=""
+  local TARGET=""
+  local INDEX=""
+
+  # Parse arguments
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --index)
+        INDEX="$2"
+        shift 2
+        ;;
+      *)
+        if [ -z "$SOURCE" ]; then
+          SOURCE="$1"
+          shift
+        elif [ -z "$TARGET" ]; then
+          TARGET="$1"
+          shift
+        else
+          echo "Unknown argument: $1" >&2
+          return 1
+        fi
+        ;;
+    esac
+  done
+
+  if [ -z "$SOURCE" ] || [ -z "$TARGET" ]; then
+    echo "Usage: drag 'source selector' 'target selector' [--index N]" >&2
+    echo "       drag X1 Y1 X2 Y2 (coordinates)" >&2
+    return 1
+  fi
+
+  # Escape for JavaScript
+  SOURCE_ESC=$(printf '%s' "$SOURCE" | sed "s/'/\\\\'/g")
+  TARGET_ESC=$(printf '%s' "$TARGET" | sed "s/'/\\\\'/g")
+
+  # Build JavaScript
+  local temp_js=$(mktemp)
+  echo "var INTERACT_SELECTOR='$SOURCE_ESC';" > "$temp_js"
+  echo "var INTERACT_INPUT=undefined;" >> "$temp_js"
+  echo "var INTERACT_INDEX=undefined;" >> "$temp_js"
+  echo "var INTERACT_ACTION='drag';" >> "$temp_js"
+  echo "var INTERACT_DRAG_TARGET='$TARGET_ESC';" >> "$temp_js"
+
+  if [ -n "$INDEX" ]; then
+    echo "INTERACT_INDEX=$INDEX;" >> "$temp_js"
+  fi
+
+  # Append interact.js
+  cat "$SCRIPT_DIR/js/interact.js" >> "$temp_js"
+
+  # Execute
+  result=$($CDP_CLI execute "$(cat "$temp_js")")
+  rm -f "$temp_js"
+
+  # Parse JSON result
+  status=$(echo "$result" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','UNKNOWN'))" 2>/dev/null || echo "UNKNOWN")
+  message=$(echo "$result" | python3 -c "import sys,json; print(json.load(sys.stdin).get('message',''))" 2>/dev/null || echo "$result")
+  context=$(echo "$result" | python3 -c "import sys,json; import base64; ctx=json.load(sys.stdin).get('context'); print(base64.b64encode(json.dumps(ctx).encode()).decode() if ctx else '')" 2>/dev/null || echo "")
+
+  echo "$status: $message"
+
+  if [ "$status" = "FAIL" ] || [ "$status" = "ERROR" ]; then
+    return 1
+  fi
+
+  if [ "$status" = "DISAMBIGUATE" ]; then
+    return 0
+  fi
+
+  # Auto-feedback
+  if [ "$status" = "OK" ]; then
+    if [ -n "$context" ]; then
+      smart_wait_with_context "$context"
+    else
+      cmd_wait > /dev/null 2>&1
+    fi
+    cmd_snapshot
+  fi
 }
 
 # ============================================================================
