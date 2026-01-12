@@ -493,7 +493,9 @@ release_profile() {
 
 # Check if CDP is available
 cdp_is_running() {
-  curl -s "http://$CDP_HOST:$CDP_PORT/json/version" > /dev/null 2>&1
+  # Use --noproxy to bypass any HTTP proxy that might interfere
+  # Check for valid JSON response (contains "Browser" field)
+  curl -s --noproxy "$CDP_HOST" "http://$CDP_HOST:$CDP_PORT/json/version" 2>/dev/null | grep -q '"Browser"'
 }
 
 # Wait for CDP to become available
