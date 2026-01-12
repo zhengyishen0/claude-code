@@ -1,44 +1,34 @@
 #!/bin/bash
 # Claude Code Proxy Auto-Enable
-# This script is sourced by shell startup files to automatically enable proxy when available
+# Source this file in ~/.zshrc to auto-enable proxy when VPN is connected
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_FILE="$SCRIPT_DIR/config"
+_PROXY_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+_PROXY_CONFIG_FILE="$_PROXY_SCRIPT_DIR/config"
 
 # Load proxy configuration
-if [ -f "$CONFIG_FILE" ]; then
-    source "$CONFIG_FILE"
+if [ -f "$_PROXY_CONFIG_FILE" ]; then
+    source "$_PROXY_CONFIG_FILE"
 else
-    # Default configuration
     PROXY_HOST="${PROXY_HOST:-127.0.0.1}"
     PROXY_PORT="${PROXY_PORT:-33210}"
     ANTHROPIC_PROXY="${ANTHROPIC_PROXY:-https://claude-proxy.zhengyishen1.workers.dev}"
 fi
 
-# Quick check if proxy is reachable (silent, fast)
-_claude_proxy_check() {
-    # Try nc first (fastest, ~10ms)
-    if command -v nc &> /dev/null; then
-        nc -z -w 1 "$PROXY_HOST" "$PROXY_PORT" &>/dev/null
-        return $?
-    fi
-
-    # Fallback to timeout + curl
-    if command -v timeout &> /dev/null && command -v curl &> /dev/null; then
-        timeout 1 curl -s -x "http://${PROXY_HOST}:${PROXY_PORT}" -o /dev/null http://example.com &>/dev/null
-        return $?
-    fi
-
-    # No way to check, assume not available
-    return 1
-}
-
-# Auto-enable proxy if reachable
-if _claude_proxy_check; then
+# Manual enable
+proxy_on() {
     export http_proxy="http://${PROXY_HOST}:${PROXY_PORT}"
     export https_proxy="http://${PROXY_HOST}:${PROXY_PORT}"
     export ANTHROPIC_BASE_URL="$ANTHROPIC_PROXY"
-fi
+    echo "Proxy enabled: http://${PROXY_HOST}:${PROXY_PORT}"
+}
 
-# Clean up helper function
-unset -f _claude_proxy_check
+# Manual disable
+proxy_off() {
+    unset http_proxy https_proxy ANTHROPIC_BASE_URL
+    echo "Proxy disabled"
+}
+
+# Auto-enable on shell startup if proxy is reachable
+if command -v nc &> /dev/null; then
+    nc -z -w 1 "$PROXY_HOST" "$PROXY_PORT" &>/dev/null && proxy_on > /dev/null
+fi
