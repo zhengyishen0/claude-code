@@ -42,8 +42,8 @@ CLIENT (Swift)              CLOUD (Container)
 • Voice capture             • Spirit (L3)
 • Whisper transcription     • Task agents
 • Speaker ID                • World.log
-• UI rendering              • L1/L2 supervisors
-                            • Tools (browser, etc)
+• Hand tracking (MediaPipe) • L1/L2 supervisors
+• UI rendering              • Tools (browser, etc)
         ←── WebSocket ──→
 ```
 
@@ -70,11 +70,56 @@ CLIENT (Swift)              CLOUD (Container)
 - [ ] Real-time streaming to Spirit
 - [ ] Voice output (TTS)
 
+### Gesture Control (MediaPipe + Three.js)
+Camera-based hand tracking for Spirit UI control.
+
+```
+Webcam → MediaPipe Hands → 21 landmarks/hand → Three.js → Particle/UI control
+```
+
+**Use cases:**
+- Wave to dismiss nudge
+- Pinch to expand/collapse
+- Swipe to navigate inbox
+- Point to select
+
+**Resources:**
+- [Codrops Tutorial](https://tympanus.net/codrops/2024/10/24/creating-a-3d-hand-controller-using-a-webcam-with-mediapipe-and-three-js/)
+- [threejs-handtracking-101](https://github.com/collidingScopes/threejs-handtracking-101)
+- [Bolt.new particle effects](https://bolt.new/blog/build-rebuilds-interactive-particle-effects-with-hand-tracking)
+
+Tasks:
+- [ ] Prototype hand tracking in browser
+- [ ] Define gesture vocabulary (dismiss, expand, scroll)
+- [ ] Integrate with Spirit UI
+- [ ] Particle effects responding to hand movement
+
 ### Infrastructure
-- [ ] Apple Container setup
-- [ ] WebSocket server
-- [ ] Continuous Spirit session
-- [ ] Task agent spawning
+
+**Architecture:**
+```
+LOCAL (iOS/macOS)           CLOUD (iMac Server)
+────────────────            ───────────────────
+User's device               Dedicated iMac hosting multiple containers
+• Voice/gesture input       • Apple Container VMs (isolated workspaces)
+• Spirit UI                 • Each agent gets own container + workspace folder
+• Thin client               • Tools: browser, git, filesystem access
+                            • World.log shared across containers
+        ←── WebSocket ──→
+```
+
+**Workspace:** Each AI agent runs in its own Apple Container with:
+- Dedicated folder (`/workspace/agent-{id}/`)
+- Isolated filesystem
+- Browser instance
+- Git access
+
+Tasks:
+- [ ] Apple Container setup on iMac server
+- [ ] Workspace folder provisioning per agent
+- [ ] WebSocket server for client-cloud communication
+- [ ] Continuous Spirit session management
+- [ ] Task agent spawning into containers
 
 ---
 
