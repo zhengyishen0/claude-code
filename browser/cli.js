@@ -1153,8 +1153,10 @@ function cmdProfileList() {
 
     if (notImported.length > 0) {
       console.log('Available in Chrome.app (not yet imported):\n');
-      console.log(`  ${notImported.join(', ')}\n`);
-      console.log(`  Import: ${TOOL_NAME} profile import <service>\n`);
+      for (const service of notImported) {
+        console.log(`  ${service}`);
+      }
+      console.log(`\n  Import: ${TOOL_NAME} profile import <service>\n`);
     }
   }
 
