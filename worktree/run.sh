@@ -54,52 +54,19 @@ worktree_remove() {
     git worktree remove "$worktree_path"
 }
 
-# Subcommand: rename
-worktree_rename() {
-    local new_name="$1"
-
-    if [ -z "$new_name" ]; then
-        echo "Error: New name required"
-        exit 1
-    fi
-
-    local current_branch=$(git branch --show-current)
-
-    # Must be in a temp worktree
-    if [[ ! "$current_branch" == temp-* ]]; then
-        echo "Error: Not in a temp worktree (current branch: $current_branch)"
-        exit 1
-    fi
-
-    # Rename branch
-    git branch -m "$new_name"
-
-    # Rename worktree directory
-    local old_path=$(git rev-parse --show-toplevel)
-    local new_path="${old_path%/*}/claude-code-$new_name"
-
-    cd ..
-    mv "$old_path" "$new_path"
-    cd "$new_path"
-
-    echo "Renamed to: $new_name"
-    echo "New path: $new_path"
-}
-
 # Show help
 show_help() {
     cat <<EOF
 Git Worktree Tool for Claude Code
 ==================================
 
-Manage git worktrees with automatic permissions and temp worktree support.
+Manage git worktrees for isolated feature development.
 
 USAGE:
   worktree <command> [args...]
 
 COMMANDS:
-  create <branch-name>  Create worktree and grant permissions
-  rename <new-name>     Rename temp worktree to meaningful name
+  create <branch-name>  Create worktree with new branch
   list                  List all worktrees
   remove <branch-name>  Remove a worktree
   (no args)             Show this help
@@ -124,7 +91,6 @@ EOF
 
 EXAMPLES:
   worktree create feature-auth
-  worktree rename my-feature
   worktree list
   worktree remove feature-auth
 
@@ -151,9 +117,6 @@ main() {
             ;;
         remove)
             worktree_remove "$@"
-            ;;
-        rename)
-            worktree_rename "$@"
             ;;
         "")
             show_help

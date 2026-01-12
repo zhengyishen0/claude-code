@@ -1,28 +1,28 @@
 # Worktree Tool
 
-Git worktree management with automatic Claude session launching.
+Git worktree management for isolated feature development.
 
 ## Quick Start
 
 ```bash
-# Create worktree and launch new Claude session
-claude-tools worktree create feature-name
+# Create worktree
+worktree create feature-name
 
 # List all worktrees
-claude-tools worktree list
+worktree list
 
 # Remove a worktree
-claude-tools worktree remove feature-name
+worktree remove feature-name
 ```
 
 ## Full Documentation
 
-Run `claude-tools worktree` for complete documentation.
+Run `worktree` for complete documentation.
 
 ## How It Works
 
 1. Creates a git worktree at `../claude-code-<branch-name>`
-2. Launches a new Claude session in the worktree using `--fork-session` to continue conversation context
-3. Automatically closes the current session
+2. Creates a new branch with the same name
+3. Returns absolute path for use with Claude Code
 
-This allows you to work on features in isolation without permission issues, while maintaining conversation continuity.
+This allows you to work on features in isolation while keeping main branch clean.
