@@ -2,6 +2,28 @@
 
 Browser automation with React/SPA support
 
+## Implementations
+
+Two implementations available:
+
+| Version | File | Lines | Alias |
+|---------|------|-------|-------|
+| Bash | `run.sh` | ~2200 | `browser` |
+| Node.js | `cli.js` | ~1300 | `browser-js` |
+
+Both versions have identical functionality. The Node.js version is a clean rewrite with:
+- Single file (no cdp-cli.js or Python dependencies)
+- Simpler codebase (~50% less code)
+- Same features: profiles, port locking, snapshot diff, all commands
+
+```bash
+# Bash version (original)
+browser open "https://google.com"
+
+# Node.js version (alternative)
+browser-js open "https://google.com"
+```
+
 ## Usage
 
 ```bash
