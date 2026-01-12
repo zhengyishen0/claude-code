@@ -382,19 +382,23 @@ class LiveTranscription(
         println("STATISTICS")
         println("-".repeat(60))
 
-        val totalSegments = segments.size
-        val knownCount = segments.count { it.isKnown }
-        val unknownCount = segments.count { !it.isKnown && !it.isConflict }
-        val conflictCount = segments.count { it.isConflict }
-        val learnedCount = segments.count { it.learned }
+        // Filter out noise
+        val validSegments = segments.filter { !isNoiseSegment(it) }
+        val noiseCount = segments.size - validSegments.size
 
-        val avgProcessTime = if (segments.isNotEmpty()) {
-            segments.map { it.processTimeMs }.average()
+        val totalSegments = validSegments.size
+        val knownCount = validSegments.count { it.isKnown }
+        val unknownCount = validSegments.count { !it.isKnown && !it.isConflict }
+        val conflictCount = validSegments.count { it.isConflict }
+        val learnedCount = validSegments.count { it.learned }
+
+        val avgProcessTime = if (validSegments.isNotEmpty()) {
+            validSegments.map { it.processTimeMs }.average()
         } else 0.0
 
-        val totalDuration = segments.sumOf { it.endTime - it.startTime }
+        val totalDuration = validSegments.sumOf { it.endTime - it.startTime }
 
-        println("  Total segments: $totalSegments")
+        println("  Total segments: $totalSegments" + if (noiseCount > 0) " (+$noiseCount noise filtered)" else "")
         println("  Known speakers: $knownCount")
         println("  Unknown speakers: $unknownCount")
         println("  Conflicts: $conflictCount")
@@ -571,6 +575,83 @@ class LiveTranscription(
 private var globalShouldStop = false
 
 /**
+ * Set terminal to raw mode for single keypress detection
+ * Returns the original termios settings to restore later
+ */
+@OptIn(ExperimentalForeignApi::class)
+private fun setRawMode(): termios {
+    memScoped {
+        val originalTermios = alloc<termios>()
+        val rawTermios = alloc<termios>()
+
+        // Get current terminal settings
+        tcgetattr(STDIN_FILENO, originalTermios.ptr)
+
+        // Copy to raw settings
+        rawTermios.c_iflag = originalTermios.c_iflag
+        rawTermios.c_oflag = originalTermios.c_oflag
+        rawTermios.c_cflag = originalTermios.c_cflag
+        rawTermios.c_lflag = originalTermios.c_lflag
+
+        // Disable canonical mode and echo
+        rawTermios.c_lflag = rawTermios.c_lflag and (ICANON or ECHO).toULong().inv().toULong()
+
+        // Set minimum characters and timeout for non-blocking read
+        rawTermios.c_cc[VMIN] = 0u  // Don't wait for characters
+        rawTermios.c_cc[VTIME] = 0u // No timeout
+
+        // Apply raw settings
+        tcsetattr(STDIN_FILENO, TCSANOW, rawTermios.ptr)
+
+        // Return a copy of original settings
+        val result = nativeHeap.alloc<termios>()
+        result.c_iflag = originalTermios.c_iflag
+        result.c_oflag = originalTermios.c_oflag
+        result.c_cflag = originalTermios.c_cflag
+        result.c_lflag = originalTermios.c_lflag
+        for (i in 0 until NCCS) {
+            result.c_cc[i] = originalTermios.c_cc[i]
+        }
+        return result
+    }
+}
+
+/**
+ * Restore terminal settings
+ */
+@OptIn(ExperimentalForeignApi::class)
+private fun restoreTerminal(originalTermios: termios) {
+    memScoped {
+        val termiosPtr = alloc<termios>()
+        termiosPtr.c_iflag = originalTermios.c_iflag
+        termiosPtr.c_oflag = originalTermios.c_oflag
+        termiosPtr.c_cflag = originalTermios.c_cflag
+        termiosPtr.c_lflag = originalTermios.c_lflag
+        for (i in 0 until NCCS) {
+            termiosPtr.c_cc[i] = originalTermios.c_cc[i]
+        }
+        tcsetattr(STDIN_FILENO, TCSANOW, termiosPtr.ptr)
+    }
+    nativeHeap.free(originalTermios)
+}
+
+/**
+ * Check if Escape key was pressed (non-blocking)
+ */
+@OptIn(ExperimentalForeignApi::class)
+private fun checkEscapeKey(): Boolean {
+    memScoped {
+        val buffer = alloc<IntVar>()
+        buffer.value = 0
+        val bytesRead = read(STDIN_FILENO, buffer.ptr, 1u)
+        if (bytesRead > 0) {
+            return (buffer.value and 0xFF) == 27 // Escape key ASCII code
+        }
+        return false
+    }
+}
+
+/**
  * Run live transcription from microphone
  */
 @OptIn(ExperimentalForeignApi::class)
@@ -585,7 +666,7 @@ fun runLiveTranscription(
     println()
     println("=".repeat(60))
     println("LIVE TRANSCRIPTION")
-    println("Press Ctrl+C to stop")
+    println("Press ESC to stop")
     println("=".repeat(60))
     println()
 
@@ -594,10 +675,8 @@ fun runLiveTranscription(
 
     globalShouldStop = false
 
-    // Set up signal handler for Ctrl+C
-    signal(SIGINT, staticCFunction<Int, Unit> { _ ->
-        globalShouldStop = true
-    })
+    // Set terminal to raw mode to detect Escape key
+    val originalTermios = setRawMode()
 
     // Start audio capture
     audioCapture.start { samples ->
@@ -606,10 +685,16 @@ fun runLiveTranscription(
         }
     }
 
-    // Main loop - wait for Ctrl+C
+    // Main loop - wait for Escape key
     while (!globalShouldStop) {
-        usleep(100000u) // 100ms
+        if (checkEscapeKey()) {
+            globalShouldStop = true
+        }
+        usleep(50000u) // 50ms - check more frequently for responsive ESC
     }
+
+    // Restore terminal before any output
+    restoreTerminal(originalTermios)
 
     println("\n\nStopping...")
 
@@ -619,13 +704,12 @@ fun runLiveTranscription(
 
     // Post-processing
     if (transcription.getSegments().isNotEmpty()) {
+        transcription.showStats()
+
         val nClusters = transcription.clusterUnknowns()
         if (nClusters > 0) {
             println("\n\uD83D\uDCCA Clustered unknowns into $nClusters speaker(s)")
         }
-
-        transcription.showStats()
-        transcription.showTranscript()
 
         // Self-improvement flow:
         // 1. Confirm medium-confidence matches to expand boundaries
@@ -683,13 +767,12 @@ fun processFileTranscription(
 
     // Post-processing
     if (transcription.getSegments().isNotEmpty()) {
+        transcription.showStats()
+
         val nClusters = transcription.clusterUnknowns()
         if (nClusters > 0) {
             println("\n\uD83D\uDCCA Clustered unknowns into $nClusters speaker(s)")
         }
-
-        transcription.showStats()
-        transcription.showTranscript()
 
         // Self-improvement flow
         transcription.confirmOutliers()
