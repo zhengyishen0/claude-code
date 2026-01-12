@@ -1,8 +1,107 @@
 package com.voice.pipeline
 
-fun main() {
-    println("KMP Voice Pipeline - macOS")
-    println("==========================")
+// Default paths
+private const val MODEL_DIR = "/Users/zhengyishen/Codes/claude-code/voice/YouPu/Sources/YouPu/Models"
+private const val VAD_MODEL_PATH = "/Users/zhengyishen/Codes/claude-code/voice/swift-pipeline-test/Models/silero-vad-unified-256ms-v6.0.0.mlmodelc"
+private const val VOICE_LIBRARY_PATH = "/Users/zhengyishen/Codes/claude-code/voice/voice_library_kmp.json"
+
+fun main(args: Array<String>) {
+    when {
+        args.isEmpty() -> showHelp()
+        args[0] == "test" -> runTests()
+        args[0] == "live" -> runLive()
+        args[0] == "file" && args.size > 1 -> runFile(args[1])
+        else -> showHelp()
+    }
+}
+
+private fun showHelp() {
+    println("""
+KMP Voice Pipeline - macOS
+==========================
+
+Usage:
+  kmp-pipeline test          Run all tests
+  kmp-pipeline live          Start live transcription (press ESC to stop)
+  kmp-pipeline file <path>   Process audio file
+
+Examples:
+  ./build/bin/macos/debugExecutable/kmp-pipeline.kexe live
+  ./build/bin/macos/debugExecutable/kmp-pipeline.kexe file recording.wav
+    """.trimIndent())
+}
+
+private fun runLive() {
+    println("KMP Voice Pipeline - Live Mode")
+    println("==============================")
+
+    // Load vocabulary
+    val vocabPath = "$MODEL_DIR/vocab.json"
+    if (!TokenDecoder.loadVocabulary(vocabPath)) {
+        println("Warning: Could not load vocabulary from $vocabPath")
+    }
+
+    // Load mel filterbank
+    val filterbankPath = "/Users/zhengyishen/Codes/claude-code/voice/YouPu/Resources/mel_filterbank.bin"
+    AudioProcessing.loadMelFilterbank(filterbankPath)
+
+    // Load models
+    print("Loading models... ")
+    val startLoad = kotlin.system.getTimeMillis()
+
+    val vadModel = CoreMLModel.load(VAD_MODEL_PATH)
+    val asrModel = CoreMLModel.load("$MODEL_DIR/sensevoice-500-itn.mlmodelc")
+    val speakerModel = CoreMLModel.load("$MODEL_DIR/xvector.mlmodelc")
+
+    val loadTime = kotlin.system.getTimeMillis() - startLoad
+    println("${loadTime}ms")
+
+    if (vadModel == null || asrModel == null || speakerModel == null) {
+        println("ERROR: Failed to load one or more models")
+        return
+    }
+
+    // Run live transcription
+    runLiveTranscription(vadModel, asrModel, speakerModel, VOICE_LIBRARY_PATH)
+}
+
+private fun runFile(audioPath: String) {
+    println("KMP Voice Pipeline - File Mode")
+    println("==============================")
+
+    // Load vocabulary
+    val vocabPath = "$MODEL_DIR/vocab.json"
+    if (!TokenDecoder.loadVocabulary(vocabPath)) {
+        println("Warning: Could not load vocabulary from $vocabPath")
+    }
+
+    // Load mel filterbank
+    val filterbankPath = "/Users/zhengyishen/Codes/claude-code/voice/YouPu/Resources/mel_filterbank.bin"
+    AudioProcessing.loadMelFilterbank(filterbankPath)
+
+    // Load models
+    print("Loading models... ")
+    val startLoad = kotlin.system.getTimeMillis()
+
+    val vadModel = CoreMLModel.load(VAD_MODEL_PATH)
+    val asrModel = CoreMLModel.load("$MODEL_DIR/sensevoice-500-itn.mlmodelc")
+    val speakerModel = CoreMLModel.load("$MODEL_DIR/xvector.mlmodelc")
+
+    val loadTime = kotlin.system.getTimeMillis() - startLoad
+    println("${loadTime}ms")
+
+    if (vadModel == null || asrModel == null || speakerModel == null) {
+        println("ERROR: Failed to load one or more models")
+        return
+    }
+
+    // Process file
+    processFileTranscription(audioPath, vadModel, asrModel, speakerModel, VOICE_LIBRARY_PATH)
+}
+
+private fun runTests() {
+    println("KMP Voice Pipeline - Test Mode")
+    println("==============================")
 
     // Test pure Kotlin components
     testVectorOps()

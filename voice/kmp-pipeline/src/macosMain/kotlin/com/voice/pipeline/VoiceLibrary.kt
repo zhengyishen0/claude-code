@@ -1,8 +1,10 @@
 package com.voice.pipeline
 
+import kotlinx.cinterop.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import platform.Foundation.*
 
 /**
  * Voice library with two-phase speaker matching and auto-learning.
@@ -123,19 +125,45 @@ class VoiceLibrary(private val path: String) {
     /**
      * Load library from JSON file.
      */
+    @OptIn(ExperimentalForeignApi::class)
     private fun load() {
+        if (path.isEmpty()) return
+
         try {
-            // TODO: Implement file reading via platform-specific code
-            // For now, start with empty library
+            val data = NSData.dataWithContentsOfFile(path) ?: return
+            val jsonString = NSString.create(data, NSUTF8StringEncoding) as String? ?: return
+
+            val libraryData = json.decodeFromString<LibraryData>(jsonString)
+
+            for (speakerData in libraryData.speakers) {
+                val profile = SpeakerProfile(speakerData.name)
+
+                // Add core embeddings
+                for (emb in speakerData.core) {
+                    profile.addEmbedding(emb.toFloatArray())
+                }
+
+                // Add boundary embeddings
+                for (emb in speakerData.boundary) {
+                    profile.addEmbedding(emb.toFloatArray(), forceBoundary = true)
+                }
+
+                speakers[speakerData.name] = profile
+            }
+
+            println("Loaded voice library: ${speakers.size} speakers")
         } catch (e: Exception) {
-            println("Warning: Could not load voice library from $path: ${e.message}")
+            // File doesn't exist or invalid - start fresh
         }
     }
 
     /**
      * Save library to JSON file.
      */
+    @OptIn(ExperimentalForeignApi::class)
     fun save() {
+        if (path.isEmpty()) return
+
         try {
             val data = LibraryData(
                 speakers = speakers.map { (name, profile) ->
@@ -150,8 +178,9 @@ class VoiceLibrary(private val path: String) {
                 }
             )
             val jsonString = json.encodeToString(data)
-            // TODO: Write to file via platform-specific code
-            println("Voice library saved (${speakers.size} speakers)")
+
+            val nsString = jsonString as NSString
+            nsString.writeToFile(path, atomically = true, encoding = NSUTF8StringEncoding, error = null)
         } catch (e: Exception) {
             println("Warning: Could not save voice library to $path: ${e.message}")
         }
