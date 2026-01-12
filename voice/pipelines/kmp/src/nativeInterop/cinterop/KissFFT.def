@@ -3,7 +3,7 @@ headers = kiss_fft.h kiss_fftr.h
 
 headerFilter = kiss_fft.h kiss_fftr.h
 
-compilerOpts = -I/Users/zhengyishen/Codes/claude-code-voice-reorg/voice/pipelines/kmp/libs/kissfft
+compilerOpts = -I/Users/zhengyishen/Codes/claude-code/voice/pipelines/kmp/libs/kissfft
 
 staticLibraries = libKissFFT.a
-libraryPaths = /Users/zhengyishen/Codes/claude-code-voice-reorg/voice/pipelines/kmp/libs
+libraryPaths = /Users/zhengyishen/Codes/claude-code/voice/pipelines/kmp/libs
