@@ -84,15 +84,17 @@ chmod +x scripts/setup.sh
 
 ## Performance Comparison
 
-| Metric | CoreML | ONNX Runtime | Speedup |
-|--------|--------|--------------|---------|
-| Model Load | 265ms | 3,165ms | 12x |
-| VAD | 57ms | 121ms | 2x |
-| ASR | 1,846ms | 4,816ms | 2.6x |
-| Speaker | 11ms | 316ms | 29x |
-| **Total** | **1,915ms** | **5,254ms** | **2.7x** |
+Tested on M4 MacBook Air with 24s audio file:
 
-CoreML uses the Neural Engine for hardware acceleration. ONNX Runtime runs on CPU only (CoreML EP support planned).
+| Metric | CoreML | ONNX + CoreML EP | Notes |
+|--------|--------|------------------|-------|
+| Model Load | 174ms | 5,013ms | One-time startup cost |
+| VAD | 42ms | 78ms | 1.9x slower |
+| ASR | 924ms | 1,521ms | 1.6x slower |
+| Speaker | 8ms | 155ms | 19x slower |
+| **Total Inference** | **975ms** | **1,755ms** | **1.8x slower** |
+
+Both backends use Neural Engine acceleration via CoreML. The ONNX Runtime uses CoreML Execution Provider (EP) to delegate supported operations to the Neural Engine, while falling back to CPU for unsupported ops.
 
 ## Dependencies
 

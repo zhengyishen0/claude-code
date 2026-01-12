@@ -84,14 +84,14 @@ OnnxSession* onnx_create_session(const char* model_path) {
         return NULL;
     }
 
-    // Enable graph optimization (reduces load time on subsequent runs)
-    g_ort->SetSessionGraphOptimizationLevel(sess->options, ORT_ENABLE_ALL);
-
     // Set thread count for CPU fallback
     g_ort->SetIntraOpNumThreads(sess->options, 4);
     g_ort->SetInterOpNumThreads(sess->options, 1);
 
 #if USE_COREML_EP
+    // When using CoreML EP, we skip graph optimization level setting
+    // because CoreML EP does its own optimization and compiled nodes
+    // can't be serialized back. Basic optimization is still applied.
     // Enable CoreML Execution Provider for Neural Engine acceleration
     // Flags: 0 = use all CoreML features including ANE
     status = OrtSessionOptionsAppendExecutionProvider_CoreML(sess->options, 0);
@@ -101,7 +101,12 @@ OnnxSession* onnx_create_session(const char* model_path) {
                g_ort->GetErrorMessage(status));
         g_ort->ReleaseStatus(status);
         status = NULL;
+        // Fall back to full graph optimization on CPU
+        g_ort->SetSessionGraphOptimizationLevel(sess->options, ORT_ENABLE_ALL);
     }
+#else
+    // No CoreML EP - use full graph optimization
+    g_ort->SetSessionGraphOptimizationLevel(sess->options, ORT_ENABLE_ALL);
 #endif
 
     // Create session
