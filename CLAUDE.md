@@ -27,12 +27,10 @@ brew bundle install --upgrade  # Update all dependencies & lockfile
 **After EACH edit**:
 - Stage the change immediately: `git add <file>`
 
-**Creating a worktree with Claude**:
+**Creating a worktree**:
 ```bash
-worktree create feature-name
-# Creates worktree at ../claude-code-feature-name
-# Prints absolute path for use in current session
-# Grant permission when prompted to access the worktree
+git worktree add -b feature-name ../claude-code-feature-name
+# Use absolute paths to work in the worktree
 ```
 
 **Using the worktree**:
@@ -47,14 +45,14 @@ cd ../claude-code-feature-name && edit src/file.js
 
 **Cleanup after merge**:
 ```bash
-cd ../claude-code
 git merge feature-name
-worktree remove feature-name
+git worktree remove ../claude-code-feature-name
+git branch -d feature-name
 ```
 
 **MANDATORY**: Every Claude session MUST create a dedicated worktree before making ANY changes, no matter how small. No exceptions for typos, docs, or single-line fixes.
 
-**Automatic Triggering**: When on main branch and ANY edit is needed, immediately run `worktree create <feature-name>` before making changes.
+**Main Branch Protection**: A PreToolUse hook blocks Edit/Write/commit on main branch. You must create a worktree first.
 
 ## Tool Design Principles
 
@@ -98,7 +96,7 @@ chrome-cli execute 'document.querySelector("button").click()'
 
 <!-- TOOLS:AUTO-GENERATED -->
 
-**Root-level tools** (direct aliases): `browser`, `memory`, `world`, `worktree`
+**Root-level tools** (direct aliases): `browser`, `memory`, `world`
 
 **tools/** (remaining): `screenshot`, `proxy`
 
@@ -183,10 +181,5 @@ Run `screenshot` for full help.
 3. **AI-first workflow** - Downscaled version is default for analysis, full version available when needed
 4. **No decisions needed** - Simple interface with no flags or options
 5. **Project-local storage** - Screenshots saved to `./tmp/` by default
-
-### worktree
-Git worktree management with automatic Claude session launching.
-
-Run `worktree` for full help.
 
 <!-- TOOLS:END -->
