@@ -1,4 +1,4 @@
-package com.voice.pipeline
+package com.voice.core
 
 // Audio configuration
 const val SAMPLE_RATE = 16000

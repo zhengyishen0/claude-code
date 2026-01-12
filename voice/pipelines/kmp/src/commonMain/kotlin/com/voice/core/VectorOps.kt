@@ -1,4 +1,4 @@
-package com.voice.pipeline
+package com.voice.core
 
 import kotlin.math.sqrt
 

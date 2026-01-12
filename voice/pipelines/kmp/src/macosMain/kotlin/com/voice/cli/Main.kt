@@ -1,4 +1,7 @@
-package com.voice.pipeline
+package com.voice.cli
+
+import com.voice.core.*
+import com.voice.platform.*
 
 // Default paths (relative to voice/ project root)
 private const val MODEL_DIR = "/Users/zhengyishen/Codes/claude-code/voice/models/coreml"

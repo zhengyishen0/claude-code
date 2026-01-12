@@ -1,4 +1,6 @@
-package com.voice.pipeline
+package com.voice.platform
+
+import com.voice.core.*
 
 import kotlinx.cinterop.*
 import kotlinx.serialization.Serializable

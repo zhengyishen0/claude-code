@@ -1,4 +1,7 @@
-package com.voice.pipeline
+package com.voice.cli
+
+import com.voice.core.*
+import com.voice.platform.*
 
 import kotlinx.cinterop.*
 import platform.Foundation.*

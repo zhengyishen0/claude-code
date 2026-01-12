@@ -1,4 +1,4 @@
-package com.voice.pipeline
+package com.voice.platform
 
 import kotlinx.cinterop.*
 import platform.Foundation.*

@@ -1,4 +1,4 @@
-package com.voice.pipeline
+package com.voice.core
 
 /**
  * Low Frame Rate (LFR) transform for SenseVoice ASR.

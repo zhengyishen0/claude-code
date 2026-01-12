@@ -1,4 +1,4 @@
-package com.voice.pipeline
+package com.voice.core
 
 /**
  * CTC (Connectionist Temporal Classification) greedy decoder.
