@@ -3,7 +3,7 @@ package com.voice.pipeline
 // Default paths
 private const val MODEL_DIR = "/Users/zhengyishen/Codes/claude-code/voice/YouPu/Sources/YouPu/Models"
 private const val VAD_MODEL_PATH = "/Users/zhengyishen/Codes/claude-code/voice/swift-pipeline-test/Models/silero-vad-unified-256ms-v6.0.0.mlmodelc"
-private const val VOICE_LIBRARY_PATH = "/Users/zhengyishen/Codes/claude-code/voice/voice_library_kmp.json"
+private const val VOICE_LIBRARY_PATH = "/Users/zhengyishen/Codes/claude-code/voice/YouPu/Resources/voice_library_xvector.json"
 
 fun main(args: Array<String>) {
     when {

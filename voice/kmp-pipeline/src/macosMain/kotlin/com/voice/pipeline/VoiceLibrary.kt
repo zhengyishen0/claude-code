@@ -3,7 +3,7 @@ package com.voice.pipeline
 import kotlinx.cinterop.*
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.*
 import platform.Foundation.*
 
 /**
@@ -124,6 +124,9 @@ class VoiceLibrary(private val path: String) {
 
     /**
      * Load library from JSON file.
+     * Supports both formats:
+     * - New format: {"speakers": [{"name": "...", "core": [...]}]}
+     * - Legacy format: {"speakerName": {"core": [...], "boundary": [...]}}
      */
     @OptIn(ExperimentalForeignApi::class)
     private fun load() {
@@ -133,27 +136,66 @@ class VoiceLibrary(private val path: String) {
             val data = NSData.dataWithContentsOfFile(path) ?: return
             val jsonString = NSString.create(data, NSUTF8StringEncoding) as String? ?: return
 
-            val libraryData = json.decodeFromString<LibraryData>(jsonString)
+            // Try to parse as legacy format first (speaker name as key)
+            val jsonElement = json.parseToJsonElement(jsonString)
 
-            for (speakerData in libraryData.speakers) {
-                val profile = SpeakerProfile(speakerData.name)
+            if (jsonElement is kotlinx.serialization.json.JsonObject) {
+                // Check if it's new format with "speakers" key
+                if (jsonElement.containsKey("speakers")) {
+                    val libraryData = json.decodeFromString<LibraryData>(jsonString)
+                    for (speakerData in libraryData.speakers) {
+                        val profile = SpeakerProfile(speakerData.name)
+                        for (emb in speakerData.core) {
+                            profile.addEmbedding(emb.toFloatArray())
+                        }
+                        for (emb in speakerData.boundary) {
+                            profile.addEmbedding(emb.toFloatArray(), forceBoundary = true)
+                        }
+                        speakers[speakerData.name] = profile
+                    }
+                } else {
+                    // Legacy format: each key is a speaker name
+                    for ((name, value) in jsonElement) {
+                        if (value is kotlinx.serialization.json.JsonObject) {
+                            val profile = SpeakerProfile(name)
 
-                // Add core embeddings
-                for (emb in speakerData.core) {
-                    profile.addEmbedding(emb.toFloatArray())
+                            // Parse core embeddings
+                            val coreArray = value["core"]
+                            if (coreArray is kotlinx.serialization.json.JsonArray) {
+                                for (embJson in coreArray) {
+                                    if (embJson is kotlinx.serialization.json.JsonArray) {
+                                        val emb = embJson.map {
+                                            it.jsonPrimitive.float
+                                        }.toFloatArray()
+                                        profile.addEmbedding(emb)
+                                    }
+                                }
+                            }
+
+                            // Parse boundary embeddings
+                            val boundaryArray = value["boundary"]
+                            if (boundaryArray is kotlinx.serialization.json.JsonArray) {
+                                for (embJson in boundaryArray) {
+                                    if (embJson is kotlinx.serialization.json.JsonArray) {
+                                        val emb = embJson.map {
+                                            it.jsonPrimitive.float
+                                        }.toFloatArray()
+                                        profile.addEmbedding(emb, forceBoundary = true)
+                                    }
+                                }
+                            }
+
+                            speakers[name] = profile
+                        }
+                    }
                 }
-
-                // Add boundary embeddings
-                for (emb in speakerData.boundary) {
-                    profile.addEmbedding(emb.toFloatArray(), forceBoundary = true)
-                }
-
-                speakers[speakerData.name] = profile
             }
 
-            println("Loaded voice library: ${speakers.size} speakers")
+            if (speakers.isNotEmpty()) {
+                println("Loaded voice library: ${speakers.size} speakers: ${speakers.keys.toList()}")
+            }
         } catch (e: Exception) {
-            // File doesn't exist or invalid - start fresh
+            println("Warning: Could not load voice library: ${e.message}")
         }
     }
 

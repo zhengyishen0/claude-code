@@ -362,6 +362,61 @@ class LiveTranscription(
     }
 
     /**
+     * Confirm outliers (medium-confidence matches) to expand boundary layer
+     * These are segments where we recognized the speaker but with less certainty
+     */
+    fun confirmOutliers() {
+        // Find medium-confidence matches (recognized but not high confidence)
+        val outliers = segments.filter {
+            it.isKnown && it.confidence == "medium" && it.embedding != null && !it.isConflict
+        }.groupBy { it.speakerName }
+
+        if (outliers.isEmpty()) {
+            return
+        }
+
+        println()
+        println("-".repeat(60))
+        println("CONFIRM BOUNDARY EXPANSIONS")
+        println("-".repeat(60))
+        println("These segments were recognized with medium confidence.")
+        println("Confirm to expand the speaker's voice boundary.")
+        println()
+
+        var confirmed = 0
+        for ((speaker, segs) in outliers) {
+            if (speaker == null) continue
+
+            val sampleTexts = segs.take(2).joinToString(" | ") {
+                it.text.take(40) + if (it.text.length > 40) "..." else ""
+            }
+
+            println("[$speaker?] (${segs.size} segments):")
+            println("  Sample: $sampleTexts")
+            print("  Confirm as $speaker? [Y/n]: ")
+
+            val input = readLine()?.trim()?.lowercase()
+
+            if (input.isNullOrEmpty() || input == "y" || input == "yes") {
+                // Add embeddings to boundary layer
+                val embeddings = segs.mapNotNull { it.embedding }
+                for (emb in embeddings) {
+                    voiceLibrary.addEmbedding(speaker, emb, forceBoundary = true)
+                }
+                confirmed += embeddings.size
+                println("  -> Added ${embeddings.size} embeddings to boundary")
+            } else {
+                println("  -> Skipped")
+            }
+            println()
+        }
+
+        if (confirmed > 0) {
+            println("Added $confirmed embeddings to speaker boundaries.")
+        }
+    }
+
+    /**
      * Prompt user to name unknown speaker clusters
      */
     fun promptNaming() {
@@ -370,18 +425,18 @@ class LiveTranscription(
             .groupBy { it.clusterLabel }
 
         if (clusters.isEmpty()) {
-            println("\nNo unknown speakers to name.")
             return
         }
 
         println()
         println("-".repeat(60))
-        println("NAME UNKNOWN SPEAKERS")
+        println("NAME NEW SPEAKERS")
         println("-".repeat(60))
-        println("Enter a name to save, or press Enter to skip.")
+        println("These are new voices not in your library.")
+        println("Enter a name to remember them, or press Enter to skip.")
         println()
 
-        for ((label, segs) in clusters) {
+        for ((label, segs) in clusters.entries.sortedByDescending { it.value.size }) {
             val sampleTexts = segs.take(3).joinToString(" | ") {
                 it.text.take(30) + if (it.text.length > 30) "..." else ""
             }
@@ -398,9 +453,9 @@ class LiveTranscription(
                     // Use first embedding to enroll
                     voiceLibrary.enrollSpeaker(input, embeddings.first())
 
-                    // Add remaining embeddings
+                    // Add remaining embeddings to boundary
                     for (emb in embeddings.drop(1)) {
-                        voiceLibrary.autoLearn(input, emb, 1.0f)
+                        voiceLibrary.addEmbedding(input, emb, forceBoundary = false)
                     }
 
                     // Update cluster labels
@@ -408,18 +463,22 @@ class LiveTranscription(
                         seg.clusterLabel = input
                     }
 
-                    println("  -> Enrolled as '$input' with ${embeddings.size} embeddings")
+                    println("  -> Enrolled '$input' with ${embeddings.size} embeddings")
                 }
             } else {
                 println("  -> Skipped")
             }
             println()
         }
+    }
 
-        // Save voice library
+    /**
+     * Save voice library after all confirmations
+     */
+    fun saveLibrary() {
         if (voiceLibraryPath.isNotEmpty()) {
             voiceLibrary.save()
-            println("Voice library saved.")
+            println("\nVoice library saved.")
         }
     }
 
@@ -513,7 +572,16 @@ fun runLiveTranscription(
 
         transcription.showStats()
         transcription.showTranscript()
+
+        // Self-improvement flow:
+        // 1. Confirm medium-confidence matches to expand boundaries
+        transcription.confirmOutliers()
+
+        // 2. Name new speakers from clustered unknowns
         transcription.promptNaming()
+
+        // 3. Save voice library
+        transcription.saveLibrary()
     } else {
         println("\nNo speech detected.")
     }
@@ -568,7 +636,11 @@ fun processFileTranscription(
 
         transcription.showStats()
         transcription.showTranscript()
+
+        // Self-improvement flow
+        transcription.confirmOutliers()
         transcription.promptNaming()
+        transcription.saveLibrary()
     }
 
     return transcription.getSegments()
