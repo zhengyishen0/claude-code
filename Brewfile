@@ -17,7 +17,7 @@ brew "git"               # Version control (usually pre-installed on macOS)
 brew "node@18"           # Node.js 18.x for tool scripts (CDP browser automation)
 
 # Browser for automation (separate from user's Chrome to avoid conflicts)
-# Note: Chromium requires manual Gatekeeper approval on first run
+# After install, run: xattr -cr /Applications/Chromium.app
 cask "chromium"          # Open-source browser for CDP automation
 
 # Claude CLI (cask, not formula)
