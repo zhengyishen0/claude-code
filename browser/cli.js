@@ -991,7 +991,7 @@ async function cmdProfile(args) {
       console.error('Commands:');
       console.error('  (no command)        List all profiles');
       console.error('  import              Scan Chrome.app for available accounts');
-      console.error('  import URL          Import credentials from Chrome.app for service');
+      console.error('  import <filter>     Import from Chrome.app (filter by service/domain/URL)');
       console.error('  update NAME [opts]  Update a profile');
       console.error('    --enable          Enable the profile');
       console.error('    --disable         Disable the profile');
@@ -1231,7 +1231,60 @@ function detectChromeAccounts(profilePath, targetService) {
   }
 }
 
-async function cmdProfileImport(url) {
+// Resolve filter to service name (accepts URL, domain, or service name)
+function resolveServiceFilter(filter) {
+  // Load domain mappings
+  const mappingsFile = path.join(SCRIPT_DIR, 'domain-mappings.json');
+  let mappings = {};
+  if (fs.existsSync(mappingsFile)) {
+    mappings = JSON.parse(fs.readFileSync(mappingsFile, 'utf8'));
+  }
+
+  // Get all known services
+  const allServices = new Set(Object.values(mappings));
+
+  // 1. Try as URL first
+  if (filter.startsWith('http://') || filter.startsWith('https://')) {
+    try {
+      const domain = new URL(filter).hostname;
+      if (mappings[domain]) return mappings[domain];
+      // Fallback: strip www and TLD
+      return domain
+        .replace(/^www\./, '')
+        .replace(/\.(com|co\.uk|de|ca|fr|jp|org|net|io|app|dev)$/, '')
+        .replace(/\./g, '-');
+    } catch {
+      // Not a valid URL
+    }
+  }
+
+  // 2. Try as domain (contains a dot)
+  if (filter.includes('.')) {
+    const domain = filter.replace(/^www\./, '');
+    if (mappings[domain]) return mappings[domain];
+    if (mappings[`www.${domain}`]) return mappings[`www.${domain}`];
+    // Strip TLD
+    return domain
+      .replace(/\.(com|co\.uk|de|ca|fr|jp|org|net|io|app|dev)$/, '')
+      .replace(/\./g, '-');
+  }
+
+  // 3. Try as service name (exact match)
+  const lowerFilter = filter.toLowerCase();
+  if (allServices.has(lowerFilter)) return lowerFilter;
+
+  // 4. Fuzzy match service names
+  for (const service of allServices) {
+    if (service.includes(lowerFilter) || lowerFilter.includes(service)) {
+      return service;
+    }
+  }
+
+  // 5. Return as-is (let the caller handle no matches)
+  return lowerFilter;
+}
+
+async function cmdProfileImport(filter) {
   // Check if Chrome.app exists
   if (!fs.existsSync(path.join(CHROME_APP_DIR, 'Default'))) {
     console.error('\nERROR: Chrome.app Default profile not found\n');
@@ -1240,8 +1293,8 @@ async function cmdProfileImport(url) {
     process.exit(1);
   }
 
-  // Mode 1: Scan all (no URL provided)
-  if (!url) {
+  // Mode 1: Scan all (no filter provided)
+  if (!filter) {
     console.log('\nScanning Chrome.app for available accounts...\n');
 
     const chromeProfiles = getChromeProfiles();
@@ -1292,17 +1345,18 @@ async function cmdProfileImport(url) {
     }
 
     console.log('Next steps:');
-    console.log(`  ${TOOL_NAME} profile import URL    # import specific service`);
+    console.log(`  ${TOOL_NAME} profile import <filter>    # import specific service`);
     console.log('');
-    console.log('Examples:');
-    console.log(`  ${TOOL_NAME} profile import https://github.com`);
-    console.log(`  ${TOOL_NAME} profile import https://mail.google.com`);
+    console.log('Filter can be service name, domain, or URL:');
+    console.log(`  ${TOOL_NAME} profile import github`);
+    console.log(`  ${TOOL_NAME} profile import gmail`);
+    console.log(`  ${TOOL_NAME} profile import amazon.com`);
     console.log('');
     return;
   }
 
   // Mode 2: Import specific service
-  const service = getServiceName(url);
+  const service = resolveServiceFilter(filter);
   console.log(`\nScanning Chrome.app profiles for <${service}> accounts...\n`);
 
   const chromeProfiles = getChromeProfiles();
@@ -1549,7 +1603,7 @@ COMMANDS:
   Profiles:
     profile               List all profiles
     profile import        Scan Chrome.app for accounts
-    profile import URL    Import credentials from Chrome.app
+    profile import FILTER Import from Chrome.app (service/domain/URL)
     profile update NAME   Update profile (--enable, --disable, --rename)
 
   Options:
