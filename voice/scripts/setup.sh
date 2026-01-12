@@ -10,6 +10,35 @@ echo "=== Voice Pipeline Setup ==="
 echo "Root: $VOICE_DIR"
 echo ""
 
+# 0. Check for Java 17+ (required for KMP/Gradle)
+echo "[Checking Java]"
+if [ -n "$JAVA_HOME" ] && [ -x "$JAVA_HOME/bin/java" ]; then
+    JAVA_VERSION=$("$JAVA_HOME/bin/java" -version 2>&1 | head -1 | sed -E 's/.*"([0-9]+).*/\1/')
+    if [ "$JAVA_VERSION" -ge 17 ] 2>/dev/null; then
+        echo "  [OK] Java $JAVA_VERSION found (JAVA_HOME=$JAVA_HOME)"
+    else
+        echo "  [!] Java $JAVA_VERSION found, but Java 17+ required for KMP"
+        echo "      Install: brew install openjdk@17"
+        echo "      Then: export JAVA_HOME=\"/opt/homebrew/opt/openjdk@17\""
+    fi
+elif [ -d "/opt/homebrew/opt/openjdk@17" ]; then
+    echo "  [OK] Java 17 found at /opt/homebrew/opt/openjdk@17"
+    echo "      Set: export JAVA_HOME=\"/opt/homebrew/opt/openjdk@17\""
+elif command -v java &> /dev/null; then
+    JAVA_VERSION=$(java -version 2>&1 | head -1 | sed -E 's/.*"([0-9]+).*/\1/')
+    if [ "$JAVA_VERSION" -ge 17 ] 2>/dev/null; then
+        echo "  [OK] Java $JAVA_VERSION found"
+    else
+        echo "  [!] Java found but version $JAVA_VERSION < 17"
+        echo "      Install: brew install openjdk@17"
+    fi
+else
+    echo "  [!] Java not found (required for KMP pipeline)"
+    echo "      Install: brew install openjdk@17"
+    echo "      Then: export JAVA_HOME=\"/opt/homebrew/opt/openjdk@17\""
+fi
+echo ""
+
 # Create directories
 mkdir -p "$VOICE_DIR/models/onnx"
 mkdir -p "$VOICE_DIR/models/coreml"

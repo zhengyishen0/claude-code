@@ -262,7 +262,7 @@ Document any known issues discovered during testing:
 | ONNX ASR model outputs wrong shape (512 vs 25055) | KMP ONNX mode | Open |
 | ONNX ASR/Speaker models not converted (only VAD) | ONNX models | Need conversion |
 | mel_filterbank.bin is gitignored, must be copied manually | All pipelines | Manual step |
-| Java required for KMP build | KMP pipeline | Dependency |
+| Java 17+ required for KMP build | KMP pipeline | Checked in setup.sh |
 
 ---
 
