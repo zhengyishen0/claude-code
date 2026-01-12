@@ -1,46 +1,41 @@
-# Claude Code Project
+# Claude Code
 
-Local development environment with browser automation and AI tooling.
-
-## Documentation
-
-- **[Progressive Help Design](progressive-help-design.md)** - Design decisions for the progressive help system (metadata-driven tool documentation)
-- **[Chrome Profile Security](PROFILE-STRATEGY.md)** - Best practices for Chrome profile management and cloud deployment
-
-## Quick Start
-
-```bash
-# First-time setup
-claude-tools init
-
-# Update tool documentation
-claude-tools sync
-```
-
-## Project Structure
-
-```
-claude-code/
-├── claude-tools/          # CLI utilities
-│   ├── chrome/           # Browser automation
-│   ├── documentation/    # External docs access
-│   ├── environment/      # Event log for multi-agent
-│   ├── memory/           # Cross-session knowledge
-│   ├── screenshot/       # Window capture
-│   └── worktree/         # Git worktree management
-├── claude-manager/       # Event processing daemon
-└── CLAUDE.md            # Project instructions for AI
-```
+Local development tools for AI-assisted workflows.
 
 ## Tools
 
-Run `claude-tools <tool>` for help on any tool:
+Run any tool without args for help:
 
-- **chrome** - Browser automation with CDP
-- **documentation** - Get library docs, CLI examples, API specs
-- **environment** - Event log for persistent collaboration
-- **memory** - Search and consult previous sessions
-- **screenshot** - Background window capture
-- **worktree** - Git worktree management
+| Tool | Description |
+|------|-------------|
+| `browser` | Browser automation with CDP |
+| `memory` | Cross-session knowledge sharing |
+| `world` | Agent coordination log |
+| `worktree` | Git worktree management |
+| `screenshot` | Background window capture |
+| `proxy` | Auto-enable proxy when VPN connected |
 
-See [claude-tools/README.md](claude-tools/README.md) for details.
+## Structure
+
+```
+claude-code/
+├── browser/       # Browser automation (CDP)
+├── memory/        # Cross-session search & recall
+├── world/         # Agent coordination (world.log)
+├── worktree/      # Git worktree management
+├── tools/         # Additional tools (screenshot, proxy)
+├── voice/         # Voice pipeline (transcription, speaker ID)
+├── docs/          # Design documents
+├── CLAUDE.md      # Instructions for AI
+└── TODO.md        # Future plans
+```
+
+## Setup
+
+```bash
+# Install dependencies
+brew bundle install
+
+# Reload shell for aliases
+source ~/.zshrc
+```
