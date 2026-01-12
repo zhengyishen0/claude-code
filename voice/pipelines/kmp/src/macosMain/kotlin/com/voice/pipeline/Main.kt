@@ -1,11 +1,11 @@
 package com.voice.pipeline
 
 // Default paths (relative to voice/ project root)
-private const val MODEL_DIR = "/Users/zhengyishen/Codes/claude-code/voice/models/coreml"
-private const val ASSETS_DIR = "/Users/zhengyishen/Codes/claude-code/voice/models/assets"
-private const val VAD_MODEL_PATH = "/Users/zhengyishen/Codes/claude-code/voice/models/coreml/silero-vad.mlmodelc"
-private const val ONNX_MODEL_DIR = "/Users/zhengyishen/Codes/claude-code/voice/models/onnx"
-private const val VOICE_LIBRARY_PATH = "/Users/zhengyishen/Codes/claude-code/voice/data/voice_library_xvector.json"
+private const val MODEL_DIR = "/Users/zhengyishen/Codes/claude-code-voice-reorg/voice/models/coreml"
+private const val ASSETS_DIR = "/Users/zhengyishen/Codes/claude-code-voice-reorg/voice/models/assets"
+private const val VAD_MODEL_PATH = "/Users/zhengyishen/Codes/claude-code-voice-reorg/voice/models/coreml/silero-vad.mlmodelc"
+private const val ONNX_MODEL_DIR = "/Users/zhengyishen/Codes/claude-code-voice-reorg/voice/models/onnx"
+private const val VOICE_LIBRARY_PATH = "/Users/zhengyishen/Codes/claude-code-voice-reorg/voice/data/voice_library_xvector.json"
 
 // Backend selection
 enum class Backend { COREML, ONNX }
@@ -184,7 +184,7 @@ private fun runBenchmark(audioPath: String?) {
     AudioProcessing.loadMelFilterbank(filterbankPath)
 
     // Read test audio
-    val testAudioPath = audioPath ?: "/Users/zhengyishen/Codes/claude-code/voice/recordings/recording_20260112_002226.wav"
+    val testAudioPath = audioPath ?: "/Users/zhengyishen/Codes/claude-code-voice-reorg/voice/data/recordings/recording_20260112_002226.wav"
     print("Reading audio file: $testAudioPath... ")
     val audio = AudioFileReader.readFile(testAudioPath)
     if (audio == null) {
@@ -323,7 +323,7 @@ private fun testFullPipeline() {
 
     // Using MODEL_DIR constant
     
-    val testAudioPath = "/Users/zhengyishen/Codes/claude-code/voice/data/recordings/test_recording.wav"
+    val testAudioPath = "/Users/zhengyishen/Codes/claude-code-voice-reorg/voice/data/recordings/recording_20260112_002226.wav"
 
     // Load vocabulary for text decoding
     print("  Loading vocabulary... ")
@@ -356,7 +356,7 @@ private fun testFullPipeline() {
     if (audio == null) {
         println("FAILED - trying alternative file")
         // Try alternative
-        val altAudio = AudioFileReader.readFile("/Users/zhengyishen/Codes/claude-code/voice/data/recordings/sample.wav")
+        val altAudio = AudioFileReader.readFile("/Users/zhengyishen/Codes/claude-code-voice-reorg/voice/data/recordings/recording_20260111_235901.wav")
         if (altAudio == null) {
             println("  ERROR: No test audio files available")
             return
