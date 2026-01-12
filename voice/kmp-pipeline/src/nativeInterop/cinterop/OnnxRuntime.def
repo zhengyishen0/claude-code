@@ -1,9 +1,0 @@
-headers = onnx_wrapper.h
-headerFilter = onnx_wrapper.h
-
-compilerOpts = -I/Users/zhengyishen/Codes/claude-code/voice/claude-code-kmp-voice-pipeline/voice/kmp-pipeline/libs/onnx_wrapper
-
-staticLibraries = libOnnxWrapper.a
-libraryPaths = /Users/zhengyishen/Codes/claude-code/voice/claude-code-kmp-voice-pipeline/voice/kmp-pipeline/libs/onnx_wrapper
-
-linkerOpts = -L/Users/zhengyishen/Codes/claude-code/voice/claude-code-kmp-voice-pipeline/voice/kmp-pipeline/libs/onnxruntime-osx-arm64-1.17.0/lib -lonnxruntime -rpath /Users/zhengyishen/Codes/claude-code/voice/claude-code-kmp-voice-pipeline/voice/kmp-pipeline/libs/onnxruntime-osx-arm64-1.17.0/lib
