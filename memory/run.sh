@@ -59,7 +59,7 @@ WORKFLOW
      $ memory search "auth" --and "jwt" --recall "How was JWT implemented?"
 
 TECHNICAL NOTES
-  - Index: claude-tools/memory/data/memory-index.tsv
+  - Index: memory/data/memory-index.tsv
   - Sessions: ~/.claude/projects/ (read-only, managed by Claude Code)
   - First search builds index (~12s), subsequent ~0.5s
 
@@ -85,7 +85,7 @@ case "${1:-}" in
 
   *)
     echo "Unknown command: $1" >&2
-    echo "Run 'claude-tools memory' for usage" >&2
+    echo "Run 'memory' for usage" >&2
     exit 1
     ;;
 esac

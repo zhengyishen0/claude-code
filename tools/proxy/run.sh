@@ -128,19 +128,19 @@ proxy_init() {
             ;;
         *)
             echo "Error: Unknown shell type: $shell_type"
-            echo "Use: claude-tools proxy init [zsh|bash]"
+            echo "Use: proxy init [zsh|bash]"
             exit 1
             ;;
     esac
 
     # Generate init snippet
     local init_snippet="# Claude Code Proxy Auto-Enable
-if [ -f \"$REPO_ROOT/claude-tools/proxy/init.sh\" ]; then
-    source \"$REPO_ROOT/claude-tools/proxy/init.sh\"
+if [ -f \"$REPO_ROOT/tools/proxy/init.sh\" ]; then
+    source \"$REPO_ROOT/tools/proxy/init.sh\"
 fi"
 
     # Check if already added
-    if grep -q "claude-tools/proxy/init.sh" "$rc_file" 2>/dev/null; then
+    if grep -q "tools/proxy/init.sh" "$rc_file" 2>/dev/null; then
         echo "✓ Proxy auto-enable already configured in $rc_file"
     else
         echo ""
@@ -166,13 +166,13 @@ proxy_config() {
                 cat "$CONFIG_FILE"
             else
                 echo "No config file found at: $CONFIG_FILE"
-                echo "Run 'claude-tools proxy config create' to create one"
+                echo "Run 'proxy config create' to create one"
             fi
             ;;
         create)
             if [ -f "$CONFIG_FILE" ]; then
                 echo "Config file already exists at: $CONFIG_FILE"
-                echo "Use 'claude-tools proxy config edit' to modify it"
+                echo "Use 'proxy config edit' to modify it"
             else
                 cat > "$CONFIG_FILE" <<EOF
 # Proxy configuration for Claude Code
@@ -186,11 +186,11 @@ PROXY_PORT="33210"
 ANTHROPIC_PROXY="https://claude-proxy.zhengyishen1.workers.dev"
 EOF
                 echo "Created config file at: $CONFIG_FILE"
-                echo "Edit with: claude-tools proxy config edit"
+                echo "Edit with: proxy config edit"
             fi
             ;;
         *)
-            echo "Usage: claude-tools proxy config [show|edit|create]"
+            echo "Usage: proxy config [show|edit|create]"
             exit 1
             ;;
     esac
@@ -205,7 +205,7 @@ Proxy Auto-Enable Tool for Claude Code
 Automatically enable HTTP/HTTPS proxy when VPN is connected.
 
 USAGE:
-  claude-tools proxy <command> [args...]
+  proxy <command> [args...]
 
 COMMANDS:
   check         Check if proxy is reachable
@@ -236,24 +236,24 @@ EOF
 
 EXAMPLES:
   # Check if proxy is reachable
-  claude-tools proxy check
+  proxy check
 
   # Show current status
-  claude-tools proxy status
+  proxy status
 
   # Enable proxy manually
-  claude-tools proxy enable
+  proxy enable
 
   # Setup auto-enable on shell startup
-  claude-tools proxy init
+  proxy init
 
   # Create/edit configuration
-  claude-tools proxy config create
-  claude-tools proxy config edit
+  proxy config create
+  proxy config edit
 
 AUTOMATIC SETUP:
-  1. Create config: claude-tools proxy config create
-  2. Setup auto-enable: claude-tools proxy init
+  1. Create config: proxy config create
+  2. Setup auto-enable: proxy init
   3. Add the suggested line to your ~/.zshrc or ~/.bashrc
   4. Restart terminal - proxy will auto-enable when VPN is connected!
 
@@ -294,7 +294,7 @@ main() {
             ;;
         *)
             echo "Unknown command: $command"
-            echo "Run 'claude-tools proxy' for usage"
+            echo "Run 'proxy' for usage"
             exit 1
             ;;
     esac

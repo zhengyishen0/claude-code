@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# claude-tools/world/run.sh
+# world/run.sh
 # World log tool - single source of truth for agent coordination
 
 set -euo pipefail
@@ -22,7 +22,7 @@ USAGE:
 
 EXAMPLES:
     # Log events
-    world event chrome "airbnb.com" "clicked Search, 24 results"
+    world event browser "airbnb.com" "clicked Search, 24 results"
     world event bash "git-status" "clean working directory"
     world event file "src/config.json" "modified"
     world event user "abc123" "captcha solved: boats"
@@ -57,7 +57,7 @@ FORMAT:
     Agents:  [timestamp][agent:status][session-id] output | need: criteria
 
 EVENT SOURCES:
-    chrome, bash, file, api, system, user
+    browser, bash, file, api, system, user
 
 AGENT STATUSES:
     start, active, finish, verified, retry, failed

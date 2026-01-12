@@ -1,25 +1,25 @@
 #!/bin/bash
 # Universal tool entry point
-# Usage: claude-tools <tool> [command] [args...]
+# Usage: <tool> [command] [args...]
 
 TOOLS_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # Show help
 show_help() {
-  echo "claude-tools - Universal tool entry point"
+  echo "- Universal tool entry point"
   echo ""
   echo "Usage:"
-  echo "  claude-tools <tool> [command] [args...]"
+  echo "  <tool> [command] [args...]"
   echo ""
   echo "Commands:"
   echo "  init                        Check and install all prerequisites"
   echo "  sync                        Update CLAUDE.md/AGENT.md tools section"
   echo "  diagnose                    Validate tool structure and requirements"
-  echo "  setup                       Add claude-tools alias to shell"
+  echo "  setup                       Add alias to shell"
   echo "  (no args)                   Show this help message"
   echo ""
   echo "New Tool Structure:"
-  echo "  claude-tools/<name>/"
+  echo "  tools/<name>/"
   echo "  ├── run.sh              Required - entry point (executable)"
   echo "  ├── commands/           Recommended"
   echo "  │   ├── help.sh         Recommended - called with no args"
@@ -38,7 +38,7 @@ show_help() {
 
 # Diagnose tools - validate structure and requirements
 diagnose() {
-  echo "claude-tools diagnostic report"
+  echo "diagnostic report"
   echo "=============================="
   echo ""
   echo "Tools:"
@@ -103,7 +103,7 @@ sync_md() {
   # Generate tools section
   local content=""
   content+="$start_marker\n\n"
-  content+="Universal entry: \`claude-tools <tool> [command] [args...]\`\n\n"
+  content+="Universal entry: \`<tool> [command] [args...]\`\n\n"
 
   for dir in "$TOOLS_DIR"/*/; do
     [[ ! -d "$dir" ]] && continue
@@ -148,7 +148,7 @@ sync_md() {
 
     content+="### $name\n"
     content+="$description\n\n"
-    content+="Run \`claude-tools $name\` for full help.\n\n"
+    content+="Run \`$name\` for full help.\n\n"
 
     if [[ -n "$commands" ]]; then
       content+="**Commands:** $commands\n\n"
@@ -230,7 +230,7 @@ init_project() {
       if [ -f "$TOOLS_DIR/Brewfile.lock.json" ]; then
         echo ""
         echo "💡 Brewfile.lock.json was updated. Consider committing it:"
-        echo "   git add claude-tools/Brewfile.lock.json"
+        echo "   git add tools/Brewfile.lock.json"
       fi
     else
       echo ""
@@ -290,23 +290,23 @@ setup_alias() {
     echo "⚠ Unknown shell. Supported shells: bash, zsh"
     echo ""
     echo "Add this alias manually to your shell config:"
-    echo "  alias claude-tools='$script_path'"
+    echo "  alias tools='$script_path'"
     return 1
   fi
 
   # Check if alias already exists
-  if grep -q "alias claude-tools=" "$shell_rc" 2>/dev/null; then
-    echo "✓ claude-tools alias already exists in $shell_rc"
+  if grep -q "alias tools=" "$shell_rc" 2>/dev/null; then
+    echo "✓ alias already exists in $shell_rc"
     echo ""
     echo "Current alias:"
-    grep "alias claude-tools=" "$shell_rc"
+    grep "alias tools=" "$shell_rc"
     return 0
   fi
 
   # Add alias
   echo "" >> "$shell_rc"
-  echo "# claude-tools alias - auto-generated" >> "$shell_rc"
-  echo "alias claude-tools='$script_path'" >> "$shell_rc"
+  echo "# alias - auto-generated" >> "$shell_rc"
+  echo "alias tools='$script_path'" >> "$shell_rc"
 
   echo "✓ Added alias to $shell_rc"
   echo ""
@@ -348,7 +348,7 @@ case "$1" in
       "$TOOLS_DIR/$TOOL/run.sh" "$@"
     else
       echo "Unknown tool: $TOOL" >&2
-      echo "Run 'claude-tools' for usage" >&2
+      echo "Run 'tools' for usage" >&2
       exit 1
     fi
     ;;

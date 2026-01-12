@@ -2,28 +2,11 @@
 
 ## Project Setup
 
-**First-time setup**: Run `claude-tools init` to install all prerequisites via Brewfile.
-
-```bash
-claude-tools init
-```
-
-This command:
-- Checks if Homebrew is installed
-- Runs `brew bundle install` to install missing dependencies
-- Shows installed versions of all tools
-- Generates/updates `Brewfile.lock.json` for reproducibility
-
-**Dependencies managed via Brewfile:**
+**Dependencies** are managed via Homebrew Brewfile:
 - `git` - Version control
 - `node@18` - Node.js 18.x runtime
 - `chrome-cli` - Browser automation CLI
 - `claude` - Claude Code CLI tool
-
-**Version locking:**
-- `Brewfile` defines dependencies with version constraints (e.g., `node@18`)
-- `Brewfile.lock.json` pins exact versions for reproducibility
-- Commit both files to ensure consistent environments
 
 **Manual Brewfile operations:**
 ```bash
@@ -31,8 +14,6 @@ brew bundle check              # Check if all dependencies installed
 brew bundle install            # Install missing dependencies
 brew bundle install --upgrade  # Update all dependencies & lockfile
 ```
-
-**After running init**, use `claude-tools sync` to update CLAUDE.md with tool documentation.
 
 ## Development Workflow
 
@@ -48,7 +29,7 @@ brew bundle install --upgrade  # Update all dependencies & lockfile
 
 **Creating a worktree with Claude**:
 ```bash
-claude-tools worktree create feature-name
+worktree create feature-name
 # Creates worktree at ../claude-code-feature-name
 # Prints absolute path for use in current session
 # Grant permission when prompted to access the worktree
@@ -68,50 +49,26 @@ cd ../claude-code-feature-name && edit src/file.js
 ```bash
 cd ../claude-code
 git merge feature-name
-claude-tools worktree remove feature-name
+worktree remove feature-name
 ```
 
 **MANDATORY**: Every Claude session MUST create a dedicated worktree before making ANY changes, no matter how small. No exceptions for typos, docs, or single-line fixes.
 
-**Automatic Triggering**: When on main branch and ANY edit is needed, immediately run `claude-tools worktree create <feature-name>` before making changes.
+**Automatic Triggering**: When on main branch and ANY edit is needed, immediately run `worktree create <feature-name>` before making changes.
 
 ## Tool Design Principles
 
 When creating tools:
-1. **No args = help** - Running a tool without arguments MUST show help. No `--help` or `help` subcommand needed.
-2. **README-based docs** - Full documentation in README.md (used by `claude-tools sync`)
+1. **No args = help** - Running a tool without arguments MUST show help
+2. **README-based docs** - Full documentation in README.md
 3. **Standard entry point** - Each tool uses `run.sh`, name derived from folder
 4. **Add to Brewfile** - If tool needs system dependencies, add to Brewfile
 
 **Help convention:**
 ```bash
 # Correct - no args shows help
-claude-tools chrome           # Shows help
-claude-tools memory           # Shows help
-
-# No need for these (removed)
-claude-tools chrome --help    # Not supported
-claude-tools chrome help      # Not supported
-```
-
-**README Structure** (required for sync):
-```markdown
-# Tool Name
-
-Brief one-line description
-
-## Commands
-
-### command1
-Description
-
-### command2
-Description
-
-## Key Principles (optional)
-
-1. Principle one
-2. Principle two
+browser           # Shows help
+memory            # Shows help
 ```
 
 **Adding dependencies:**
@@ -128,12 +85,12 @@ Avoid wrapping tool commands in bash variables - use direct tool entry points in
 
 **Bad** (triggers permission prompts):
 ```bash
-JS_CODE=$(cat claude-tools/chrome/js/click-element.js) && chrome-cli execute '...'
+JS_CODE=$(cat browser/js/click-element.js) && chrome-cli execute '...'
 ```
 
 **Good** (pre-approved):
 ```bash
-claude-tools chrome click "[Homes]"
+browser click "[Homes]"
 chrome-cli execute 'document.querySelector("button").click()'
 ```
 
@@ -141,12 +98,14 @@ chrome-cli execute 'document.querySelector("button").click()'
 
 <!-- TOOLS:AUTO-GENERATED -->
 
-Universal entry: `claude-tools <tool> [command] [args...]`
+**Root-level tools** (direct aliases): `browser`, `memory`, `world`, `worktree`
 
-### chrome
+**tools/** (remaining): `screenshot`, `proxy`
+
+### browser
 Browser automation with React/SPA support + Vision-based automation (CDP)
 
-Run `claude-tools chrome` for full help.
+Run `browser` for full help.
 
 **Commands:** snapshot, inspect, open, wait, click, input, hover, drag, sendkey, tabs, execute, screenshot, profile
 
@@ -157,24 +116,10 @@ Run `claude-tools chrome` for full help.
 4. **Auto-feedback shows results** - All interaction commands automatically show what changed
 5. **Trust the tool** - Commands wait for stability before showing results
 
-### documentation
-Get external documentation for libraries, commands, and APIs
-
-Run `claude-tools documentation` for full help.
-
-**Commands:** library, command, api, config
-
-**Key Principles:**
-1. **Unified interface** - One tool for all external documentation needs
-2. **Source-appropriate** - Uses the best service for each type (Context7 for libraries, cheat.sh for commands, APIs.guru for REST APIs)
-3. **AI-optimized** - Token-efficient responses suitable for context windows
-4. **No auth needed** - Only Context7 (library docs) requires API key, command and api work without authentication
-5. **Topic filtering** - Get only relevant snippets, not entire documentation dumps
-
 ### world
 Single source of truth for agent coordination
 
-Run `claude-tools world` for full help.
+Run `world` for full help.
 
 **Commands:** event, agent, check, query, respond, supervisor
 
@@ -189,14 +134,14 @@ Run `claude-tools world` for full help.
 ### memory
 Cross-session knowledge sharing for Claude Code - search and consult previous sessions like a hive mind.
 
-Run `claude-tools memory` for full help.
+Run `memory` for full help.
 
 **Commands:** search, recall
 
 **Search Syntax (two modes, auto-detected by presence of pipes):**
 
-- **Simple mode** (recommended): `"chrome automation workflow"` → OR all keywords, rank by hits
-- **Strict mode** (advanced): `"chrome|browser automation"` → (chrome OR browser) AND automation
+- **Simple mode** (recommended): `"browser automation workflow"` → OR all keywords, rank by hits
+- **Strict mode** (advanced): `"browser|chrome automation"` → (browser OR chrome) AND automation
 
 **When to use each:**
 - Simple: Exploratory searches, finding related topics - just list keywords
@@ -214,7 +159,7 @@ Run `claude-tools memory` for full help.
 ### proxy
 Automatically enable HTTP/HTTPS proxy when VPN is connected - no manual toggling needed!
 
-Run `claude-tools proxy` for full help.
+Run `proxy` for full help.
 
 **Commands:** check, status, enable, disable, init, config
 
@@ -228,7 +173,7 @@ Run `claude-tools proxy` for full help.
 ### screenshot
 Background window capture for macOS with automatic dual-version output
 
-Run `claude-tools screenshot` for full help.
+Run `screenshot` for full help.
 
 **Commands:** `<app_name|window_id> [output_path]`, `--list`
 
@@ -242,6 +187,6 @@ Run `claude-tools screenshot` for full help.
 ### worktree
 Git worktree management with automatic Claude session launching.
 
-Run `claude-tools worktree` for full help.
+Run `worktree` for full help.
 
 <!-- TOOLS:END -->

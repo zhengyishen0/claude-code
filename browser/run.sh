@@ -1,7 +1,7 @@
 #!/bin/bash
-# chrome - Browser automation with CDP (Chrome DevTools Protocol)
-# Usage: chrome [--profile NAME] [--debug] <command> [args...]
-# Chain commands with +: chrome click "[@X](#btn)" + wait + snapshot
+# browser - Browser automation with CDP (Chrome DevTools Protocol)
+# Usage: browser [--profile NAME] [--debug] <command> [args...]
+# Chain commands with +: browser click "[@X](#btn)" + wait + snapshot
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TOOL_NAME="$(basename "$SCRIPT_DIR")"

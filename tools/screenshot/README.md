@@ -64,22 +64,22 @@ Useful for finding the exact app name or window ID to use for capture.
 
 ```bash
 # Capture by app name (automatically saves both versions)
-claude-tools screenshot "Google Chrome"
+screenshot "Google Chrome"
 # → /path/to/project/tmp/screenshot-20251210-120530.png (268KB - for AI)
 # → /path/to/project/tmp/screenshot-20251210-120530-full.png (979KB - for review)
 
 # Capture by window ID for exact targeting
-claude-tools screenshot 29725
+screenshot 29725
 # → /path/to/project/tmp/screenshot-20251210-120545.png (268KB)
 # → /path/to/project/tmp/screenshot-20251210-120545-full.png (979KB)
 
 # Custom output path
-claude-tools screenshot 29725 /tmp/my-screenshot.png
+screenshot 29725 /tmp/my-screenshot.png
 # → /tmp/my-screenshot.png (268KB)
 # → /tmp/my-screenshot-full.png (979KB)
 
 # List all windows to find app name or window ID
-claude-tools screenshot --list
+screenshot --list
 # Google Chrome
 # --------------------------------------------------------------------------------
 #   [29725     ] Airbnb | Vacation rentals, cabins, beach houses, & more
@@ -91,7 +91,7 @@ claude-tools screenshot --list
 **AI reads downscaled by default:**
 ```bash
 # Capture screenshot
-screenshot_path=$(claude-tools screenshot 29725 | head -1)  # Gets downscaled version
+screenshot_path=$(screenshot 29725 | head -1)  # Gets downscaled version
 
 # AI analyzes the 268KB version
 # If AI needs more detail, read the -full.png version
@@ -107,11 +107,11 @@ Works seamlessly with the chrome tool for non-intrusive debugging:
 
 ```bash
 # Open page in background
-claude-tools chrome open "https://example.com"
+chrome open "https://example.com"
 
 # Wait for content
-claude-tools chrome wait
+chrome wait
 
 # Screenshot without activating window
-claude-tools screenshot "Google Chrome"
+screenshot "Google Chrome"
 ```

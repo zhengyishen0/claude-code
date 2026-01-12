@@ -1,11 +1,11 @@
-# claude-tools
+# tools
 
 Collection of CLI utilities for development workflows.
 
 ## Universal Entry Point
 
 ```bash
-claude-tools <tool> [command] [args...]
+<tool> [command] [args...]
 ```
 
 ## Available Tools
@@ -16,9 +16,9 @@ Browser automation with React/SPA support
 
 **Quick Start:**
 ```bash
-claude-tools chrome open "https://example.com"
-claude-tools chrome recon
-claude-tools chrome click '[data-testid="btn"]' + wait + recon
+chrome open "https://example.com"
+chrome recon
+chrome click '[data-testid="btn"]' + wait + recon
 ```
 
 **Key Commands:** `recon`, `open`, `wait`, `click`, `input`, `esc`
@@ -31,9 +31,9 @@ Git worktree management for isolated feature development
 
 **Quick Start:**
 ```bash
-claude-tools worktree create feature-name  # Create worktree + launch Claude
-claude-tools worktree list                 # List all worktrees
-claude-tools worktree remove feature-name  # Remove worktree
+worktree create feature-name  # Create worktree + launch Claude
+worktree list                 # List all worktrees
+worktree remove feature-name  # Remove worktree
 ```
 
 **Key Commands:** `create`, `rename`, `list`, `remove`
@@ -51,7 +51,7 @@ claude-tools worktree remove feature-name  # Remove worktree
 Run any tool without arguments:
 
 ```bash
-claude-tools chrome          # Show help
-claude-tools worktree        # Show help
-claude-tools memory          # Show help
+chrome          # Show help
+worktree        # Show help
+memory          # Show help
 ```

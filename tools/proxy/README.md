@@ -31,13 +31,13 @@ Manage proxy configuration file (.proxy-config)
 
 ```bash
 # 1. Create configuration file
-claude-tools proxy config create
+proxy config create
 
 # 2. Get shell initialization instructions
-claude-tools proxy init
+proxy init
 
 # 3. Add the suggested line to your ~/.zshrc or ~/.bashrc
-# Example: echo 'source /path/to/claude-code/claude-tools/proxy/init.sh' >> ~/.zshrc
+# Example: echo 'source /path/to/claude-code/tools/proxy/init.sh' >> ~/.zshrc
 
 # 4. Restart your terminal - proxy will auto-enable when VPN is connected!
 ```

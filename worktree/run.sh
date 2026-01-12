@@ -95,7 +95,7 @@ Git Worktree Tool for Claude Code
 Manage git worktrees with automatic permissions and temp worktree support.
 
 USAGE:
-  claude-tools worktree <command> [args...]
+  worktree <command> [args...]
 
 COMMANDS:
   create <branch-name>  Create worktree and grant permissions
@@ -123,17 +123,17 @@ EOF
     cat <<EOF
 
 EXAMPLES:
-  claude-tools worktree create feature-auth
-  claude-tools worktree rename my-feature
-  claude-tools worktree list
-  claude-tools worktree remove feature-auth
+  worktree create feature-auth
+  worktree rename my-feature
+  worktree list
+  worktree remove feature-auth
 
 WORKFLOW:
-  1. Create worktree: claude-tools worktree create my-feature
+  1. Create worktree: worktree create my-feature
   2. Use absolute paths: /path/to/claude-code-my-feature/file.js
   3. Complete feature, commit changes
   4. Merge to main: git merge my-feature
-  5. Remove worktree: claude-tools worktree remove my-feature
+  5. Remove worktree: worktree remove my-feature
 EOF
 }
 
@@ -160,7 +160,7 @@ main() {
             ;;
         *)
             echo "Unknown command: $command"
-            echo "Run 'claude-tools worktree' for usage"
+            echo "Run 'worktree' for usage"
             exit 1
             ;;
     esac

@@ -9,9 +9,9 @@ if [ $# -eq 0 ]; then
 screenshot - Background window capture for macOS
 
 USAGE
-  claude-tools screenshot <app_name> [output_path]
-  claude-tools screenshot <app_name> --all
-  claude-tools screenshot --list
+  screenshot <app_name> [output_path]
+  screenshot <app_name> --all
+  screenshot --list
 
 DESCRIPTION
   Captures screenshots of windows without activating them using macOS
@@ -30,16 +30,16 @@ OPTIONS
 
 EXAMPLES
   # Capture Chrome window to default location
-  claude-tools screenshot "Google Chrome"
+  screenshot "Google Chrome"
 
   # Capture with specific output path
-  claude-tools screenshot Chrome /tmp/my-screenshot.png
+  screenshot Chrome /tmp/my-screenshot.png
 
   # Capture all Chrome windows (active tab in each window)
-  claude-tools screenshot Chrome --all
+  screenshot Chrome --all
 
   # List all windows
-  claude-tools screenshot --list
+  screenshot --list
 
 TECHNICAL NOTES
   - Uses PyObjC + Quartz framework to get CGWindowIDs
