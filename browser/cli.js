@@ -5,11 +5,12 @@
  */
 
 const CDP = require('chrome-remote-interface');
-const { spawn, execSync } = require('child_process');
+const { spawn, execSync, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const { createHash } = require('crypto');
+const readline = require('readline');
 
 // ============================================================================
 // Configuration
@@ -274,6 +275,40 @@ async function cdpIsRunning() {
   });
 }
 
+async function cdpIsHeadless() {
+  return new Promise((resolve) => {
+    const req = http.get(`http://${CDP_HOST}:${CDP_PORT}/json/version`, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const info = JSON.parse(data);
+          // Check both Browser field and User-Agent for "Headless"
+          const isHeadless = (info.Browser && info.Browser.includes('Headless')) ||
+                            (info['User-Agent'] && info['User-Agent'].includes('Headless'));
+          resolve(isHeadless);
+        } catch {
+          resolve(false);
+        }
+      });
+    });
+    req.on('error', () => resolve(false));
+    req.setTimeout(1000, () => { req.destroy(); resolve(false); });
+  });
+}
+
+async function closeChromeInstance() {
+  try {
+    const client = await CDP({ port: CDP_PORT, host: CDP_HOST });
+    const { Browser } = client;
+    await Browser.close();
+  } catch {
+    // Ignore errors - Chrome might already be closed
+  }
+  // Wait for port to be released
+  await new Promise(r => setTimeout(r, 500));
+}
+
 async function waitForCdp(timeout = 30) {
   const start = Date.now();
   while (Date.now() - start < timeout * 1000) {
@@ -284,16 +319,34 @@ async function waitForCdp(timeout = 30) {
 }
 
 async function ensureChromeRunning() {
-  // Profile locking: Assign port FIRST if using a named profile
+  // For named profiles, use hash-based port assignment
   if (PROFILE) {
-    const assignedPort = assignPortForProfile(PROFILE);
-    if (!assignedPort) {
-      process.exit(1);
-    }
-    CDP_PORT = assignedPort;
+    CDP_PORT = getProfilePort(PROFILE);
   }
 
-  if (await cdpIsRunning()) return true;
+  // Check if Chrome is already running on our port
+  if (await cdpIsRunning()) {
+    // Check if mode matches (headless vs headed)
+    const isHeadless = await cdpIsHeadless();
+    const wantHeadless = PROFILE && !DEBUG_MODE;
+
+    if (DEBUG_MODE && isHeadless) {
+      // User wants headed but we have headless - restart Chrome
+      console.log('Restarting Chrome in headed mode...');
+      await closeChromeInstance();
+      await new Promise(r => setTimeout(r, 1000)); // Wait for port to be released
+      // Continue to start new instance below
+    } else if (wantHeadless && !isHeadless) {
+      // User wants headless but we have headed - restart Chrome
+      console.log('Restarting Chrome in headless mode...');
+      await closeChromeInstance();
+      await new Promise(r => setTimeout(r, 1000)); // Wait for port to be released
+      // Continue to start new instance below
+    } else {
+      // Mode matches, use existing instance
+      return true;
+    }
+  }
 
   // Determine profile path
   const profilePath = PROFILE_PATH || DEFAULT_PROFILE;
@@ -406,6 +459,12 @@ async function cmdSnapshot(clientOrFull, forceFull = false) {
     const result = await Runtime.evaluate({ expression: html2mdJs, returnByValue: true });
     const content = result.result.value;
 
+    // Handle case where page is navigating or content is unavailable
+    if (!content) {
+      console.log('(page loading...)');
+      return;
+    }
+
     // Smart diff by default (unless --full specified)
     if (!forceFull) {
       // Find latest snapshot with same prefix and state
@@ -450,6 +509,9 @@ async function cmdSnapshot(clientOrFull, forceFull = false) {
       fs.writeFileSync(snapshotFile, content);
       console.log(content);
     }
+
+    // Reminder for AI agents
+    console.log('\n---\nNote: Read all results carefully before taking action.');
   } finally {
     if (shouldClose) await client.close();
   }
@@ -470,13 +532,27 @@ async function cmdOpen(url) {
 
   try {
     await Page.enable();
+
+    // Navigate and wait for load with timeout
     await Page.navigate({ url });
-    await Page.loadEventFired();
+
+    // Wait for page load with timeout (don't use loadEventFired directly - it can hang)
+    await Promise.race([
+      new Promise(resolve => Page.loadEventFired(resolve)),
+      new Promise(resolve => setTimeout(resolve, 10000)) // 10s timeout
+    ]);
+
+    // Additional wait for dynamic content
+    await new Promise(r => setTimeout(r, 500));
 
     // Run inspect and format output
     const inspectJs = loadScript('inspect.js');
     const result = await Runtime.evaluate({ expression: inspectJs, returnByValue: true });
     const data = JSON.parse(result.result.value);
+
+    // Show browser status line
+    const profileInfo = PROFILE ? `profile: ${PROFILE}` : 'default profile';
+    console.log(`Browser: open (${profileInfo}, port: ${CDP_PORT})\n`);
 
     formatInspectOutput(data);
 
@@ -557,7 +633,37 @@ async function cmdClickSelector(args) {
     console.log(`${response.status}: ${response.message}`);
 
     if (response.status === 'OK') {
+      // Wait for potential page navigation/updates
       await new Promise(r => setTimeout(r, 500));
+
+      // Check if page is still loading (navigation might have occurred)
+      const { Page } = client;
+      await Page.enable();
+
+      // Wait for page to be ready with timeout
+      await Promise.race([
+        new Promise(async resolve => {
+          try {
+            // Wait for load event or timeout
+            const checkReady = async () => {
+              const { result } = await Runtime.evaluate({
+                expression: 'document.readyState',
+                returnByValue: true
+              });
+              if (result.value === 'complete') {
+                resolve();
+              } else {
+                setTimeout(checkReady, 100);
+              }
+            };
+            await checkReady();
+          } catch {
+            resolve(); // Ignore errors, proceed with snapshot
+          }
+        }),
+        new Promise(resolve => setTimeout(resolve, 5000)) // 5s timeout
+      ]);
+
       await cmdSnapshot(client);
     }
   } finally {
@@ -868,7 +974,7 @@ async function cmdProfile(args) {
       cmdProfileList();
       break;
     case 'create':
-      cmdProfileCreate(subArgs[0]);
+      await cmdProfileCreate(subArgs[0]);
       break;
     case 'enable':
       cmdProfileEnable(subArgs[0]);
@@ -932,7 +1038,7 @@ function cmdProfileList() {
   }
 }
 
-function cmdProfileCreate(url) {
+async function cmdProfileCreate(url) {
   if (!url) {
     console.error('Usage: profile create URL\n');
     console.error('Example:');
@@ -965,12 +1071,59 @@ function cmdProfileCreate(url) {
     }
   }
 
-  // For non-interactive mode, provide instructions
-  console.log('To complete profile creation:');
-  console.log('1. Run in debug mode to open browser for login:');
-  console.log(`   ${TOOL_NAME} --debug profile create ${url}\n`);
-  console.log('2. Login to your account');
-  console.log('3. Close the browser when done');
+  // Prompt for account identifier
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+
+  const account = await new Promise(resolve => {
+    rl.question('Account identifier (email/username): ', answer => {
+      rl.close();
+      resolve(answer.trim());
+    });
+  });
+
+  if (!account) {
+    console.error('Error: Account identifier is required');
+    process.exit(1);
+  }
+
+  // Create profile directory
+  const profileName = `${service}-${normalizeProfileName(account)}`;
+  const profilePath = path.join(PROFILES_DIR, profileName);
+
+  if (fs.existsSync(profilePath)) {
+    console.error(`Error: Profile '${profileName}' already exists`);
+    process.exit(1);
+  }
+
+  fs.mkdirSync(profilePath, { recursive: true });
+
+  // Write metadata
+  writeProfileMetadata(profilePath, service, account, 'manual', 'created');
+
+  console.log(`\nOpening browser for login...`);
+  console.log('Please login to your account, then close the browser window.\n');
+
+  // Launch Chrome in headed mode for manual login
+  const chrome = spawn(CHROME_APP, [
+    `--remote-debugging-port=0`, // Use random port
+    `--user-data-dir=${profilePath}`,
+    '--no-first-run',
+    '--no-default-browser-check',
+    url
+  ], {
+    stdio: 'inherit' // Show Chrome output
+  });
+
+  // Wait for Chrome to close
+  await new Promise(resolve => {
+    chrome.on('close', resolve);
+  });
+
+  console.log(`\n✓ Profile created: <${service}> ${account} (manual)`);
+  console.log(`  Filename: ${profileName}`);
 }
 
 function cmdProfileEnable(name) {
@@ -1105,14 +1258,35 @@ function formatInspectOutput(data) {
   console.log(`  Total forms found: ${summary.totalForms || 0}`);
   console.log();
 
+  // Helper to truncate long values
+  const truncateValue = (val, maxLen = 40) => {
+    if (val.length <= maxLen) return `'${val}'`;
+    return `'${val.slice(0, maxLen)}...' (${val.length} chars)`;
+  };
+
   const params = data.urlParams || {};
   if (Object.keys(params).length > 0) {
     console.log('Discovered Parameters:');
     console.log('-'.repeat(60));
     for (const [name, info] of Object.entries(params)) {
       const source = info.source || 'unknown';
-      const examples = (info.examples || []).slice(0, 3).map(e => `'${e}'`).join(', ');
-      console.log(`  ${name.padEnd(20)} [${source.padStart(5)}] ${examples}`);
+      const allExamples = info.examples || [];
+
+      // Show first example (truncated if long), then indicate if more exist
+      let display;
+      if (allExamples.length === 0) {
+        display = '(empty)';
+      } else if (allExamples.length === 1) {
+        display = truncateValue(allExamples[0]);
+      } else {
+        // Show first value + count of additional values
+        display = truncateValue(allExamples[0]);
+        if (allExamples.length > 1) {
+          display += ` (+${allExamples.length - 1} more)`;
+        }
+      }
+
+      console.log(`  ${name.padEnd(20)} [${source.padStart(5)}] ${display}`);
     }
     console.log();
   }
@@ -1130,10 +1304,29 @@ function formatInspectOutput(data) {
     console.log();
   }
 
+  // Simplify URL pattern - multi-line if too long
   if (summary.patternUrl) {
     console.log('URL Pattern:');
     console.log('-'.repeat(60));
-    console.log(`  ${summary.patternUrl}`);
+    const pattern = summary.patternUrl;
+    if (pattern.length <= 80) {
+      console.log(`  ${pattern}`);
+    } else {
+      // Extract base URL and params
+      const [base, queryString] = pattern.split('?');
+      console.log(`  Base: ${base}`);
+      if (queryString) {
+        const paramNames = queryString.split('&').map(p => p.split('=')[0]);
+        // Show first 8 params, then count
+        const shown = paramNames.slice(0, 8).join(', ');
+        const remaining = paramNames.length - 8;
+        if (remaining > 0) {
+          console.log(`  Params: ${shown}, ... (+${remaining} more)`);
+        } else {
+          console.log(`  Params: ${shown}`);
+        }
+      }
+    }
     console.log();
   }
 }
@@ -1193,6 +1386,36 @@ EXAMPLES:
   browser --profile myaccount --debug open "https://example.com"
 `);
 }
+
+// ============================================================================
+// Signal Handlers (cleanup on exit)
+// ============================================================================
+
+// Track if we should cleanup on exit (only for explicit close)
+let shouldCleanupOnExit = false;
+
+function cleanup() {
+  if (PROFILE) {
+    releaseProfile(PROFILE);
+  }
+}
+
+process.on('SIGINT', () => {
+  // User pressed Ctrl+C - cleanup registry
+  cleanup();
+  process.exit(130);
+});
+
+process.on('SIGTERM', () => {
+  // Process terminated - cleanup registry
+  cleanup();
+  process.exit(143);
+});
+
+// Note: Don't cleanup on normal exit - Chrome keeps running in background
+// Cleanup only happens on:
+// 1. SIGINT/SIGTERM (user interrupt)
+// 2. Explicit 'close' command (handled in cmdClose)
 
 // ============================================================================
 // Main
