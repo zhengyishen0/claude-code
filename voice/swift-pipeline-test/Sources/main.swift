@@ -1558,12 +1558,12 @@ func computeMelSpectrogram(_ audio: [Float], filterbankPath: String? = nil) -> [
         let end = min(start + frameLength, paddedAudio.count)
         let copyLength = end - start
 
-        // Reset frame
+        // Reset frame and copy audio samples using memcpy (FAST)
         vDSP_vclr(&frame, 1, vDSP_Length(frameLength))
-
-        // Copy audio samples from padded audio
-        for j in 0..<copyLength {
-            frame[j] = paddedAudio[start + j]
+        paddedAudio.withUnsafeBufferPointer { srcPtr in
+            frame.withUnsafeMutableBufferPointer { dstPtr in
+                memcpy(dstPtr.baseAddress!, srcPtr.baseAddress! + start, copyLength * MemoryLayout<Float>.size)
+            }
         }
 
         // Apply window: frame = frame * window
@@ -1579,10 +1579,11 @@ func computeMelSpectrogram(_ audio: [Float], filterbankPath: String? = nil) -> [
             melEnergies[m] = sum
         }
 
-        // Log scale: log(max(x, 1e-10))
-        for m in 0..<N_MELS {
-            melEnergies[m] = log(max(melEnergies[m], 1e-10))
-        }
+        // Log scale: log(max(x, 1e-10)) using vDSP
+        var minVal: Float = 1e-10
+        vDSP_vthr(melEnergies, 1, &minVal, &melEnergies, 1, vDSP_Length(N_MELS))
+        var count = Int32(N_MELS)
+        vvlogf(&melEnergies, melEnergies, &count)
 
         melFrames.append(melEnergies)
     }
@@ -1780,15 +1781,11 @@ func runInference(model: MLModel, features: [[Float]]) throws -> [[Float]] {
     // Create input array
     let inputArray = try MLMultiArray(shape: [1, NSNumber(value: frames), NSNumber(value: featureDim)], dataType: .float32)
 
-    // Copy features using proper indexing for 3D array [batch, time, feature]
+    // Copy features using direct pointer access (FAST)
+    let ptr = inputArray.dataPointer.bindMemory(to: Float.self, capacity: frames * featureDim)
     for i in 0..<frames {
         for j in 0..<featureDim {
-            // For shape [1, frames, featureDim], index = batch*stride0 + time*stride1 + feat*stride2
-            let stride0 = inputArray.strides[0].intValue
-            let stride1 = inputArray.strides[1].intValue
-            let stride2 = inputArray.strides[2].intValue
-            let index = 0 * stride0 + i * stride1 + j * stride2
-            inputArray[index] = NSNumber(value: features[i][j])
+            ptr[i * featureDim + j] = features[i][j]
         }
     }
 
