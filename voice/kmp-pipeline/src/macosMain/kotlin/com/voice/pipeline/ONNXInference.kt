@@ -44,6 +44,9 @@ class ONNXModelManager(private val modelsDir: String) {
     private var asrSession: COpaquePointer? = null
     private var speakerSession: COpaquePointer? = null
 
+    // Context buffer for VAD (last 64 samples from previous chunk)
+    private var vadContext: FloatArray = FloatArray(ONNX_VAD_CONTEXT_SIZE) { 0f }
+
     fun loadModels(): Boolean {
         println("Initializing ONNX Runtime...")
         if (onnx_init() != 0) {
@@ -87,27 +90,53 @@ class ONNXModelManager(private val modelsDir: String) {
     )
 
     companion object {
-        // ONNX Silero VAD only accepts 512 samples (32ms at 16kHz)
+        // ONNX Silero VAD uses 512-sample chunks (32ms at 16kHz)
         const val ONNX_VAD_CHUNK_SIZE = 512
+        // Context size: 64 samples prepended to each chunk
+        const val ONNX_VAD_CONTEXT_SIZE = 64
+        // Total input size: context + chunk = 576 samples
+        const val ONNX_VAD_INPUT_SIZE = ONNX_VAD_CONTEXT_SIZE + ONNX_VAD_CHUNK_SIZE
     }
 
     /**
-     * Run VAD inference on a 512-sample chunk
-     * Note: ONNX Silero VAD only accepts 256 or 512 sample inputs
+     * Reset VAD state (call when starting a new audio stream)
+     */
+    fun resetVADState() {
+        vadContext = FloatArray(ONNX_VAD_CONTEXT_SIZE) { 0f }
+    }
+
+    /**
+     * Run VAD inference on a 512-sample chunk.
+     * Internally prepends 64 context samples (from previous chunk) to create 576-sample input.
+     * The context is automatically updated after each call.
      */
     fun runVAD(audio: FloatArray, hiddenState: FloatArray, cellState: FloatArray): VADOutput? {
         val sess = vadSession ?: return null
 
-        // ONNX VAD only accepts 512 samples, take first 512 or pad if shorter
-        val vadAudio = if (audio.size >= ONNX_VAD_CHUNK_SIZE) {
+        // Ensure we have exactly ONNX_VAD_CHUNK_SIZE samples
+        val chunk = if (audio.size >= ONNX_VAD_CHUNK_SIZE) {
             audio.copyOfRange(0, ONNX_VAD_CHUNK_SIZE)
         } else {
             FloatArray(ONNX_VAD_CHUNK_SIZE) { i -> if (i < audio.size) audio[i] else 0f }
         }
 
+        // Create input with context prepended: [context (64)] + [chunk (512)] = 576 samples
+        val inputWithContext = FloatArray(ONNX_VAD_INPUT_SIZE)
+        for (i in 0 until ONNX_VAD_CONTEXT_SIZE) {
+            inputWithContext[i] = vadContext[i]
+        }
+        for (i in 0 until ONNX_VAD_CHUNK_SIZE) {
+            inputWithContext[ONNX_VAD_CONTEXT_SIZE + i] = chunk[i]
+        }
+
+        // Update context for next call (last 64 samples of current chunk)
+        for (i in 0 until ONNX_VAD_CONTEXT_SIZE) {
+            vadContext[i] = chunk[ONNX_VAD_CHUNK_SIZE - ONNX_VAD_CONTEXT_SIZE + i]
+        }
+
         memScoped {
-            val audioPtr = allocArray<FloatVar>(ONNX_VAD_CHUNK_SIZE)
-            for (i in 0 until ONNX_VAD_CHUNK_SIZE) audioPtr[i] = vadAudio[i]
+            val audioPtr = allocArray<FloatVar>(ONNX_VAD_INPUT_SIZE)
+            for (i in 0 until ONNX_VAD_INPUT_SIZE) audioPtr[i] = inputWithContext[i]
 
             val hInPtr = allocArray<FloatVar>(hiddenState.size)
             for (i in hiddenState.indices) hInPtr[i] = hiddenState[i]
@@ -121,7 +150,7 @@ class ONNXModelManager(private val modelsDir: String) {
 
             val result = onnx_run_vad(
                 sess?.reinterpret(),
-                audioPtr, ONNX_VAD_CHUNK_SIZE,
+                audioPtr, ONNX_VAD_INPUT_SIZE,
                 hInPtr, cInPtr,
                 probOut.ptr, hOutPtr, cOutPtr
             )

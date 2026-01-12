@@ -745,6 +745,7 @@ private fun benchmarkONNX(audio: FloatArray, padded: List<FloatArray>, xvectorIn
     // Benchmark VAD (using 512-sample chunks for ONNX)
     val vadTimes = mutableListOf<Long>()
     for (i in 0 until numIterations) {
+        onnxManager.resetVADState()  // Reset context for each iteration
         val start = kotlin.system.getTimeMillis()
         var vadHidden = FloatArray(VAD_STATE_SIZE)
         var vadCell = FloatArray(VAD_STATE_SIZE)
@@ -799,6 +800,9 @@ private fun benchmarkONNX(audio: FloatArray, padded: List<FloatArray>, xvectorIn
 private fun runLiveTranscriptionONNX(onnxManager: ONNXModelManager, voiceLibraryPath: String) {
     val voiceLibrary = VoiceLibrary(voiceLibraryPath)
 
+    // Reset VAD context state
+    onnxManager.resetVADState()
+
     // VAD state for ONNX (512-sample chunks)
     var vadHidden = FloatArray(VAD_STATE_SIZE)
     var vadCell = FloatArray(VAD_STATE_SIZE)
@@ -829,6 +833,10 @@ private fun runLiveTranscriptionONNX(onnxManager: ONNXModelManager, voiceLibrary
     println("=".repeat(60))
     println()
 
+    // Debug: track VAD calls
+    var vadCallCount = 0
+    var lastPrintTime = kotlin.system.getTimeMillis()
+
     // Audio callback
     fun processAudioChunk(samples: FloatArray) {
         for (s in samples) audioBuffer.add(s)
@@ -843,6 +851,15 @@ private fun runLiveTranscriptionONNX(onnxManager: ONNXModelManager, voiceLibrary
             if (vadOutput != null) {
                 vadHidden = vadOutput.hiddenState
                 vadCell = vadOutput.cellState
+                vadCallCount++
+
+                // Debug: print VAD probability every 2 seconds or when speech detected
+                val now = kotlin.system.getTimeMillis()
+                val rms = kotlin.math.sqrt(chunk.map { it * it }.average().toFloat())
+                if (vadOutput.probability > 0.3 || now - lastPrintTime > 2000) {
+                    print("\r[DEBUG] prob: ${vadOutput.probability}, rms: $rms, speaking: $isSpeaking, frames: $speechFrames     ")
+                    lastPrintTime = now
+                }
 
                 val isSpeech = vadOutput.probability >= VAD_SPEECH_THRESHOLD
 
@@ -1008,24 +1025,25 @@ private fun processFileTranscriptionONNX(audioPath: String, onnxManager: ONNXMod
 
     // Process with VAD
     println("\nRunning VAD...")
+    onnxManager.resetVADState()  // Reset context state
     var vadHidden = FloatArray(VAD_STATE_SIZE)
     var vadCell = FloatArray(VAD_STATE_SIZE)
-    var vadContext = FloatArray(VAD_CONTEXT_SIZE)
+
+    // ONNX VAD uses 512-sample chunks
+    val onnxVadChunkSize = ONNXModelManager.ONNX_VAD_CHUNK_SIZE
 
     val speechSegments = mutableListOf<Pair<Int, Int>>()
     var isSpeaking = false
     var speechStart = 0
     var speechFrames = 0
     var silenceFrames = 0
-    val minSpeechFrames = 3
-    val minSilenceFrames = 2
+    // Adjust min frames for smaller ONNX chunk size (512 vs 4096)
+    val minSpeechFrames = (MIN_SPEECH_DURATION * SAMPLE_RATE / onnxVadChunkSize).toInt()
+    val minSilenceFrames = (MIN_SILENCE_DURATION * SAMPLE_RATE / onnxVadChunkSize).toInt()
 
     var offset = 0
-    while (offset + VAD_CHUNK_SIZE <= audio.size) {
-        val vadInput = FloatArray(VAD_MODEL_INPUT_SIZE)
-        for (i in 0 until VAD_CONTEXT_SIZE) vadInput[i] = vadContext[i]
-        for (i in 0 until VAD_CHUNK_SIZE) vadInput[VAD_CONTEXT_SIZE + i] = audio[offset + i]
-        for (i in 0 until VAD_CONTEXT_SIZE) vadContext[i] = audio[offset + VAD_CHUNK_SIZE - VAD_CONTEXT_SIZE + i]
+    while (offset + onnxVadChunkSize <= audio.size) {
+        val vadInput = audio.copyOfRange(offset, offset + onnxVadChunkSize)
 
         val output = onnxManager.runVAD(vadInput, vadHidden, vadCell)
         if (output != null) {
@@ -1038,18 +1056,18 @@ private fun processFileTranscriptionONNX(audioPath: String, onnxManager: ONNXMod
                 silenceFrames = 0
                 if (!isSpeaking && speechFrames >= minSpeechFrames) {
                     isSpeaking = true
-                    speechStart = maxOf(0, offset - (minSpeechFrames - 1) * VAD_CHUNK_SIZE)
+                    speechStart = maxOf(0, offset - (minSpeechFrames - 1) * onnxVadChunkSize)
                 }
             } else {
                 silenceFrames++
                 speechFrames = 0
                 if (isSpeaking && silenceFrames >= minSilenceFrames) {
-                    speechSegments.add(speechStart to offset + VAD_CHUNK_SIZE)
+                    speechSegments.add(speechStart to offset + onnxVadChunkSize)
                     isSpeaking = false
                 }
             }
         }
-        offset += VAD_CHUNK_SIZE
+        offset += onnxVadChunkSize
     }
     if (isSpeaking) speechSegments.add(speechStart to audio.size)
 
