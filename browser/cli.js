@@ -1058,38 +1058,15 @@ function detectChromeAccounts(profilePath, targetService) {
 // ============================================================================
 
 async function cmdProfile(args) {
-  const subcommand = args[0] || 'list';
-  const subArgs = args.slice(1);
-
-  // Check if first arg looks like a URL (for profile import URL shorthand)
-  if (subcommand.startsWith('http://') || subcommand.startsWith('https://')) {
-    await cmdProfileImport(subcommand);
+  // No args: list profiles
+  if (args.length === 0) {
+    cmdProfileList();
     return;
   }
 
-  switch (subcommand) {
-    case 'list':
-      cmdProfileList();
-      break;
-    case 'import':
-      await cmdProfileImport(subArgs[0]);
-      break;
-    case 'update':
-      cmdProfileUpdate(subArgs);
-      break;
-    default:
-      console.error(`Unknown profile subcommand: ${subcommand}`);
-      console.error('\nUsage: profile <command> [args...]\n');
-      console.error('Commands:');
-      console.error('  (no command)        List all profiles');
-      console.error('  import              Scan Chrome.app for available accounts');
-      console.error('  import <filter>     Import from Chrome.app (filter by service/domain/URL)');
-      console.error('  update NAME [opts]  Update a profile');
-      console.error('    --enable          Enable the profile');
-      console.error('    --disable         Disable the profile');
-      console.error('    --rename NEW      Rename the profile');
-      process.exit(1);
-  }
+  // With arg: add profile (import from Chrome.app or manual login)
+  const filter = args[0];
+  await cmdProfileAdd(filter);
 }
 
 function cmdProfileList() {
@@ -1152,118 +1129,24 @@ function cmdProfileList() {
     const notImported = availableServices.filter(s => !importedServices.has(s));
 
     if (notImported.length > 0) {
-      console.log('Available in Chrome.app (not yet imported):\n');
+      console.log('Available in Chrome.app:\n');
       for (const service of notImported) {
         console.log(`  ${service}`);
       }
-      console.log(`\n  Import: ${TOOL_NAME} profile import <service>\n`);
+      console.log(`\n  Add: ${TOOL_NAME} profile <service>\n`);
     }
   }
 
   // If nothing found
   if (importedProfiles.length === 0 && availableServices.length === 0) {
     console.log('No profiles found.\n');
-    console.log('Import from Chrome.app:');
-    console.log(`  ${TOOL_NAME} profile import <service>\n`);
+    console.log('Add a profile:');
+    console.log(`  ${TOOL_NAME} profile <service>\n`);
   }
 }
 
 // ============================================================================
-// Profile Update Command (merged enable/disable/rename)
-// ============================================================================
-
-function cmdProfileUpdate(args) {
-  if (args.length === 0) {
-    console.error('Usage: profile update NAME [--enable|--disable|--rename NEW]\n');
-    console.error('Examples:');
-    console.error(`  ${TOOL_NAME} profile update gmail-user --disable`);
-    console.error(`  ${TOOL_NAME} profile update gmail-user --enable`);
-    console.error(`  ${TOOL_NAME} profile update gmail-user --rename gmail-newname`);
-    process.exit(1);
-  }
-
-  let name = args[0];
-  let profilePath = path.join(PROFILES_DIR, name);
-
-  // Try fuzzy match if exact doesn't exist
-  if (!fs.existsSync(profilePath)) {
-    const matches = fuzzyMatchProfile(name);
-    if (matches.length === 0) {
-      console.error(`Error: Profile '${name}' not found`);
-      process.exit(1);
-    }
-    if (matches.length === 1) {
-      name = matches[0];
-      profilePath = path.join(PROFILES_DIR, name);
-    } else {
-      console.error(`Multiple matches found: ${matches.join(', ')}`);
-      process.exit(1);
-    }
-  }
-
-  // Parse flags
-  let action = null;
-  let newName = null;
-
-  for (let i = 1; i < args.length; i++) {
-    if (args[i] === '--enable') {
-      action = 'enable';
-    } else if (args[i] === '--disable') {
-      action = 'disable';
-    } else if (args[i] === '--rename' && args[i + 1]) {
-      action = 'rename';
-      newName = args[i + 1];
-      i++;
-    }
-  }
-
-  if (!action) {
-    console.error('Error: Specify --enable, --disable, or --rename NEW');
-    process.exit(1);
-  }
-
-  if (action === 'enable') {
-    const status = readProfileMetadata(profilePath, 'status');
-    if (status === 'enabled') {
-      console.log(`Profile '${name}' is already enabled`);
-      return;
-    }
-    updateProfileMetadata(profilePath, 'status', 'enabled');
-    console.log(`✓ Profile '${name}' enabled`);
-  } else if (action === 'disable') {
-    const status = readProfileMetadata(profilePath, 'status');
-    if (status === 'disabled') {
-      console.log(`Profile '${name}' is already disabled`);
-      return;
-    }
-    updateProfileMetadata(profilePath, 'status', 'disabled');
-    console.log(`✓ Profile '${name}' disabled`);
-  } else if (action === 'rename') {
-    const newNormalized = normalizeProfileName(newName);
-    const newPath = path.join(PROFILES_DIR, newNormalized);
-
-    if (fs.existsSync(newPath)) {
-      console.error(`Error: Profile '${newNormalized}' already exists`);
-      process.exit(1);
-    }
-
-    fs.renameSync(profilePath, newPath);
-
-    // Update metadata if exists
-    const service = readProfileMetadata(newPath, 'service');
-    const source = readProfileMetadata(newPath, 'source');
-    if (service) {
-      const newAccount = newName.replace(new RegExp(`^${service}-`), '');
-      updateProfileMetadata(newPath, 'account', newAccount);
-      updateProfileMetadata(newPath, 'display', `<${service}> ${newAccount} (${source})`);
-    }
-
-    console.log(`✓ Profile renamed: ${name} -> ${newNormalized}`);
-  }
-}
-
-// ============================================================================
-// Profile Import Command
+// Profile Add Helpers
 // ============================================================================
 
 // Resolve filter to service name (accepts URL, domain, or service name)
@@ -1319,88 +1202,37 @@ function resolveServiceFilter(filter) {
   return lowerFilter;
 }
 
-async function cmdProfileImport(filter) {
-  // Check if Chrome.app exists
-  if (!fs.existsSync(path.join(CHROME_APP_DIR, 'Default'))) {
-    console.error('\nERROR: Chrome.app Default profile not found\n');
-    console.error('Chrome.app must be installed and used at least once');
-    console.error('before profile import can work.\n');
-    process.exit(1);
-  }
-
-  // Mode 1: Scan all (no filter provided)
-  if (!filter) {
-    console.log('\nScanning Chrome.app for available accounts...\n');
-
-    const chromeProfiles = getChromeProfiles();
-    const foundServices = new Map(); // service -> [{account info}]
-
-    for (const profileName of chromeProfiles) {
-      const profilePath = path.join(CHROME_APP_DIR, profileName);
-      const accounts = detectChromeAccounts(profilePath);
-
-      for (const acc of accounts) {
-        if (!foundServices.has(acc.service)) {
-          foundServices.set(acc.service, []);
-        }
-        foundServices.get(acc.service).push({
-          ...acc,
-          chromeProfile: profileName
-        });
-      }
-    }
-
-    if (foundServices.size === 0) {
-      console.log('No accounts found in Chrome.app profiles.\n');
-      console.log('Make sure you\'re logged into services in Chrome.app first,');
-      console.log('then try importing again.\n');
-      return;
-    }
-
-    // Display found accounts grouped by service
-    for (const [service, accounts] of foundServices) {
-      // Deduplicate by domain
-      const uniqueAccounts = [];
-      const seenDomains = new Set();
-      for (const acc of accounts) {
-        if (!seenDomains.has(acc.domain)) {
-          seenDomains.add(acc.domain);
-          uniqueAccounts.push(acc);
-        }
-      }
-
-      console.log(`Found ${uniqueAccounts.length} account(s) for <${service}>:`);
-      for (const acc of uniqueAccounts.slice(0, 3)) { // Show max 3
-        console.log(`  - ${acc.domain} (${acc.timeAgo})`);
-      }
-      if (uniqueAccounts.length > 3) {
-        console.log(`  ... and ${uniqueAccounts.length - 3} more`);
-      }
-      console.log('');
-    }
-
-    console.log('Next steps:');
-    console.log(`  ${TOOL_NAME} profile import <filter>    # import specific service`);
-    console.log('');
-    console.log('Filter can be service name, domain, or URL:');
-    console.log(`  ${TOOL_NAME} profile import github`);
-    console.log(`  ${TOOL_NAME} profile import gmail`);
-    console.log(`  ${TOOL_NAME} profile import amazon.com`);
-    console.log('');
-    return;
-  }
-
-  // Mode 2: Import specific service
+async function cmdProfileAdd(filter) {
   const service = resolveServiceFilter(filter);
-  console.log(`\nScanning Chrome.app profiles for <${service}> accounts...\n`);
 
+  // Check if profile already exists
+  const existingProfiles = [];
+  if (fs.existsSync(PROFILES_DIR)) {
+    for (const name of fs.readdirSync(PROFILES_DIR)) {
+      const profilePath = path.join(PROFILES_DIR, name);
+      if (!fs.statSync(profilePath).isDirectory()) continue;
+      const profService = readProfileMetadata(profilePath, 'service');
+      if (profService === service) {
+        existingProfiles.push(name);
+      }
+    }
+  }
+
+  if (existingProfiles.length > 0) {
+    console.log(`\nExisting <${service}> profiles:`);
+    for (const name of existingProfiles) {
+      console.log(`  --profile ${name}`);
+    }
+    console.log('');
+  }
+
+  // Try to find in Chrome.app
   const chromeProfiles = getChromeProfiles();
-  const options = []; // [{chromeProfile, domain, timeAgo}]
+  const options = [];
 
   for (const profileName of chromeProfiles) {
     const profilePath = path.join(CHROME_APP_DIR, profileName);
     const accounts = detectChromeAccounts(profilePath, service);
-
     for (const acc of accounts) {
       options.push({
         chromeProfile: profileName,
@@ -1410,90 +1242,138 @@ async function cmdProfileImport(filter) {
     }
   }
 
-  if (options.length === 0) {
-    console.error(`No <${service}> accounts found in Chrome.app profiles\n`);
-    console.error(`Make sure you're logged into ${service} in Chrome.app first`);
-    process.exit(1);
-  }
+  // If found in Chrome.app: import
+  if (options.length > 0) {
+    console.log(`\nFound <${service}> in Chrome.app:\n`);
 
-  // Display options
-  let optionNum = 1;
-  let currentProfile = null;
-  for (const opt of options) {
-    if (opt.chromeProfile !== currentProfile) {
-      if (currentProfile !== null) console.log('');
-      console.log(`Profile: ${opt.chromeProfile}`);
-      currentProfile = opt.chromeProfile;
+    let optionNum = 1;
+    let currentProfile = null;
+    for (const opt of options) {
+      if (opt.chromeProfile !== currentProfile) {
+        if (currentProfile !== null) console.log('');
+        console.log(`  Chrome profile: ${opt.chromeProfile}`);
+        currentProfile = opt.chromeProfile;
+      }
+      console.log(`    [${optionNum}] ${service} account (${opt.timeAgo})`);
+      optionNum++;
     }
-    console.log(`  [${optionNum}] ${service} account (${opt.timeAgo})`);
-    optionNum++;
-  }
-  console.log('');
+    console.log('');
 
-  // Prompt for selection
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+
+    const selection = await new Promise(resolve => {
+      rl.question(`Select [1-${options.length}] or Ctrl+C to cancel: `, answer => {
+        resolve(answer.trim());
+      });
+    });
+
+    const selectedIndex = parseInt(selection, 10) - 1;
+    if (isNaN(selectedIndex) || selectedIndex < 0 || selectedIndex >= options.length) {
+      rl.close();
+      console.error('Invalid selection');
+      process.exit(1);
+    }
+
+    const selected = options[selectedIndex];
+
+    // Prompt for account identifier
+    const account = await new Promise(resolve => {
+      rl.question('Account name (email/username): ', answer => {
+        rl.close();
+        resolve(answer.trim());
+      });
+    });
+
+    if (!account) {
+      console.error('Error: Account name cannot be empty');
+      process.exit(1);
+    }
+
+    const profileName = `${service}-${normalizeProfileName(account)}`;
+    const destPath = path.join(PROFILES_DIR, profileName);
+
+    if (fs.existsSync(destPath)) {
+      console.error(`Error: Profile '${profileName}' already exists`);
+      process.exit(1);
+    }
+
+    console.log('\nCopying Chrome.app profile...');
+    const sourcePath = path.join(CHROME_APP_DIR, selected.chromeProfile);
+    fs.mkdirSync(PROFILES_DIR, { recursive: true });
+    execSync(`cp -r "${sourcePath}" "${destPath}"`);
+
+    writeProfileMetadata(destPath, service, account, `Chrome.app/${selected.chromeProfile}`, 'chrome_app');
+
+    console.log(`\n✓ Profile added: <${service}> ${account}`);
+    console.log(`  Use: --profile ${profileName}\n`);
+
+    if (service === 'gmail' || service.startsWith('google')) {
+      console.log('NOTE: Chrome profile may contain multiple Google accounts.\n');
+    }
+    return;
+  }
+
+  // Not found in Chrome.app: manual login
+  console.log(`\n<${service}> not found in Chrome.app. Opening browser for manual login...\n`);
+
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout
   });
 
-  const selection = await new Promise(resolve => {
-    rl.question(`Select account [1-${options.length}] or Ctrl+C to cancel: `, answer => {
-      resolve(answer.trim());
-    });
-  });
-
-  const selectedIndex = parseInt(selection, 10) - 1;
-  if (isNaN(selectedIndex) || selectedIndex < 0 || selectedIndex >= options.length) {
-    rl.close();
-    console.error('Invalid selection');
-    process.exit(1);
-  }
-
-  const selected = options[selectedIndex];
-  console.log(`\nSelected: <${service}> from Chrome.app profile '${selected.chromeProfile}'`);
-
-  // Prompt for account identifier
+  // Use service as default account name
   const account = await new Promise(resolve => {
-    rl.question('Account identifier (email/username): ', answer => {
+    rl.question(`Account name [${service}]: `, answer => {
       rl.close();
-      resolve(answer.trim());
+      resolve(answer.trim() || service);
     });
   });
-
-  if (!account) {
-    console.error('Error: Account identifier cannot be empty');
-    process.exit(1);
-  }
 
   const profileName = `${service}-${normalizeProfileName(account)}`;
-  const destPath = path.join(PROFILES_DIR, profileName);
+  const profilePath = path.join(PROFILES_DIR, profileName);
 
-  if (fs.existsSync(destPath)) {
+  if (fs.existsSync(profilePath)) {
     console.error(`Error: Profile '${profileName}' already exists`);
     process.exit(1);
   }
 
-  console.log('\nCopying Chrome.app profile...');
+  fs.mkdirSync(profilePath, { recursive: true });
 
-  // Copy entire Chrome.app profile
-  const sourcePath = path.join(CHROME_APP_DIR, selected.chromeProfile);
-  fs.mkdirSync(PROFILES_DIR, { recursive: true });
-  execSync(`cp -r "${sourcePath}" "${destPath}"`);
-
-  // Write metadata
-  writeProfileMetadata(destPath, service, account, `Chrome.app/${selected.chromeProfile}`, 'chrome_app');
-
-  console.log(`\n✓ Profile imported: <${service}> ${account} (Chrome.app/${selected.chromeProfile})`);
-  console.log(`  Filename: ${profileName}\n`);
-
-  // Warn about multi-account services
-  if (service === 'gmail' || service.startsWith('google')) {
-    console.log('NOTE: Chrome.app profile may contain multiple Google accounts.');
-    console.log(`      All accounts were copied. Primary account: ${account}\n`);
+  // Build URL for the service
+  const mappingsFile = path.join(SCRIPT_DIR, 'domain-mappings.json');
+  let loginUrl = `https://${service}.com`;
+  if (fs.existsSync(mappingsFile)) {
+    const mappings = JSON.parse(fs.readFileSync(mappingsFile, 'utf8'));
+    for (const [domain, svc] of Object.entries(mappings)) {
+      if (svc === service && !domain.startsWith('www.')) {
+        loginUrl = `https://${domain}`;
+        break;
+      }
+    }
   }
 
-  console.log('Use with:');
-  console.log(`  ${TOOL_NAME} --profile ${profileName} open URL`);
+  console.log(`Opening ${loginUrl}...`);
+  console.log('Login to your account, then close the browser window.\n');
+
+  const chrome = spawn(CHROME_APP, [
+    '--remote-debugging-port=0',
+    `--user-data-dir=${profilePath}`,
+    '--no-first-run',
+    '--no-default-browser-check',
+    loginUrl
+  ], {
+    stdio: 'inherit'
+  });
+
+  await new Promise(resolve => chrome.on('close', resolve));
+
+  writeProfileMetadata(profilePath, service, account, 'manual', 'manual');
+
+  console.log(`\n✓ Profile added: <${service}> ${account}`);
+  console.log(`  Use: --profile ${profileName}`);
 }
 
 // ============================================================================
@@ -1636,10 +1516,8 @@ COMMANDS:
     close                 Close Chrome instance
 
   Profiles:
-    profile               List all profiles
-    profile import        Scan Chrome.app for accounts
-    profile import FILTER Import from Chrome.app (service/domain/URL)
-    profile update NAME   Update profile (--enable, --disable, --rename)
+    profile               List profiles + available in Chrome.app
+    profile SERVICE       Add profile (import from Chrome.app or manual login)
 
   Options:
     --index N             Select Nth match when multiple elements found
