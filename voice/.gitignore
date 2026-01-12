@@ -1,9 +1,5 @@
 # Large model files (download via scripts/setup.sh)
-models/coreml/
-models/onnx/
-models/pytorch/
-models/assets/*.bin
-models/assets/*.bpe.model
+models/*
 
 # Personal voice data (user-specific)
 data/voice_library*.json
