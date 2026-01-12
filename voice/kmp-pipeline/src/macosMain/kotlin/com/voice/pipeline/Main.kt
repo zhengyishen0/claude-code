@@ -795,11 +795,202 @@ private fun benchmarkONNX(audio: FloatArray, padded: List<FloatArray>, xvectorIn
 // ONNX Processing Functions
 // ============================================================================
 
+@OptIn(kotlinx.cinterop.ExperimentalForeignApi::class)
 private fun runLiveTranscriptionONNX(onnxManager: ONNXModelManager, voiceLibraryPath: String) {
-    // TODO: Implement ONNX live transcription
-    println("ONNX live transcription not yet implemented")
-    println("Use 'benchmark' command to compare performance")
+    val voiceLibrary = VoiceLibrary(voiceLibraryPath)
+
+    // VAD state for ONNX (512-sample chunks)
+    var vadHidden = FloatArray(VAD_STATE_SIZE)
+    var vadCell = FloatArray(VAD_STATE_SIZE)
+
+    // Audio buffers
+    val audioBuffer = mutableListOf<Float>()
+    val speechBuffer = mutableListOf<Float>()
+
+    // Speech detection state
+    var isSpeaking = false
+    var silenceFrames = 0
+    var speechFrames = 0
+    var speechStartSample = 0L
+    var totalSamplesProcessed = 0L
+
+    // ONNX VAD uses 512-sample chunks
+    val onnxVadChunk = ONNXModelManager.ONNX_VAD_CHUNK_SIZE
+    val minSpeechFrames = (MIN_SPEECH_DURATION * SAMPLE_RATE / onnxVadChunk).toInt()
+    val minSilenceFrames = (MIN_SILENCE_DURATION * SAMPLE_RATE / onnxVadChunk).toInt()
+
+    // Segments collected
+    val segments = mutableListOf<Segment>()
+
+    println()
+    println("=".repeat(60))
+    println("LIVE TRANSCRIPTION (ONNX Runtime)")
+    println("Press ESC to stop")
+    println("=".repeat(60))
+    println()
+
+    // Audio callback
+    fun processAudioChunk(samples: FloatArray) {
+        for (s in samples) audioBuffer.add(s)
+
+        // Process in 512-sample chunks for ONNX VAD
+        while (audioBuffer.size >= onnxVadChunk) {
+            val chunk = FloatArray(onnxVadChunk) { audioBuffer[it] }
+            audioBuffer.subList(0, onnxVadChunk).clear()
+
+            // Run VAD
+            val vadOutput = onnxManager.runVAD(chunk, vadHidden, vadCell)
+            if (vadOutput != null) {
+                vadHidden = vadOutput.hiddenState
+                vadCell = vadOutput.cellState
+
+                val isSpeech = vadOutput.probability >= VAD_SPEECH_THRESHOLD
+
+                if (isSpeech) {
+                    speechFrames++
+                    silenceFrames = 0
+                    for (s in chunk) speechBuffer.add(s)
+
+                    if (!isSpeaking && speechFrames >= minSpeechFrames) {
+                        isSpeaking = true
+                        speechStartSample = totalSamplesProcessed - (speechFrames * onnxVadChunk)
+                    }
+                } else {
+                    silenceFrames++
+                    speechFrames = 0
+
+                    if (isSpeaking) {
+                        if (silenceFrames <= minSilenceFrames) {
+                            for (s in chunk) speechBuffer.add(s)
+                        }
+
+                        if (silenceFrames >= minSilenceFrames) {
+                            // Process completed speech
+                            val speechEndSample = totalSamplesProcessed
+                            val audio = speechBuffer.toFloatArray()
+                            speechBuffer.clear()
+
+                            if (audio.size >= (SAMPLE_RATE * MIN_SPEECH_DURATION).toInt()) {
+                                val processStart = kotlin.system.getTimeMillis()
+                                val startTime = speechStartSample.toDouble() / SAMPLE_RATE
+                                val endTime = speechEndSample.toDouble() / SAMPLE_RATE
+
+                                // ASR
+                                val mel = AudioProcessing.computeMelSpectrogram(audio)
+                                val lfr = LFRTransform.apply(mel)
+                                val padded = LFRTransform.padToFixedFrames(lfr)
+                                val logitsRaw = onnxManager.runASR(padded)
+
+                                var text = ""
+                                if (logitsRaw != null) {
+                                    val vocabSize = 25055
+                                    val numFrames = logitsRaw.size / vocabSize
+                                    val logits = List(numFrames) { f ->
+                                        FloatArray(vocabSize) { v -> logitsRaw[f * vocabSize + v] }
+                                    }
+                                    val tokens = CTCDecoder.greedyDecode(logits)
+                                    val (_, textTokens) = TokenMappings.decodeSpecialTokens(tokens)
+                                    text = TokenDecoder.decodeTextTokens(textTokens)
+                                }
+
+                                // Speaker ID
+                                var speakerName: String? = null
+                                var confidence = "unknown"
+                                var isKnown = false
+                                var embedding: FloatArray? = null
+                                var learned = false
+
+                                if (audio.size >= XVECTOR_SAMPLES) {
+                                    val center = (audio.size - XVECTOR_SAMPLES) / 2
+                                    val xvectorInput = audio.copyOfRange(center, center + XVECTOR_SAMPLES)
+                                    embedding = onnxManager.runSpeakerEmbedding(xvectorInput)
+
+                                    if (embedding != null) {
+                                        val (matchedName, score, matchConfidence) = voiceLibrary.match(embedding)
+                                        confidence = matchConfidence
+                                        if (matchedName != null) {
+                                            speakerName = matchedName
+                                            isKnown = true
+                                            if (matchConfidence == "high") {
+                                                learned = voiceLibrary.autoLearn(matchedName, embedding, score)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                val processTime = kotlin.system.getTimeMillis() - processStart
+
+                                // Print output
+                                val speakerTag = if (speakerName != null) "[$speakerName]" else "[Unknown]"
+                                val timeRange = "(${formatTime(startTime)}-${formatTime(endTime)})"
+                                val learnTag = if (learned) " *" else ""
+                                println("$speakerTag $timeRange $text [${processTime}ms]$learnTag")
+
+                                segments.add(Segment(startTime, endTime, text, speakerName, confidence, isKnown, false, embedding, processTime, learned))
+                            }
+                            isSpeaking = false
+                        }
+                    } else {
+                        speechBuffer.clear()
+                    }
+                }
+            }
+            totalSamplesProcessed += onnxVadChunk
+        }
+    }
+
+    // Set up audio capture
+    val audioCapture = AudioCapture()
+    globalShouldStop = false
+    val originalTermios = setRawMode()
+
+    audioCapture.start { samples ->
+        if (!globalShouldStop) {
+            processAudioChunk(samples)
+        }
+    }
+
+    // Main loop - wait for ESC
+    while (!globalShouldStop) {
+        if (checkEscapeKey()) {
+            globalShouldStop = true
+        }
+        platform.posix.usleep(50000u)
+    }
+
+    restoreTerminal(originalTermios)
+    println("\n\nStopping...")
+
+    audioCapture.stop()
+
+    // Save voice library if we learned anything
+    if (segments.any { it.learned }) {
+        voiceLibrary.save()
+        println("Voice library saved.")
+    }
+
+    if (segments.isEmpty()) {
+        println("\nNo speech detected.")
+    } else {
+        println("\nProcessed ${segments.size} segments.")
+    }
+
     onnxManager.release()
+}
+
+private fun formatTime(seconds: Double): String {
+    val mins = (seconds / 60).toInt()
+    val secs = seconds % 60
+    val secsStr = ((secs * 100).toInt() / 100.0).toString()
+    // Pad to 2 decimal places
+    val parts = secsStr.split(".")
+    val decimal = if (parts.size > 1) parts[1].padEnd(2, '0').take(2) else "00"
+    val whole = parts[0].padStart(if (mins > 0) 2 else 1, '0')
+    return if (mins > 0) {
+        "$mins:$whole.$decimal"
+    } else {
+        "$whole.$decimal"
+    }
 }
 
 private fun processFileTranscriptionONNX(audioPath: String, onnxManager: ONNXModelManager, voiceLibraryPath: String) {
