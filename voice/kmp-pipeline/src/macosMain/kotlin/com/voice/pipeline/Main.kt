@@ -106,6 +106,15 @@ private fun testFullPipeline() {
     val vadModelPath = "/Users/zhengyishen/Codes/claude-code/voice/swift-pipeline-test/Models/silero-vad-unified-256ms-v6.0.0.mlmodelc"
     val testAudioPath = "/Users/zhengyishen/Codes/claude-code/voice/recordings/recording_20260112_002226.wav"
 
+    // Load vocabulary for text decoding
+    print("  Loading vocabulary... ")
+    val vocabPath = "$modelDir/vocab.json"
+    if (TokenDecoder.loadVocabulary(vocabPath)) {
+        println("OK (${TokenDecoder.vocabularySize()} tokens)")
+    } else {
+        println("FAILED - will show token IDs only")
+    }
+
     // Load models
     print("  Loading models... ")
     val startLoad = kotlin.system.getTimeMillis()
@@ -278,6 +287,10 @@ private fun testFullPipelineWithAudio(
 
         println("      Language: ${info["language"]}, Emotion: ${info["emotion"]}")
         println("      Tokens (${textTokens.size}): ${textTokens.take(20)}${if (textTokens.size > 20) "..." else ""}")
+
+        // Decode to text
+        val text = TokenDecoder.decodeTextTokens(textTokens)
+        println("      Text: $text")
 
         // Step 3: Speaker identification
         if (segmentAudio.size >= XVECTOR_SAMPLES) {
