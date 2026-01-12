@@ -8,43 +8,43 @@ Single source of truth for agent coordination in YouPu (有谱).
 Log an event (facts, no tracking needed).
 
 ```bash
-claude-tools world event <source> <identifier> <output>
+world event <source> <identifier> <output>
 ```
 
 **Sources:** chrome, bash, file, api, system, user
 
 **Examples:**
 ```bash
-claude-tools world event chrome "airbnb.com/s/Paris" "clicked Search, 24 listings"
-claude-tools world event bash "git-status" "clean working directory"
-claude-tools world event file "src/config.json" "modified"
-claude-tools world event user "abc123" "captcha solved: boats"
+world event chrome "airbnb.com/s/Paris" "clicked Search, 24 listings"
+world event bash "git-status" "clean working directory"
+world event file "src/config.json" "modified"
+world event user "abc123" "captcha solved: boats"
 ```
 
 ### agent
 Log agent status (projects, tracked until verified/failed).
 
 ```bash
-claude-tools world agent <status> <session-id> <output>
+world agent <status> <session-id> <output>
 ```
 
 **Statuses:** start, active, finish, verified, retry, failed
 
 **Examples:**
 ```bash
-claude-tools world agent start abc123 "Book Tokyo flights | need: confirmation number"
-claude-tools world agent active abc123 "searching flights"
-claude-tools world agent finish abc123 "Booked JAL $450, confirmation #XYZ"
-claude-tools world agent verified abc123 "success criteria met"
-claude-tools world agent retry abc123 "prices not found, try again"
-claude-tools world agent failed abc123 "captcha required | need: solve captcha"
+world agent start abc123 "Book Tokyo flights | need: confirmation number"
+world agent active abc123 "searching flights"
+world agent finish abc123 "Booked JAL $450, confirmation #XYZ"
+world agent verified abc123 "success criteria met"
+world agent retry abc123 "prices not found, try again"
+world agent failed abc123 "captcha required | need: solve captcha"
 ```
 
 ### check
 Read new entries since last marker.
 
 ```bash
-claude-tools world check [agent-id]
+world check [agent-id]
 ```
 
 Returns entries after last READ-MARKER, then adds audit trail and new marker.
@@ -53,7 +53,7 @@ Returns entries after last READ-MARKER, then adds audit trail and new marker.
 Common queries on the log.
 
 ```bash
-claude-tools world query <type> [pattern]
+world query <type> [pattern]
 ```
 
 **Types:**
@@ -69,22 +69,22 @@ claude-tools world query <type> [pattern]
 Provide human response to a failed agent.
 
 ```bash
-claude-tools world respond <session-id> <response>
+world respond <session-id> <response>
 ```
 
 **Example:**
 ```bash
-claude-tools world respond abc123 "captcha solved: boats"
+world respond abc123 "captcha solved: boats"
 ```
 
 ### supervisor
 Run Level 1 and Level 2 supervisors.
 
 ```bash
-claude-tools world supervisor once     # Run both once
-claude-tools world supervisor daemon   # Run continuously
-claude-tools world supervisor level1   # Only state enforcement
-claude-tools world supervisor level2   # Only verification
+world supervisor once     # Run both once
+world supervisor daemon   # Run continuously
+world supervisor level1   # Only state enforcement
+world supervisor level2   # Only verification
 ```
 
 See `supervisors/README.md` for details.
