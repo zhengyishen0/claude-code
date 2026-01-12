@@ -20,7 +20,7 @@ Manually disable proxy in current shell session
 Show instructions to add auto-enable to shell startup (~/.zshrc or ~/.bashrc)
 
 ### config
-Manage proxy configuration file (.proxy-config)
+Manage proxy configuration file (tools/proxy/config)
 - `config show` - Display current configuration
 - `config edit` - Edit configuration in $EDITOR
 - `config create` - Create default configuration file
@@ -53,7 +53,7 @@ No manual proxy toggling needed - it's automatic!
 
 ## Configuration
 
-Edit `.proxy-config` in repository root:
+Edit `tools/proxy/config`:
 
 ```bash
 # Local proxy settings

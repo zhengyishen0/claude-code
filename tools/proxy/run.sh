@@ -1,8 +1,7 @@
 #!/bin/bash
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$SCRIPT_DIR/../..")"
-CONFIG_FILE="$REPO_ROOT/.proxy-config"
+CONFIG_FILE="$SCRIPT_DIR/config"
 
 # Load proxy configuration
 load_config() {

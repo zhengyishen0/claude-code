@@ -3,8 +3,7 @@
 # This script is sourced by shell startup files to automatically enable proxy when available
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-CONFIG_FILE="$REPO_ROOT/.proxy-config"
+CONFIG_FILE="$SCRIPT_DIR/config"
 
 # Load proxy configuration
 if [ -f "$CONFIG_FILE" ]; then
