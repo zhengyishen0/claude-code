@@ -11,10 +11,18 @@ data/recordings/
 
 # Build outputs
 pipelines/kmp/build/
+pipelines/kmp/.gradle/
 pipelines/kmp/libs/onnxruntime-*/
 pipelines/kmp/libs/*.a
+pipelines/kmp/libs/onnx_wrapper/*.a
+pipelines/kmp/libs/onnx_wrapper/*.o
 pipelines/swift/.build/
+pipelines/swift/Package.resolved
 pipelines/python/**/__pycache__/
+
+# Downloaded model caches
+models/spkrec-*/
+pretrained_models/
 
 # Test outputs
 test_output/
