@@ -3,14 +3,24 @@ package com.voice.pipeline
 // Default paths
 private const val MODEL_DIR = "/Users/zhengyishen/Codes/claude-code/voice/YouPu/Sources/YouPu/Models"
 private const val VAD_MODEL_PATH = "/Users/zhengyishen/Codes/claude-code/voice/swift-pipeline-test/Models/silero-vad-unified-256ms-v6.0.0.mlmodelc"
+private const val ONNX_MODEL_DIR = "/Users/zhengyishen/Codes/claude-code/voice/claude-code-kmp-voice-pipeline/voice/kmp-pipeline/Models/onnx"
 private const val VOICE_LIBRARY_PATH = "/Users/zhengyishen/Codes/claude-code/voice/YouPu/Resources/voice_library_xvector.json"
 
+// Backend selection
+enum class Backend { COREML, ONNX }
+
 fun main(args: Array<String>) {
+    val useOnnx = args.contains("--onnx")
+    val backend = if (useOnnx) Backend.ONNX else Backend.COREML
+    val filteredArgs = args.filter { it != "--onnx" }
+
     when {
-        args.isEmpty() -> showHelp()
-        args[0] == "test" -> runTests()
-        args[0] == "live" -> runLive()
-        args[0] == "file" && args.size > 1 -> runFile(args[1])
+        filteredArgs.isEmpty() -> showHelp()
+        filteredArgs[0] == "test" -> runTests()
+        filteredArgs[0] == "live" -> runLive(backend)
+        filteredArgs[0] == "file" && filteredArgs.size > 1 -> runFile(filteredArgs[1], backend)
+        filteredArgs[0] == "benchmark" && filteredArgs.size > 1 -> runBenchmark(filteredArgs[1])
+        filteredArgs[0] == "benchmark" -> runBenchmark(null)
         else -> showHelp()
     }
 }
@@ -21,19 +31,25 @@ KMP Voice Pipeline - macOS
 ==========================
 
 Usage:
-  kmp-pipeline test          Run all tests
-  kmp-pipeline live          Start live transcription (press ESC to stop)
-  kmp-pipeline file <path>   Process audio file
+  kmp-pipeline test                 Run all tests
+  kmp-pipeline live [--onnx]        Start live transcription (press ESC to stop)
+  kmp-pipeline file <path> [--onnx] Process audio file
+  kmp-pipeline benchmark [path]     Compare CoreML vs ONNX performance
+
+Options:
+  --onnx    Use ONNX Runtime instead of CoreML (default: CoreML)
 
 Examples:
   ./build/bin/macos/debugExecutable/kmp-pipeline.kexe live
-  ./build/bin/macos/debugExecutable/kmp-pipeline.kexe file recording.wav
+  ./build/bin/macos/debugExecutable/kmp-pipeline.kexe live --onnx
+  ./build/bin/macos/debugExecutable/kmp-pipeline.kexe file recording.wav --onnx
+  ./build/bin/macos/debugExecutable/kmp-pipeline.kexe benchmark recording.wav
     """.trimIndent())
 }
 
-private fun runLive() {
-    println("KMP Voice Pipeline - Live Mode")
-    println("==============================")
+private fun runLive(backend: Backend) {
+    println("KMP Voice Pipeline - Live Mode (${backend.name})")
+    println("=" .repeat(40))
 
     // Load vocabulary
     val vocabPath = "$MODEL_DIR/vocab.json"
@@ -45,8 +61,15 @@ private fun runLive() {
     val filterbankPath = "/Users/zhengyishen/Codes/claude-code/voice/YouPu/Resources/mel_filterbank.bin"
     AudioProcessing.loadMelFilterbank(filterbankPath)
 
-    // Load models
-    print("Loading models... ")
+    when (backend) {
+        Backend.COREML -> runLiveWithCoreML()
+        Backend.ONNX -> runLiveWithONNX()
+    }
+}
+
+private fun runLiveWithCoreML() {
+    // Load CoreML models
+    print("Loading CoreML models... ")
     val startLoad = kotlin.system.getTimeMillis()
 
     val vadModel = CoreMLModel.load(VAD_MODEL_PATH)
@@ -57,7 +80,7 @@ private fun runLive() {
     println("${loadTime}ms")
 
     if (vadModel == null || asrModel == null || speakerModel == null) {
-        println("ERROR: Failed to load one or more models")
+        println("ERROR: Failed to load one or more CoreML models")
         return
     }
 
@@ -65,9 +88,27 @@ private fun runLive() {
     runLiveTranscription(vadModel, asrModel, speakerModel, VOICE_LIBRARY_PATH)
 }
 
-private fun runFile(audioPath: String) {
-    println("KMP Voice Pipeline - File Mode")
-    println("==============================")
+private fun runLiveWithONNX() {
+    // Load ONNX models
+    print("Loading ONNX models from $ONNX_MODEL_DIR... ")
+    val startLoad = kotlin.system.getTimeMillis()
+
+    val onnxManager = ONNXModelManager(ONNX_MODEL_DIR)
+    if (!onnxManager.loadModels()) {
+        println("ERROR: Failed to load ONNX models")
+        return
+    }
+
+    val loadTime = kotlin.system.getTimeMillis() - startLoad
+    println("${loadTime}ms")
+
+    // Run live transcription with ONNX
+    runLiveTranscriptionONNX(onnxManager, VOICE_LIBRARY_PATH)
+}
+
+private fun runFile(audioPath: String, backend: Backend) {
+    println("KMP Voice Pipeline - File Mode (${backend.name})")
+    println("=" .repeat(40))
 
     // Load vocabulary
     val vocabPath = "$MODEL_DIR/vocab.json"
@@ -79,8 +120,15 @@ private fun runFile(audioPath: String) {
     val filterbankPath = "/Users/zhengyishen/Codes/claude-code/voice/YouPu/Resources/mel_filterbank.bin"
     AudioProcessing.loadMelFilterbank(filterbankPath)
 
-    // Load models
-    print("Loading models... ")
+    when (backend) {
+        Backend.COREML -> runFileWithCoreML(audioPath)
+        Backend.ONNX -> runFileWithONNX(audioPath)
+    }
+}
+
+private fun runFileWithCoreML(audioPath: String) {
+    // Load CoreML models
+    print("Loading CoreML models... ")
     val startLoad = kotlin.system.getTimeMillis()
 
     val vadModel = CoreMLModel.load(VAD_MODEL_PATH)
@@ -91,12 +139,83 @@ private fun runFile(audioPath: String) {
     println("${loadTime}ms")
 
     if (vadModel == null || asrModel == null || speakerModel == null) {
-        println("ERROR: Failed to load one or more models")
+        println("ERROR: Failed to load one or more CoreML models")
         return
     }
 
     // Process file
     processFileTranscription(audioPath, vadModel, asrModel, speakerModel, VOICE_LIBRARY_PATH)
+}
+
+private fun runFileWithONNX(audioPath: String) {
+    // Load ONNX models
+    print("Loading ONNX models... ")
+    val startLoad = kotlin.system.getTimeMillis()
+
+    val onnxManager = ONNXModelManager(ONNX_MODEL_DIR)
+    if (!onnxManager.loadModels()) {
+        println("ERROR: Failed to load ONNX models")
+        return
+    }
+
+    val loadTime = kotlin.system.getTimeMillis() - startLoad
+    println("${loadTime}ms")
+
+    // Process file with ONNX
+    processFileTranscriptionONNX(audioPath, onnxManager, VOICE_LIBRARY_PATH)
+}
+
+/**
+ * Benchmark comparing CoreML vs ONNX performance
+ */
+private fun runBenchmark(audioPath: String?) {
+    println("KMP Voice Pipeline - Benchmark Mode")
+    println("=" .repeat(40))
+
+    // Load vocabulary
+    val vocabPath = "$MODEL_DIR/vocab.json"
+    if (!TokenDecoder.loadVocabulary(vocabPath)) {
+        println("Warning: Could not load vocabulary from $vocabPath")
+    }
+
+    // Load mel filterbank
+    val filterbankPath = "/Users/zhengyishen/Codes/claude-code/voice/YouPu/Resources/mel_filterbank.bin"
+    AudioProcessing.loadMelFilterbank(filterbankPath)
+
+    // Read test audio
+    val testAudioPath = audioPath ?: "/Users/zhengyishen/Codes/claude-code/voice/recordings/recording_20260112_002226.wav"
+    print("Reading audio file: $testAudioPath... ")
+    val audio = AudioFileReader.readFile(testAudioPath)
+    if (audio == null) {
+        println("FAILED")
+        return
+    }
+    println("${audio.size} samples (${audio.size.toFloat() / SAMPLE_RATE}s)")
+
+    // Compute mel spectrogram once
+    println("\nComputing mel spectrogram...")
+    val mel = AudioProcessing.computeMelSpectrogram(audio)
+    val lfr = LFRTransform.apply(mel)
+    val padded = LFRTransform.padToFixedFrames(lfr)
+    println("LFR features: ${padded.size} frames x ${padded[0].size} features")
+
+    // Prepare xvector input (3 seconds)
+    val xvectorSamples = minOf(audio.size, XVECTOR_SAMPLES)
+    val xvectorInput = audio.copyOfRange(0, xvectorSamples)
+
+    println("\n" + "=" .repeat(60))
+    println("BENCHMARK RESULTS")
+    println("=" .repeat(60))
+
+    // Benchmark CoreML
+    println("\n[CoreML Backend]")
+    benchmarkCoreML(audio, padded, xvectorInput)
+
+    // Benchmark ONNX
+    println("\n[ONNX Runtime Backend]")
+    benchmarkONNX(audio, padded, xvectorInput)
+
+    println("\n" + "=" .repeat(60))
 }
 
 private fun runTests() {
@@ -518,4 +637,279 @@ private fun testCTCDecoder() {
     check(textTokens == listOf(5, 10)) { "Should extract text tokens" }
 
     println("  CTCDecoder: OK")
+}
+
+// ============================================================================
+// Benchmark Functions
+// ============================================================================
+
+private fun benchmarkCoreML(audio: FloatArray, padded: List<FloatArray>, xvectorInput: FloatArray) {
+    val numIterations = 5
+
+    // Load models
+    print("  Loading models... ")
+    val loadStart = kotlin.system.getTimeMillis()
+    val vadModel = CoreMLModel.load(VAD_MODEL_PATH)
+    val asrModel = CoreMLModel.load("$MODEL_DIR/sensevoice-500-itn.mlmodelc")
+    val speakerModel = CoreMLModel.load("$MODEL_DIR/xvector.mlmodelc")
+    val loadTime = kotlin.system.getTimeMillis() - loadStart
+    println("${loadTime}ms")
+
+    if (vadModel == null || asrModel == null || speakerModel == null) {
+        println("  ERROR: Failed to load CoreML models")
+        return
+    }
+
+    // Warmup
+    print("  Warmup... ")
+    vadModel.runVAD(FloatArray(VAD_MODEL_INPUT_SIZE), FloatArray(VAD_STATE_SIZE), FloatArray(VAD_STATE_SIZE))
+    asrModel.runASR(padded)
+    speakerModel.runSpeakerEmbedding(xvectorInput)
+    println("done")
+
+    // Benchmark VAD
+    val vadTimes = mutableListOf<Long>()
+    for (i in 0 until numIterations) {
+        val start = kotlin.system.getTimeMillis()
+        var vadHidden = FloatArray(VAD_STATE_SIZE)
+        var vadCell = FloatArray(VAD_STATE_SIZE)
+        var vadContext = FloatArray(VAD_CONTEXT_SIZE)
+        var offset = 0
+        while (offset + VAD_CHUNK_SIZE <= audio.size) {
+            val vadInput = FloatArray(VAD_MODEL_INPUT_SIZE)
+            for (j in 0 until VAD_CONTEXT_SIZE) vadInput[j] = vadContext[j]
+            for (j in 0 until VAD_CHUNK_SIZE) vadInput[VAD_CONTEXT_SIZE + j] = audio[offset + j]
+            for (j in 0 until VAD_CONTEXT_SIZE) vadContext[j] = audio[offset + VAD_CHUNK_SIZE - VAD_CONTEXT_SIZE + j]
+
+            val output = vadModel.runVAD(vadInput, vadHidden, vadCell)
+            if (output != null) {
+                vadHidden = output.newHiddenState
+                vadCell = output.newCellState
+            }
+            offset += VAD_CHUNK_SIZE
+        }
+        vadTimes.add(kotlin.system.getTimeMillis() - start)
+    }
+
+    // Benchmark ASR
+    val asrTimes = mutableListOf<Long>()
+    for (i in 0 until numIterations) {
+        val start = kotlin.system.getTimeMillis()
+        asrModel.runASR(padded)
+        asrTimes.add(kotlin.system.getTimeMillis() - start)
+    }
+
+    // Benchmark Speaker
+    val spkTimes = mutableListOf<Long>()
+    for (i in 0 until numIterations) {
+        val start = kotlin.system.getTimeMillis()
+        speakerModel.runSpeakerEmbedding(xvectorInput)
+        spkTimes.add(kotlin.system.getTimeMillis() - start)
+    }
+
+    val vadAvg = vadTimes.average()
+    val asrAvg = asrTimes.average()
+    val spkAvg = spkTimes.average()
+
+    println("  Model Load:      ${loadTime}ms")
+    println("  VAD (full file): ${vadAvg.toLong()}ms avg (${vadTimes.joinToString(", ")})")
+    println("  ASR:             ${asrAvg.toLong()}ms avg (${asrTimes.joinToString(", ")})")
+    println("  Speaker:         ${spkAvg.toLong()}ms avg (${spkTimes.joinToString(", ")})")
+    println("  Total inference: ${(vadAvg + asrAvg + spkAvg).toLong()}ms avg")
+}
+
+private fun benchmarkONNX(audio: FloatArray, padded: List<FloatArray>, xvectorInput: FloatArray) {
+    val numIterations = 5
+
+    // Load models
+    print("  Loading models... ")
+    val loadStart = kotlin.system.getTimeMillis()
+    val onnxManager = ONNXModelManager(ONNX_MODEL_DIR)
+    if (!onnxManager.loadModels()) {
+        println("FAILED")
+        return
+    }
+    val loadTime = kotlin.system.getTimeMillis() - loadStart
+    println("${loadTime}ms")
+
+    // ONNX VAD uses 512-sample chunks (32ms)
+    val onnxVadChunkSize = ONNXModelManager.ONNX_VAD_CHUNK_SIZE
+
+    // Warmup
+    print("  Warmup... ")
+    onnxManager.runVAD(FloatArray(onnxVadChunkSize), FloatArray(VAD_STATE_SIZE), FloatArray(VAD_STATE_SIZE))
+    onnxManager.runASR(padded)
+    onnxManager.runSpeakerEmbedding(xvectorInput)
+    println("done")
+
+    // Benchmark VAD (using 512-sample chunks for ONNX)
+    val vadTimes = mutableListOf<Long>()
+    for (i in 0 until numIterations) {
+        val start = kotlin.system.getTimeMillis()
+        var vadHidden = FloatArray(VAD_STATE_SIZE)
+        var vadCell = FloatArray(VAD_STATE_SIZE)
+        var offset = 0
+        while (offset + onnxVadChunkSize <= audio.size) {
+            val vadInput = audio.copyOfRange(offset, offset + onnxVadChunkSize)
+
+            val output = onnxManager.runVAD(vadInput, vadHidden, vadCell)
+            if (output != null) {
+                vadHidden = output.hiddenState
+                vadCell = output.cellState
+            }
+            offset += onnxVadChunkSize
+        }
+        vadTimes.add(kotlin.system.getTimeMillis() - start)
+    }
+
+    // Benchmark ASR
+    val asrTimes = mutableListOf<Long>()
+    for (i in 0 until numIterations) {
+        val start = kotlin.system.getTimeMillis()
+        onnxManager.runASR(padded)
+        asrTimes.add(kotlin.system.getTimeMillis() - start)
+    }
+
+    // Benchmark Speaker
+    val spkTimes = mutableListOf<Long>()
+    for (i in 0 until numIterations) {
+        val start = kotlin.system.getTimeMillis()
+        onnxManager.runSpeakerEmbedding(xvectorInput)
+        spkTimes.add(kotlin.system.getTimeMillis() - start)
+    }
+
+    val vadAvg = vadTimes.average()
+    val asrAvg = asrTimes.average()
+    val spkAvg = spkTimes.average()
+
+    println("  Model Load:      ${loadTime}ms")
+    println("  VAD (full file): ${vadAvg.toLong()}ms avg (${vadTimes.joinToString(", ")})")
+    println("  ASR:             ${asrAvg.toLong()}ms avg (${asrTimes.joinToString(", ")})")
+    println("  Speaker:         ${spkAvg.toLong()}ms avg (${spkTimes.joinToString(", ")})")
+    println("  Total inference: ${(vadAvg + asrAvg + spkAvg).toLong()}ms avg")
+
+    onnxManager.release()
+}
+
+// ============================================================================
+// ONNX Processing Functions
+// ============================================================================
+
+private fun runLiveTranscriptionONNX(onnxManager: ONNXModelManager, voiceLibraryPath: String) {
+    // TODO: Implement ONNX live transcription
+    println("ONNX live transcription not yet implemented")
+    println("Use 'benchmark' command to compare performance")
+    onnxManager.release()
+}
+
+private fun processFileTranscriptionONNX(audioPath: String, onnxManager: ONNXModelManager, voiceLibraryPath: String) {
+    println("Processing file with ONNX: $audioPath")
+
+    // Read audio file
+    print("Reading audio... ")
+    val audio = AudioFileReader.readFile(audioPath)
+    if (audio == null) {
+        println("FAILED")
+        onnxManager.release()
+        return
+    }
+    println("${audio.size} samples (${audio.size.toFloat() / SAMPLE_RATE}s)")
+
+    // Process with VAD
+    println("\nRunning VAD...")
+    var vadHidden = FloatArray(VAD_STATE_SIZE)
+    var vadCell = FloatArray(VAD_STATE_SIZE)
+    var vadContext = FloatArray(VAD_CONTEXT_SIZE)
+
+    val speechSegments = mutableListOf<Pair<Int, Int>>()
+    var isSpeaking = false
+    var speechStart = 0
+    var speechFrames = 0
+    var silenceFrames = 0
+    val minSpeechFrames = 3
+    val minSilenceFrames = 2
+
+    var offset = 0
+    while (offset + VAD_CHUNK_SIZE <= audio.size) {
+        val vadInput = FloatArray(VAD_MODEL_INPUT_SIZE)
+        for (i in 0 until VAD_CONTEXT_SIZE) vadInput[i] = vadContext[i]
+        for (i in 0 until VAD_CHUNK_SIZE) vadInput[VAD_CONTEXT_SIZE + i] = audio[offset + i]
+        for (i in 0 until VAD_CONTEXT_SIZE) vadContext[i] = audio[offset + VAD_CHUNK_SIZE - VAD_CONTEXT_SIZE + i]
+
+        val output = onnxManager.runVAD(vadInput, vadHidden, vadCell)
+        if (output != null) {
+            vadHidden = output.hiddenState
+            vadCell = output.cellState
+
+            val isSpeech = output.probability >= VAD_SPEECH_THRESHOLD
+            if (isSpeech) {
+                speechFrames++
+                silenceFrames = 0
+                if (!isSpeaking && speechFrames >= minSpeechFrames) {
+                    isSpeaking = true
+                    speechStart = maxOf(0, offset - (minSpeechFrames - 1) * VAD_CHUNK_SIZE)
+                }
+            } else {
+                silenceFrames++
+                speechFrames = 0
+                if (isSpeaking && silenceFrames >= minSilenceFrames) {
+                    speechSegments.add(speechStart to offset + VAD_CHUNK_SIZE)
+                    isSpeaking = false
+                }
+            }
+        }
+        offset += VAD_CHUNK_SIZE
+    }
+    if (isSpeaking) speechSegments.add(speechStart to audio.size)
+
+    println("Found ${speechSegments.size} speech segments")
+
+    // Process each segment
+    for ((idx, segment) in speechSegments.withIndex()) {
+        val (start, end) = segment
+        val segmentAudio = audio.copyOfRange(start, minOf(end, audio.size))
+        println("\nSegment ${idx + 1}: ${start.toFloat()/SAMPLE_RATE}s - ${end.toFloat()/SAMPLE_RATE}s")
+
+        if (segmentAudio.size < SAMPLE_RATE * MIN_SPEECH_DURATION) {
+            println("  Too short, skipping")
+            continue
+        }
+
+        // Compute features and run ASR
+        val mel = AudioProcessing.computeMelSpectrogram(segmentAudio)
+        val lfr = LFRTransform.apply(mel)
+        val padded = LFRTransform.padToFixedFrames(lfr)
+
+        val logitsRaw = onnxManager.runASR(padded)
+        if (logitsRaw == null) {
+            println("  ASR failed")
+            continue
+        }
+
+        // Convert flat array to 2D
+        val vocabSize = 25055
+        val numFrames = logitsRaw.size / vocabSize
+        val logits = List(numFrames) { f ->
+            FloatArray(vocabSize) { v -> logitsRaw[f * vocabSize + v] }
+        }
+
+        val tokens = CTCDecoder.greedyDecode(logits)
+        val (info, textTokens) = TokenMappings.decodeSpecialTokens(tokens)
+        val text = TokenDecoder.decodeTextTokens(textTokens)
+
+        println("  Language: ${info["language"]}, Emotion: ${info["emotion"]}")
+        println("  Text: $text")
+
+        // Speaker embedding
+        if (segmentAudio.size >= XVECTOR_SAMPLES) {
+            val center = (segmentAudio.size - XVECTOR_SAMPLES) / 2
+            val xvectorIn = segmentAudio.copyOfRange(center, center + XVECTOR_SAMPLES)
+            val embedding = onnxManager.runSpeakerEmbedding(xvectorIn)
+            if (embedding != null) {
+                println("  Speaker embedding: dim=${embedding.size}")
+            }
+        }
+    }
+
+    onnxManager.release()
 }
