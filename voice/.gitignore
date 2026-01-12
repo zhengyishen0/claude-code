@@ -1,20 +1,31 @@
-# Large model files (download separately)
-*.mlpackage/
-*.mlmodel
-*.mlmodelc/
-*.bin
-*.bpe.model
-**/models/
+# Large model files (download via scripts/setup.sh)
+models/coreml/
+models/onnx/
+models/pytorch/
+models/assets/*.bin
+models/assets/*.bpe.model
 
 # Personal voice data (user-specific)
-**/voice_library*.json
+data/voice_library*.json
+data/recordings/
+
+# Build outputs
+pipelines/kmp/build/
+pipelines/kmp/libs/onnxruntime-*/
+pipelines/kmp/libs/*.a
+pipelines/swift/.build/
+pipelines/python/**/__pycache__/
 
 # Test outputs
 test_output/
-**/test_audio/
-recordings/
 *.wav
 
 # Python cache
 __pycache__/
 *.pyc
+.pytest_cache/
+
+# IDE
+.idea/
+*.iml
+.vscode/
