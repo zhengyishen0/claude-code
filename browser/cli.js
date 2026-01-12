@@ -509,6 +509,9 @@ async function cmdSnapshot(clientOrFull, forceFull = false) {
       fs.writeFileSync(snapshotFile, content);
       console.log(content);
     }
+
+    // Reminder for AI agents
+    console.log('\n---\nNote: Read all results carefully before taking action.');
   } finally {
     if (shouldClose) await client.close();
   }
@@ -546,6 +549,10 @@ async function cmdOpen(url) {
     const inspectJs = loadScript('inspect.js');
     const result = await Runtime.evaluate({ expression: inspectJs, returnByValue: true });
     const data = JSON.parse(result.result.value);
+
+    // Show browser status line
+    const profileInfo = PROFILE ? `profile: ${PROFILE}` : 'default profile';
+    console.log(`Browser: open (${profileInfo}, port: ${CDP_PORT})\n`);
 
     formatInspectOutput(data);
 
@@ -1251,14 +1258,35 @@ function formatInspectOutput(data) {
   console.log(`  Total forms found: ${summary.totalForms || 0}`);
   console.log();
 
+  // Helper to truncate long values
+  const truncateValue = (val, maxLen = 40) => {
+    if (val.length <= maxLen) return `'${val}'`;
+    return `'${val.slice(0, maxLen)}...' (${val.length} chars)`;
+  };
+
   const params = data.urlParams || {};
   if (Object.keys(params).length > 0) {
     console.log('Discovered Parameters:');
     console.log('-'.repeat(60));
     for (const [name, info] of Object.entries(params)) {
       const source = info.source || 'unknown';
-      const examples = (info.examples || []).slice(0, 3).map(e => `'${e}'`).join(', ');
-      console.log(`  ${name.padEnd(20)} [${source.padStart(5)}] ${examples}`);
+      const allExamples = info.examples || [];
+
+      // Show first example (truncated if long), then indicate if more exist
+      let display;
+      if (allExamples.length === 0) {
+        display = '(empty)';
+      } else if (allExamples.length === 1) {
+        display = truncateValue(allExamples[0]);
+      } else {
+        // Show first value + count of additional values
+        display = truncateValue(allExamples[0]);
+        if (allExamples.length > 1) {
+          display += ` (+${allExamples.length - 1} more)`;
+        }
+      }
+
+      console.log(`  ${name.padEnd(20)} [${source.padStart(5)}] ${display}`);
     }
     console.log();
   }
@@ -1276,10 +1304,29 @@ function formatInspectOutput(data) {
     console.log();
   }
 
+  // Simplify URL pattern - multi-line if too long
   if (summary.patternUrl) {
     console.log('URL Pattern:');
     console.log('-'.repeat(60));
-    console.log(`  ${summary.patternUrl}`);
+    const pattern = summary.patternUrl;
+    if (pattern.length <= 80) {
+      console.log(`  ${pattern}`);
+    } else {
+      // Extract base URL and params
+      const [base, queryString] = pattern.split('?');
+      console.log(`  Base: ${base}`);
+      if (queryString) {
+        const paramNames = queryString.split('&').map(p => p.split('=')[0]);
+        // Show first 8 params, then count
+        const shown = paramNames.slice(0, 8).join(', ');
+        const remaining = paramNames.length - 8;
+        if (remaining > 0) {
+          console.log(`  Params: ${shown}, ... (+${remaining} more)`);
+        } else {
+          console.log(`  Params: ${shown}`);
+        }
+      }
+    }
     console.log();
   }
 }

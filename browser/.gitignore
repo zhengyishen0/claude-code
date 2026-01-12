@@ -11,3 +11,4 @@ profiles/
 
 # Chrome runtime data
 data/
+node_modules
