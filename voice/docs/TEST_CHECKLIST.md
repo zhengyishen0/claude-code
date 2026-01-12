@@ -58,32 +58,21 @@ ls -la scripts/converters/
 ### 3.1 Import Test
 ```bash
 cd voice/pipelines/python
-python -c "from transcription.live_transcription import *; print('OK')"
-python -c "from speaker_id.voice_library_xvector import *; print('OK')"
-python -c "from vad.silero_vad import *; print('OK')"
+python3 -c "from transcription.sensevoice_coreml import *; print('Transcription OK')"
+python3 -c "from speaker_id.speaker_embeddings import *; print('Speaker ID OK')"
+python3 -c "from vad.silero_vad import *; print('VAD OK')"
+python3 -c "import live; print('Live pipeline OK')"
 ```
 
-- [ ] Transcription module imports
-- [ ] Speaker ID module imports
-- [ ] VAD module imports
+- [ ] Transcription module imports (sensevoice_coreml)
+- [ ] Speaker ID module imports (speaker_embeddings)
+- [ ] VAD module imports (silero_vad)
+- [ ] Main live.py imports
 
-### 3.2 Model Loading Test
-```python
-# In voice/pipelines/python
-python -c "
-from speaker_id.voice_library_xvector import VoiceLibrary
-lib = VoiceLibrary()
-print('Voice library loaded:', len(lib.speakers), 'speakers')
-"
-```
-
-- [ ] Voice library loads from `data/voice_library_xvector.json`
-- [ ] No path errors
-
-### 3.3 Live Transcription Test
+### 3.2 Live Pipeline Test
 ```bash
 cd voice/pipelines/python
-python transcription/live_transcription.py
+python3 live.py
 ```
 
 - [ ] Audio capture starts
@@ -270,9 +259,10 @@ Document any known issues discovered during testing:
 
 | Issue | Affected Component | Status |
 |-------|-------------------|--------|
-| ONNX ASR model outputs wrong shape | KMP ONNX mode | Open |
-| | | |
-| | | |
+| ONNX ASR model outputs wrong shape (512 vs 25055) | KMP ONNX mode | Open |
+| ONNX ASR/Speaker models not converted (only VAD) | ONNX models | Need conversion |
+| mel_filterbank.bin is gitignored, must be copied manually | All pipelines | Manual step |
+| Java required for KMP build | KMP pipeline | Dependency |
 
 ---
 

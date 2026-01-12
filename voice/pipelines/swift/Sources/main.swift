@@ -8,9 +8,14 @@ import SentencepieceTokenizer
 
 // MARK: - Project Configuration
 
-/// YouPu project root - absolute path for consistent access to models
-/// Note: Models are .gitignored, so always reference the main repo location
-let YOUPU_ROOT = "/Users/zhengyishen/Codes/claude-code/voice/YouPu"
+/// Voice project root - absolute path for consistent access to models
+let VOICE_ROOT = "/Users/zhengyishen/Codes/claude-code/voice"
+let MODEL_DIR = "\(VOICE_ROOT)/models/coreml"
+let ASSETS_DIR = "\(VOICE_ROOT)/models/assets"
+let DATA_DIR = "\(VOICE_ROOT)/data"
+
+// Legacy alias for compatibility
+let YOUPU_ROOT = VOICE_ROOT
 
 // MARK: - Configuration (matches Python exactly)
 
@@ -411,7 +416,7 @@ class LivePipeline {
             return URL(fileURLWithPath: localPath)
         }
         // Check in YouPu Models
-        let youpuPath = YOUPU_ROOT + "/Models/silero-vad-unified-256ms-v6.0.0.mlmodelc"
+        let youpuPath = MODEL_DIR + "/silero-vad.mlmodelc"
         if FileManager.default.fileExists(atPath: youpuPath) {
             return URL(fileURLWithPath: youpuPath)
         }
@@ -1018,7 +1023,7 @@ func extractSpeakerEmbedding(audio: [Float], model: MLModel) -> [Float]? {
 }
 
 func findSpeakerModel() -> URL? {
-    let path = "\(YOUPU_ROOT)/Sources/YouPu/Models/xvector.mlmodelc"
+    let path = "\(MODEL_DIR)/xvector.mlmodelc"
     let url = URL(fileURLWithPath: path)
     if FileManager.default.fileExists(atPath: url.path) {
         return url
@@ -1027,7 +1032,7 @@ func findSpeakerModel() -> URL? {
 }
 
 func findVoiceLibrary() -> String? {
-    let path = "\(YOUPU_ROOT)/Resources/voice_library_xvector.json"
+    let path = "\(DATA_DIR)/voice_library_xvector.json"
     if FileManager.default.fileExists(atPath: path) {
         return path
     }
@@ -1322,8 +1327,8 @@ func main() async {
 
     // Audio files to transcribe (in YouPu project folder)
     let audioFiles = [
-        "\(YOUPU_ROOT)/Resources/recordings/sample.wav",
-        "\(YOUPU_ROOT)/Resources/recordings/test_recording.wav",
+        "\(DATA_DIR)/recordings/sample.wav",
+        "\(DATA_DIR)/recordings/test_recording.wav",
     ]
 
     // Load model
@@ -1890,8 +1895,8 @@ func ctcGreedyDecode(_ logits: [[Float]]) -> [Int] {
 
 func findTestAudio() -> String? {
     let candidates = [
-        "\(YOUPU_ROOT)/Resources/recordings/test_recording.wav",
-        "\(YOUPU_ROOT)/Resources/recordings/baseline.wav"
+        "\(DATA_DIR)/recordings/test_recording.wav",
+        "\(DATA_DIR)/recordings/baseline.wav"
     ]
 
     for candidate in candidates {
@@ -1905,7 +1910,7 @@ func findTestAudio() -> String? {
 
 func findFilterbank() -> String? {
     let candidates = [
-        "\(YOUPU_ROOT)/Resources/mel_filterbank.bin",
+        "\(ASSETS_DIR)/mel_filterbank.bin",
         "mel_filterbank.bin"  // Fallback: local project
     ]
 
@@ -1919,7 +1924,7 @@ func findFilterbank() -> String? {
 }
 
 func findModel(named name: String, ext: String) -> URL? {
-    let path = "\(YOUPU_ROOT)/Sources/YouPu/Models/\(name).\(ext)"
+    let path = "\(MODEL_DIR)/\(name).\(ext)"
     let url = URL(fileURLWithPath: path)
     if FileManager.default.fileExists(atPath: url.path) {
         return url
@@ -1928,7 +1933,7 @@ func findModel(named name: String, ext: String) -> URL? {
 }
 
 func findTokenizerModel() -> String? {
-    let path = "\(YOUPU_ROOT)/Sources/YouPu/Models/chn_jpn_yue_eng_ko_spectok.bpe.model"
+    let path = "\(ASSETS_DIR)/chn_jpn_yue_eng_ko_spectok.bpe.model"
     if FileManager.default.fileExists(atPath: path) {
         return path
     }
