@@ -25,7 +25,7 @@ def export_xvector():
     # Load the model
     classifier = EncoderClassifier.from_hparams(
         source="speechbrain/spkrec-xvect-voxceleb",
-        savedir="pretrained_models/spkrec-xvect-voxceleb"
+        savedir=str(VOICE_DIR / "models" / "pytorch" / "spkrec-xvect-voxceleb")
     )
 
     # Get the embedding model

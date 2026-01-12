@@ -20,9 +20,8 @@ pipelines/swift/.build/
 pipelines/swift/Package.resolved
 pipelines/python/**/__pycache__/
 
-# Downloaded model caches
-models/spkrec-*/
-pretrained_models/
+# Downloaded model caches (source checkpoints)
+models/pytorch/
 
 # Test outputs
 test_output/

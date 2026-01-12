@@ -22,6 +22,9 @@ from pathlib import Path
 import warnings
 warnings.filterwarnings('ignore')
 
+# Voice project root
+VOICE_DIR = Path(__file__).parent.parent.parent
+
 
 def load_xvector_model():
     """Load SpeechBrain x-vector model."""
@@ -31,7 +34,7 @@ def load_xvector_model():
 
     model = EncoderClassifier.from_hparams(
         source="speechbrain/spkrec-xvect-voxceleb",
-        savedir=Path.home() / ".cache" / "speechbrain" / "speechbrain-spkrec-xvect-voxceleb",
+        savedir=VOICE_DIR / "models" / "pytorch" / "spkrec-xvect-voxceleb",
         run_opts={"device": "cpu"}
     )
 
