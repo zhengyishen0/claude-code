@@ -96,14 +96,14 @@ chrome-cli execute 'document.querySelector("button").click()'
 
 <!-- TOOLS:AUTO-GENERATED -->
 
-**Root-level tools** (direct aliases): `browser`, `memory`, `world`
+**Root-level tools** (direct aliases): `browser`, `browser-js`, `memory`, `world`
 
 **tools/** (remaining): `screenshot`, `proxy`
 
 ### browser
 Browser automation with React/SPA support + Vision-based automation (CDP)
 
-Run `browser` for full help.
+Run `browser` for full help. Alternative: `browser-js` (Node.js rewrite, same features).
 
 **Commands:** snapshot, inspect, open, wait, click, input, hover, drag, sendkey, tabs, execute, screenshot, profile
 
