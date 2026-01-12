@@ -1,0 +1,5 @@
+language = Objective-C
+headers = AVFoundation/AVFoundation.h
+
+compilerOpts = -framework AVFoundation -framework CoreAudio
+linkerOpts = -framework AVFoundation -framework CoreAudio
