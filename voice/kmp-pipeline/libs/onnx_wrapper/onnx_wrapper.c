@@ -46,7 +46,8 @@ int onnx_init(void) {
         return -1;
     }
 
-    OrtStatus* status = g_ort->CreateEnv(ORT_LOGGING_LEVEL_WARNING, "voice_pipeline", &g_env);
+    // Use ERROR level to suppress CoreML EP informational warnings
+    OrtStatus* status = g_ort->CreateEnv(ORT_LOGGING_LEVEL_ERROR, "voice_pipeline", &g_env);
     if (status) {
         set_ort_error(status);
         g_ort = NULL;
