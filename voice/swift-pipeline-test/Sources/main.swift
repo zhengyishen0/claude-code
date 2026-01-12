@@ -346,10 +346,12 @@ class LivePipeline {
     // Configuration
     private var useSuppression: Bool = false
     private var useIsolation: Bool = false
+    private var useFastMode: Bool = false
 
-    init(suppression: Bool = false, isolation: Bool = false) {
+    init(suppression: Bool = false, isolation: Bool = false, fast: Bool = false) {
         self.useSuppression = suppression
         self.useIsolation = isolation
+        self.useFastMode = fast
     }
 
     func loadModels() {
@@ -499,7 +501,39 @@ class LivePipeline {
         vadChunkBuffer.append(contentsOf: samples)
         totalSamples += samples.count
 
-        // Process complete chunks
+        // Quick RMS-based silence check for low-latency end-of-speech detection (--fast mode)
+        // This runs on every audio callback (32ms) to detect silence faster than VAD (256ms)
+        if useFastMode && isSpeaking {
+            var rms: Float = 0
+            vDSP_rmsqv(samples, 1, &rms, vDSP_Length(samples.count))
+            let rmsThreshold: Float = 0.01  // Silence threshold
+
+            if rms < rmsThreshold {
+                // Count silence samples (updated every 32ms for faster detection)
+                silenceSamples += samples.count
+                let silenceDuration = Double(silenceSamples) / SAMPLE_RATE_DOUBLE
+                if silenceDuration >= MIN_SILENCE_DURATION {
+                    // Quick silence detection - end segment now without waiting for VAD
+                    isSpeaking = false
+                    let speechDuration = Double(speechBuffer.count) / SAMPLE_RATE_DOUBLE
+                    if speechDuration >= MIN_SPEECH_DURATION {
+                        let segment = speechBuffer
+                        let startTime = Double(speechStartSample) / SAMPLE_RATE_DOUBLE
+                        let endTime = Double(speechStartSample + speechBuffer.count) / SAMPLE_RATE_DOUBLE
+                        processingQueue.async { [weak self] in
+                            self?.processSegment(audio: segment, startTime: startTime, endTime: endTime)
+                        }
+                    }
+                    speechBuffer = []
+                    silenceSamples = 0
+                    vadChunkBuffer = []
+                    return
+                }
+            }
+            // Note: don't reset silenceSamples here - let VAD handle speech detection
+        }
+
+        // Process complete chunks with Silero VAD (for accurate speech detection)
         while vadChunkBuffer.count >= VAD_CHUNK_SIZE {
             let chunk = Array(vadChunkBuffer.prefix(VAD_CHUNK_SIZE))
             vadChunkBuffer.removeFirst(VAD_CHUNK_SIZE)
@@ -752,8 +786,8 @@ class LivePipeline {
         }
         audioConverter = converter
 
-        // Install tap on input node
-        inputNode.installTap(onBus: 0, bufferSize: AVAudioFrameCount(VAD_CHUNK_SIZE), format: tapFormat) { [weak self] buffer, _ in
+        // Install tap on input node with small buffer for low latency (512 samples = 32ms, matches Python)
+        inputNode.installTap(onBus: 0, bufferSize: 512, format: tapFormat) { [weak self] buffer, _ in
             self?.handleAudioBuffer(buffer, converter: converter, targetFormat: targetFormat, extractChannel0: needsChannelExtraction)
         }
 
@@ -1908,16 +1942,22 @@ func printUsage() {
     Swift Voice Pipeline
 
     USAGE:
-      swift run                    # Live microphone transcription (default)
+      swift run                    # Live mode (default, accurate)
+      swift run -- --fast          # Live mode with low latency
       swift run -- --suppression   # Live with echo/noise suppression
       swift run -- --isolation     # Live with ML voice isolation (macOS 14+)
       swift run -- --file          # Process sample audio files
 
     OPTIONS:
+      --fast            Low-latency mode (32ms silence detection, faster response)
       --suppression     Echo cancellation + noise suppression
       --isolation       ML-based voice isolation (strongest, macOS 14+)
       --file            Process sample audio files instead of live mode
       --help            Show this help message
+
+    NOTES:
+      Default mode uses 256ms VAD chunks for better accuracy.
+      --fast mode adds 32ms RMS-based silence detection for quicker response.
     """)
 }
 
@@ -1933,6 +1973,7 @@ if args.contains("--help") || args.contains("-h") {
     // Default: live mode
     let useSuppression = args.contains("--suppression")
     let useIsolation = args.contains("--isolation")
-    let pipeline = LivePipeline(suppression: useSuppression, isolation: useIsolation)
+    let useFast = args.contains("--fast")
+    let pipeline = LivePipeline(suppression: useSuppression, isolation: useIsolation, fast: useFast)
     await pipeline.run()
 }
