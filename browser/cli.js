@@ -962,6 +962,98 @@ async function cmdClose() {
 }
 
 // ============================================================================
+// Chrome.app Profile Helpers
+// ============================================================================
+
+const CHROME_APP_DIR = path.join(process.env.HOME, 'Library/Application Support/Google/Chrome');
+
+function getChromeProfiles() {
+  if (!fs.existsSync(CHROME_APP_DIR)) return [];
+
+  return fs.readdirSync(CHROME_APP_DIR).filter(name => {
+    // Only consider Default and Profile N directories
+    if (name !== 'Default' && !/^Profile \d+$/.test(name)) return false;
+    const fullPath = path.join(CHROME_APP_DIR, name);
+    try {
+      return fs.statSync(fullPath).isDirectory();
+    } catch {
+      return false;
+    }
+  });
+}
+
+function formatTimeAgo(seconds) {
+  if (seconds < 60) return 'just now';
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  return `${Math.floor(seconds / 86400)}d ago`;
+}
+
+function detectChromeAccounts(profilePath, targetService) {
+  const cookiesDb = path.join(profilePath, 'Cookies');
+  if (!fs.existsSync(cookiesDb)) return [];
+
+  // Load domain mappings
+  const mappingsFile = path.join(SCRIPT_DIR, 'domain-mappings.json');
+  let mappings = {};
+  if (fs.existsSync(mappingsFile)) {
+    mappings = JSON.parse(fs.readFileSync(mappingsFile, 'utf8'));
+  }
+
+  // Chrome time epoch: Jan 1, 1601 (microseconds)
+  const CHROME_EPOCH_OFFSET = 11644473600000000n;
+  const nowChrome = BigInt(Date.now()) * 1000n + CHROME_EPOCH_OFFSET;
+
+  // Query cookies database using sqlite3 CLI
+  const query = `
+    SELECT DISTINCT host_key, MAX(last_access_utc) as last_access
+    FROM cookies
+    WHERE expires_utc > ${nowChrome}
+      AND last_access_utc > 0
+    GROUP BY host_key
+    ORDER BY last_access DESC
+  `;
+
+  try {
+    const result = execSync(`sqlite3 -separator '|' "${cookiesDb}" "${query}"`, {
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+
+    const accounts = [];
+    const seenServices = new Set(); // Deduplicate by service, not domain
+
+    for (const line of result.trim().split('\n')) {
+      if (!line) continue;
+      const [rawDomain, lastAccessStr] = line.split('|');
+      const domain = rawDomain.replace(/^\./, '');
+
+      const service = mappings[domain];
+      if (targetService && service !== targetService) continue;
+      if (!targetService && !service) continue;
+
+      // Only keep first (most recent) entry per service
+      if (seenServices.has(service)) continue;
+      seenServices.add(service);
+
+      const lastAccess = BigInt(lastAccessStr);
+      const secondsAgo = Number((nowChrome - lastAccess) / 1000000n);
+
+      accounts.push({
+        domain,
+        service: service || 'unknown',
+        secondsAgo,
+        timeAgo: formatTimeAgo(secondsAgo)
+      });
+    }
+
+    return accounts;
+  } catch (err) {
+    return [];
+  }
+}
+
+// ============================================================================
 // Profile Command
 // ============================================================================
 
@@ -1001,44 +1093,76 @@ async function cmdProfile(args) {
 }
 
 function cmdProfileList() {
-  if (!fs.existsSync(PROFILES_DIR)) {
-    console.log('No profiles found\n');
-    console.log('Import from Chrome.app:');
-    console.log(`  ${TOOL_NAME} profile import              # scan for accounts`);
-    console.log(`  ${TOOL_NAME} profile import URL          # import specific service\n`);
-    return;
+  // Get imported profiles
+  let importedProfiles = [];
+  if (fs.existsSync(PROFILES_DIR)) {
+    importedProfiles = fs.readdirSync(PROFILES_DIR).filter(name => {
+      return fs.statSync(path.join(PROFILES_DIR, name)).isDirectory();
+    });
   }
 
-  const dirs = fs.readdirSync(PROFILES_DIR).filter(name => {
-    return fs.statSync(path.join(PROFILES_DIR, name)).isDirectory();
-  });
+  // Get available services from Chrome.app (quick scan)
+  let availableServices = [];
+  if (fs.existsSync(path.join(CHROME_APP_DIR, 'Default'))) {
+    const chromeProfiles = getChromeProfiles();
+    const serviceSet = new Set();
 
-  if (dirs.length === 0) {
-    console.log('No profiles found\n');
-    console.log('Import from Chrome.app:');
-    console.log(`  ${TOOL_NAME} profile import              # scan for accounts`);
-    console.log(`  ${TOOL_NAME} profile import URL          # import specific service\n`);
-    return;
-  }
-
-  console.log('Profiles:\n');
-
-  for (const name of dirs) {
-    const profilePath = path.join(PROFILES_DIR, name);
-    const display = readProfileMetadata(profilePath, 'display');
-    const status = readProfileMetadata(profilePath, 'status');
-
-    if (display) {
-      if (status === 'disabled') {
-        console.log(`  ${display} [DISABLED]`);
-      } else {
-        console.log(`  ${display}`);
+    for (const profileName of chromeProfiles) {
+      const profilePath = path.join(CHROME_APP_DIR, profileName);
+      const accounts = detectChromeAccounts(profilePath);
+      for (const acc of accounts) {
+        serviceSet.add(acc.service);
       }
-      console.log(`    Filename: ${name}`);
-    } else {
-      console.log(`  ${name} (no metadata)`);
     }
-    console.log('');
+    availableServices = Array.from(serviceSet).sort();
+  }
+
+  // Show imported profiles
+  if (importedProfiles.length > 0) {
+    console.log('Imported profiles:\n');
+    for (const name of importedProfiles) {
+      const profilePath = path.join(PROFILES_DIR, name);
+      const display = readProfileMetadata(profilePath, 'display');
+      const status = readProfileMetadata(profilePath, 'status');
+
+      if (display) {
+        if (status === 'disabled') {
+          console.log(`  ${display} [DISABLED]`);
+        } else {
+          console.log(`  ${display}`);
+        }
+        console.log(`    Use: --profile ${name}`);
+      } else {
+        console.log(`  ${name} (no metadata)`);
+      }
+      console.log('');
+    }
+  }
+
+  // Show available services from Chrome.app
+  if (availableServices.length > 0) {
+    // Filter out services that are already imported
+    const importedServices = new Set();
+    for (const name of importedProfiles) {
+      const profilePath = path.join(PROFILES_DIR, name);
+      const service = readProfileMetadata(profilePath, 'service');
+      if (service) importedServices.add(service);
+    }
+
+    const notImported = availableServices.filter(s => !importedServices.has(s));
+
+    if (notImported.length > 0) {
+      console.log('Available in Chrome.app (not yet imported):\n');
+      console.log(`  ${notImported.join(', ')}\n`);
+      console.log(`  Import: ${TOOL_NAME} profile import <service>\n`);
+    }
+  }
+
+  // If nothing found
+  if (importedProfiles.length === 0 && availableServices.length === 0) {
+    console.log('No profiles found.\n');
+    console.log('Import from Chrome.app:');
+    console.log(`  ${TOOL_NAME} profile import <service>\n`);
   }
 }
 
@@ -1139,97 +1263,6 @@ function cmdProfileUpdate(args) {
 // ============================================================================
 // Profile Import Command
 // ============================================================================
-
-const CHROME_APP_DIR = path.join(process.env.HOME, 'Library/Application Support/Google/Chrome');
-
-function getChromeProfiles() {
-  if (!fs.existsSync(CHROME_APP_DIR)) return [];
-
-  return fs.readdirSync(CHROME_APP_DIR).filter(name => {
-    // Only consider Default and Profile N directories
-    if (name !== 'Default' && !/^Profile \d+$/.test(name)) return false;
-    const fullPath = path.join(CHROME_APP_DIR, name);
-    try {
-      return fs.statSync(fullPath).isDirectory();
-    } catch {
-      return false;
-    }
-  });
-}
-
-function formatTimeAgo(seconds) {
-  if (seconds < 60) return 'just now';
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
-  return `${Math.floor(seconds / 86400)}d ago`;
-}
-
-function detectChromeAccounts(profilePath, targetService) {
-  const cookiesDb = path.join(profilePath, 'Cookies');
-  if (!fs.existsSync(cookiesDb)) return [];
-
-  // Load domain mappings
-  const mappingsFile = path.join(SCRIPT_DIR, 'domain-mappings.json');
-  let mappings = {};
-  if (fs.existsSync(mappingsFile)) {
-    mappings = JSON.parse(fs.readFileSync(mappingsFile, 'utf8'));
-  }
-
-  // Chrome time epoch: Jan 1, 1601 (microseconds)
-  // Unix epoch: Jan 1, 1970
-  // Difference: 11644473600 seconds = 11644473600000000 microseconds
-  const CHROME_EPOCH_OFFSET = 11644473600000000n;
-  const nowChrome = BigInt(Date.now()) * 1000n + CHROME_EPOCH_OFFSET;
-
-  // Query cookies database using sqlite3 CLI
-  const query = `
-    SELECT DISTINCT host_key, MAX(last_access_utc) as last_access
-    FROM cookies
-    WHERE expires_utc > ${nowChrome}
-      AND last_access_utc > 0
-    GROUP BY host_key
-    ORDER BY last_access DESC
-  `;
-
-  try {
-    const result = execSync(`sqlite3 -separator '|' "${cookiesDb}" "${query}"`, {
-      encoding: 'utf8',
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
-
-    const accounts = [];
-    const seenDomains = new Set();
-
-    for (const line of result.trim().split('\n')) {
-      if (!line) continue;
-      const [rawDomain, lastAccessStr] = line.split('|');
-      const domain = rawDomain.replace(/^\./, ''); // Strip leading dot
-
-      if (seenDomains.has(domain)) continue;
-      seenDomains.add(domain);
-
-      // Check if domain maps to target service
-      const service = mappings[domain];
-      if (targetService && service !== targetService) continue;
-      if (!targetService && !service) continue;
-
-      const lastAccess = BigInt(lastAccessStr);
-      const secondsAgo = Number((nowChrome - lastAccess) / 1000000n);
-
-      accounts.push({
-        domain,
-        service: service || 'unknown',
-        secondsAgo,
-        timeAgo: formatTimeAgo(secondsAgo)
-      });
-    }
-
-    return accounts;
-  } catch (err) {
-    // Database might be locked or inaccessible
-    return [];
-  }
-}
 
 // Resolve filter to service name (accepts URL, domain, or service name)
 function resolveServiceFilter(filter) {
