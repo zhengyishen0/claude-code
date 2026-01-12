@@ -1,8 +1,12 @@
 #include "onnx_wrapper.h"
 #include "onnxruntime_c_api.h"
+#include "coreml_provider_factory.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+
+// Enable CoreML Execution Provider for Neural Engine acceleration
+#define USE_COREML_EP 1
 
 // Global state
 static const OrtApi* g_ort = NULL;
@@ -80,9 +84,25 @@ OnnxSession* onnx_create_session(const char* model_path) {
         return NULL;
     }
 
-    // Set thread count
-    g_ort->SetIntraOpNumThreads(sess->options, 1);
+    // Enable graph optimization (reduces load time on subsequent runs)
+    g_ort->SetSessionGraphOptimizationLevel(sess->options, ORT_ENABLE_ALL);
+
+    // Set thread count for CPU fallback
+    g_ort->SetIntraOpNumThreads(sess->options, 4);
     g_ort->SetInterOpNumThreads(sess->options, 1);
+
+#if USE_COREML_EP
+    // Enable CoreML Execution Provider for Neural Engine acceleration
+    // Flags: 0 = use all CoreML features including ANE
+    status = OrtSessionOptionsAppendExecutionProvider_CoreML(sess->options, 0);
+    if (status) {
+        // CoreML EP failed - continue with CPU (non-fatal)
+        printf("Warning: CoreML EP not available, using CPU: %s\n",
+               g_ort->GetErrorMessage(status));
+        g_ort->ReleaseStatus(status);
+        status = NULL;
+    }
+#endif
 
     // Create session
     status = g_ort->CreateSession(g_env, model_path, sess->options, &sess->session);
