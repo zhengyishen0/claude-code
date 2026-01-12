@@ -234,9 +234,24 @@ class LiveTranscription(
     }
 
     /**
+     * Check if segment is noise (EMO_UNKNOWN only, very short, etc.)
+     */
+    private fun isNoiseSegment(segment: Segment): Boolean {
+        val text = segment.text.trim()
+        // Pure EMO_UNKNOWN or very short meaningless text
+        return text.startsWith("<|EMO_UNKNOWN|>") &&
+               text.replace("<|EMO_UNKNOWN|>", "").trim().length < 3
+    }
+
+    /**
      * Print output in format: [Speaker] (start-end) text [msec]
      */
     private fun printLiveOutput(segment: Segment) {
+        // Skip noise segments
+        if (isNoiseSegment(segment)) {
+            return
+        }
+
         val speakerLabel = when {
             segment.isConflict -> segment.speakerName ?: "???"
             segment.isKnown && segment.confidence == "high" -> segment.speakerName ?: "???"
@@ -246,18 +261,46 @@ class LiveTranscription(
 
         val learnIndicator = if (segment.learned) " \uD83D\uDCDA" else ""
 
+        // Clean up EMO_UNKNOWN from display text
+        val displayText = segment.text.replace("<|EMO_UNKNOWN|>", "").trim()
+
         val startStr = segment.startTime.format(1)
         val endStr = segment.endTime.format(1)
-        println("[${speakerLabel}] (${startStr}s-${endStr}s) ${segment.text}  [${segment.processTimeMs}ms]$learnIndicator")
+        println("[${speakerLabel}] (${startStr}s-${endStr}s) $displayText  [${segment.processTimeMs}ms]$learnIndicator")
     }
 
     /**
      * Cluster unknown speakers using simple distance-based clustering
      */
     fun clusterUnknowns(): Int {
-        val unknowns = segments.filter { !it.isKnown && !it.isConflict && it.embedding != null }
+        // Filter: unknown, has embedding, not just noise
+        val unknowns = segments.filter {
+            !it.isKnown &&
+            !it.isConflict &&
+            it.embedding != null &&
+            !it.text.trim().startsWith("<|EMO_UNKNOWN|>") // Filter pure noise
+        }
 
-        if (unknowns.isEmpty()) return 0
+        // Set labels for known speakers first
+        for (segment in segments) {
+            if (segment.isKnown) {
+                segment.clusterLabel = segment.speakerName
+            } else if (segment.isConflict) {
+                segment.clusterLabel = segment.speakerName
+            }
+        }
+
+        // Mark segments without embeddings as "Short" (can't identify)
+        for (segment in segments) {
+            if (!segment.isKnown && !segment.isConflict && segment.embedding == null) {
+                segment.clusterLabel = "Short"
+            }
+        }
+
+        if (unknowns.isEmpty()) {
+            println("  (No unknown segments with speaker embeddings to cluster)")
+            return 0
+        }
 
         if (unknowns.size == 1) {
             unknowns[0].clusterLabel = "Speaker A"
@@ -301,15 +344,6 @@ class LiveTranscription(
             segment.clusterLabel = "Speaker ${('A' + clusterId)}"
         }
 
-        // Also set labels for known speakers
-        for (segment in segments) {
-            if (segment.isKnown) {
-                segment.clusterLabel = segment.speakerName
-            } else if (segment.isConflict) {
-                segment.clusterLabel = segment.speakerName
-            }
-        }
-
         return uniqueClusters.size
     }
 
@@ -323,11 +357,19 @@ class LiveTranscription(
         println("=".repeat(60))
         println()
 
-        for (segment in segments) {
+        val nonNoiseSegments = segments.filter { !isNoiseSegment(it) }
+        val noiseCount = segments.size - nonNoiseSegments.size
+
+        for (segment in nonNoiseSegments) {
             val label = segment.clusterLabel ?: segment.speakerName ?: "???"
+            val displayText = segment.text.replace("<|EMO_UNKNOWN|>", "").trim()
             val st = segment.startTime.format(1)
             val et = segment.endTime.format(1)
-            println("[$label] (${st}s-${et}s) ${segment.text}")
+            println("[$label] (${st}s-${et}s) $displayText")
+        }
+
+        if (noiseCount > 0) {
+            println("\n  ($noiseCount noise segments filtered)")
         }
     }
 
@@ -395,7 +437,7 @@ class LiveTranscription(
             println("  Sample: $sampleTexts")
             print("  Confirm as $speaker? [Y/n]: ")
 
-            val input = readLine()?.trim()?.lowercase()
+            val input = readlnOrNull()?.trim()?.lowercase()
 
             if (input.isNullOrEmpty() || input == "y" || input == "yes") {
                 // Add embeddings to boundary layer
@@ -420,11 +462,18 @@ class LiveTranscription(
      * Prompt user to name unknown speaker clusters
      */
     fun promptNaming() {
+        // Get clusters with actual speaker embeddings
         val clusters = segments
-            .filter { it.clusterLabel?.startsWith("Speaker ") == true }
+            .filter { it.clusterLabel?.startsWith("Speaker ") == true && it.embedding != null }
             .groupBy { it.clusterLabel }
 
+        // Count short segments (no embedding)
+        val shortSegments = segments.count { it.clusterLabel == "Short" }
+
         if (clusters.isEmpty()) {
+            if (shortSegments > 0) {
+                println("\n  ($shortSegments segments too short for speaker identification)")
+            }
             return
         }
 
@@ -438,13 +487,14 @@ class LiveTranscription(
 
         for ((label, segs) in clusters.entries.sortedByDescending { it.value.size }) {
             val sampleTexts = segs.take(3).joinToString(" | ") {
-                it.text.take(30) + if (it.text.length > 30) "..." else ""
+                val text = it.text.replace("<|EMO_UNKNOWN|>", "").trim()
+                text.take(30) + if (text.length > 30) "..." else ""
             }
             println("$label (${segs.size} segments):")
             println("  Sample: $sampleTexts")
             print("  Name (or Enter to skip): ")
 
-            val input = readLine()?.trim()
+            val input = readlnOrNull()?.trim()
 
             if (!input.isNullOrEmpty()) {
                 // Enroll this speaker with all their embeddings
@@ -469,6 +519,10 @@ class LiveTranscription(
                 println("  -> Skipped")
             }
             println()
+        }
+
+        if (shortSegments > 0) {
+            println("  ($shortSegments segments too short for speaker identification)")
         }
     }
 
