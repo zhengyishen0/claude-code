@@ -571,15 +571,15 @@ class LiveTranscription(
     }
 }
 
-// Global flag for signal handling
-private var globalShouldStop = false
+// Global flag for signal handling (internal for ONNX live transcription)
+internal var globalShouldStop = false
 
 /**
  * Set terminal to raw mode for single keypress detection
  * Returns the original termios settings to restore later
  */
 @OptIn(ExperimentalForeignApi::class)
-private fun setRawMode(): termios {
+internal fun setRawMode(): termios {
     memScoped {
         val originalTermios = alloc<termios>()
         val rawTermios = alloc<termios>()
@@ -620,7 +620,7 @@ private fun setRawMode(): termios {
  * Restore terminal settings
  */
 @OptIn(ExperimentalForeignApi::class)
-private fun restoreTerminal(originalTermios: termios) {
+internal fun restoreTerminal(originalTermios: termios) {
     memScoped {
         val termiosPtr = alloc<termios>()
         termiosPtr.c_iflag = originalTermios.c_iflag
@@ -639,7 +639,7 @@ private fun restoreTerminal(originalTermios: termios) {
  * Check if Escape key was pressed (non-blocking)
  */
 @OptIn(ExperimentalForeignApi::class)
-private fun checkEscapeKey(): Boolean {
+internal fun checkEscapeKey(): Boolean {
     memScoped {
         val buffer = alloc<IntVar>()
         buffer.value = 0

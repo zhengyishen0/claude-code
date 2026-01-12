@@ -11,7 +11,7 @@ build/
 *.kexe
 *.klib
 
-# Object files (keep .a static libraries)
+# Compiled objects (but keep source and build scripts)
 *.o
 
 # macOS
@@ -20,3 +20,24 @@ build/
 # Local configuration
 local.properties
 gradle.properties.local
+
+# ===========================================
+# Large binary files - download separately
+# ===========================================
+
+# ONNX models (864MB total) - see README for download instructions
+Models/onnx/*.onnx
+
+# ONNX Runtime library (31MB) - downloaded automatically
+libs/onnxruntime-osx-arm64-*/
+
+# Compiled static libraries (regenerated from source)
+libs/onnx_wrapper/*.a
+libs/*.a
+
+# ===========================================
+# Keep these (source files for C wrapper)
+# ===========================================
+# libs/onnx_wrapper/*.c
+# libs/onnx_wrapper/*.h
+# libs/onnx_wrapper/build.sh

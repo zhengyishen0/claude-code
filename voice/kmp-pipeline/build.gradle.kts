@@ -23,6 +23,9 @@ kotlin {
             create("KissFFT") {
                 defFile = file("src/nativeInterop/cinterop/KissFFT.def")
             }
+            create("OnnxRuntime") {
+                defFile = file("src/nativeInterop/cinterop/OnnxRuntime.def")
+            }
         }
     }
 
