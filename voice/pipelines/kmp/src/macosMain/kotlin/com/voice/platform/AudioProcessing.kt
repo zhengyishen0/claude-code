@@ -10,7 +10,7 @@ import kissfft.*
 
 /**
  * Audio processing utilities for voice pipeline
- * Implements mel spectrogram computation matching Python/Swift pipeline
+ * Optimized with preallocated buffers and reused FFT config
  */
 @OptIn(ExperimentalForeignApi::class)
 object AudioProcessing {
@@ -25,7 +25,7 @@ object AudioProcessing {
     // Mel filterbank (loaded from file or computed)
     private var melFilterbank: List<FloatArray>? = null
 
-    // KissFFT config (lazily initialized)
+    // KissFFT config (lazily initialized, reused)
     private var fftConfig: kiss_fftr_cfg? = null
 
     private fun getFFTConfig(): kiss_fftr_cfg {
@@ -122,7 +122,7 @@ object AudioProcessing {
 
     /**
      * Compute mel spectrogram from audio samples
-     * Matches Python torchaudio.transforms.MelSpectrogram with power=1.0
+     * Optimized with preallocated buffers inside memScoped
      */
     fun computeMelSpectrogram(audio: FloatArray): List<FloatArray> {
         // Ensure filterbank is loaded
@@ -134,6 +134,7 @@ object AudioProcessing {
         val frameLength = N_FFT
         val hopLength = HOP_LENGTH
         val halfN = frameLength / 2
+        val numBins = N_FFT / 2 + 1
 
         // Apply center padding (like torchaudio's center=True)
         val padLength = halfN
@@ -154,75 +155,57 @@ object AudioProcessing {
         }
 
         val numFrames = maxOf(1, (paddedAudio.size - frameLength) / hopLength + 1)
-        val melFrames = mutableListOf<FloatArray>()
+        val melFrames = ArrayList<FloatArray>(numFrames)
 
-        // Process each frame
-        for (i in 0 until numFrames) {
-            val start = i * hopLength
-            val end = minOf(start + frameLength, paddedAudio.size)
+        // Use memScoped for all native allocations
+        memScoped {
+            val fftConfig = getFFTConfig()
 
-            // Extract and window frame
-            val frame = FloatArray(frameLength)
-            for (j in 0 until minOf(end - start, frameLength)) {
-                frame[j] = paddedAudio[start + j] * hammingWindow[j]
-            }
+            // Preallocate buffers (reused across frames)
+            val input = allocArray<FloatVar>(N_FFT)
+            val output = allocArray<kiss_fft_cpx>(numBins)
+            val magnitude = FloatArray(numBins)
 
-            // Compute FFT magnitude
-            val magnitude = computeFFTMagnitude(frame)
+            // Process each frame
+            for (i in 0 until numFrames) {
+                val start = i * hopLength
+                val end = minOf(start + frameLength, paddedAudio.size)
 
-            // Apply mel filterbank
-            val melEnergies = FloatArray(N_MELS)
-            for (m in 0 until N_MELS) {
-                var sum = 0f
-                for (k in magnitude.indices) {
-                    sum += magnitude[k] * filterbank[m][k]
+                // Apply window and copy to input buffer
+                for (j in 0 until N_FFT) {
+                    input[j] = if (j < end - start) {
+                        paddedAudio[start + j] * hammingWindow[j]
+                    } else {
+                        0f
+                    }
                 }
-                melEnergies[m] = sum
-            }
 
-            // Log scale: log(max(x, 1e-10))
-            for (m in 0 until N_MELS) {
-                melEnergies[m] = ln(maxOf(melEnergies[m], 1e-10f))
-            }
+                // Run FFT
+                kiss_fftr(fftConfig, input, output)
 
-            melFrames.add(melEnergies)
+                // Compute magnitude
+                for (k in 0 until numBins) {
+                    val real = output[k].r
+                    val imag = output[k].i
+                    magnitude[k] = sqrt(real * real + imag * imag)
+                }
+
+                // Apply mel filterbank and log
+                val melEnergies = FloatArray(N_MELS)
+                for (m in 0 until N_MELS) {
+                    var sum = 0f
+                    val filter = filterbank[m]
+                    for (k in 0 until numBins) {
+                        sum += magnitude[k] * filter[k]
+                    }
+                    melEnergies[m] = ln(maxOf(sum, 1e-10f))
+                }
+
+                melFrames.add(melEnergies)
+            }
         }
 
         return melFrames
-    }
-
-    /**
-     * Compute FFT magnitude using KissFFT
-     * O(N log N) complexity
-     */
-    private fun computeFFTMagnitude(frame: FloatArray): FloatArray {
-        val n = frame.size
-        val numBins = n / 2 + 1
-        val magnitude = FloatArray(numBins)
-
-        memScoped {
-            // Allocate input buffer
-            val input = allocArray<FloatVar>(n)
-            for (i in 0 until n) {
-                input[i] = frame[i]
-            }
-
-            // Allocate output buffer (complex)
-            val output = allocArray<kiss_fft_cpx>(numBins)
-
-            // Run FFT
-            val cfg = getFFTConfig()
-            kiss_fftr(cfg, input, output)
-
-            // Compute magnitude
-            for (k in 0 until numBins) {
-                val real = output[k].r
-                val imag = output[k].i
-                magnitude[k] = sqrt(real * real + imag * imag)
-            }
-        }
-
-        return magnitude
     }
 
     /**

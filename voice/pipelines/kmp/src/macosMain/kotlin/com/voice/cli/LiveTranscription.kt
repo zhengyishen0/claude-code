@@ -11,6 +11,8 @@ import kotlin.math.pow
 import kotlin.math.round
 import kotlin.math.sqrt
 import kotlin.system.getTimeMillis
+import kotlin.concurrent.AtomicReference
+import kotlin.native.concurrent.*
 
 // Helper for formatting doubles with specified decimal places
 private fun Double.format(decimals: Int): String {
@@ -49,10 +51,11 @@ data class Segment(
 
 /**
  * Live transcription session with speaker identification
+ * Supports multiple ASR backends (SenseVoice, Whisper Turbo)
  */
 class LiveTranscription(
     private val vadModel: CoreMLModel,
-    private val asrModel: CoreMLModel,
+    private val asrModel: ASRModel,
     private val speakerModel: CoreMLModel,
     private val voiceLibraryPath: String = ""
 ) {
@@ -171,46 +174,64 @@ class LiveTranscription(
         val startTime = startSample.toDouble() / SAMPLE_RATE
         val endTime = endSample.toDouble() / SAMPLE_RATE
 
-        // ASR
-        val mel = AudioProcessing.computeMelSpectrogram(audio)
-        val lfr = LFRTransform.apply(mel)
-        val padded = LFRTransform.padToFixedFrames(lfr)
-        val logits = asrModel.runASR(padded) ?: return
+        // Run ASR and Speaker Embedding in PARALLEL using GCD
+        val asrResultRef = AtomicReference<ASRResult?>(null)
+        val embeddingRef = AtomicReference<FloatArray?>(null)
 
-        val tokens = CTCDecoder.greedyDecode(logits)
-        val (info, textTokens) = TokenMappings.decodeSpecialTokens(tokens)
-        val text = TokenDecoder.decodeTextTokens(textTokens)
+        // Use dispatch group for synchronization
+        val group = dispatch_group_create()
 
-        // Speaker identification
+        // Launch ASR task on global queue
+        dispatch_group_async(group, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH.toLong(), 0u)) {
+            val result = asrModel.transcribe(audio)
+            asrResultRef.value = result
+        }
+
+        // Launch Speaker Embedding task (if audio is long enough)
+        if (audio.size >= XVECTOR_SAMPLES) {
+            dispatch_group_async(group, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH.toLong(), 0u)) {
+                val center = (audio.size - XVECTOR_SAMPLES) / 2
+                val xvectorInput = audio.copyOfRange(center, center + XVECTOR_SAMPLES)
+                val emb = speakerModel.runSpeakerEmbedding(xvectorInput)
+                embeddingRef.value = emb
+            }
+        }
+
+        // Wait for both to complete
+        dispatch_group_wait(group, DISPATCH_TIME_FOREVER)
+
+        // Get results
+        val asrResult = asrResultRef.value
+        val embedding = embeddingRef.value
+
+        // Check ASR result
+        if (asrResult == null) return
+        val text = asrResult.text
+        val textTokens = asrResult.tokens
+
+        // Speaker identification (matching is fast, no need to parallelize)
         var speakerName: String? = null
         var confidence = "unknown"
         var isKnown = false
         var isConflict = false
-        var embedding: FloatArray? = null
         var learned = false
 
-        if (audio.size >= XVECTOR_SAMPLES) {
-            val center = (audio.size - XVECTOR_SAMPLES) / 2
-            val xvectorInput = audio.copyOfRange(center, center + XVECTOR_SAMPLES)
-            embedding = speakerModel.runSpeakerEmbedding(xvectorInput)
+        if (embedding != null) {
+            val (matchedName, score, matchConfidence) = voiceLibrary.match(embedding)
+            confidence = matchConfidence
 
-            if (embedding != null) {
-                val (matchedName, score, matchConfidence) = voiceLibrary.match(embedding)
-                confidence = matchConfidence
+            if (matchedName != null) {
+                speakerName = matchedName
+                isKnown = true
 
-                if (matchedName != null) {
-                    speakerName = matchedName
-                    isKnown = true
+                // Check for conflict (name contains "/")
+                if (matchedName.contains("/")) {
+                    isConflict = true
+                }
 
-                    // Check for conflict (name contains "/")
-                    if (matchedName.contains("/")) {
-                        isConflict = true
-                    }
-
-                    // Auto-learn if high confidence
-                    if (matchConfidence == "high") {
-                        learned = voiceLibrary.autoLearn(matchedName, embedding, score)
-                    }
+                // Auto-learn if high confidence
+                if (matchConfidence == "high") {
+                    learned = voiceLibrary.autoLearn(matchedName, embedding, score)
                 }
             }
         }
@@ -656,11 +677,12 @@ internal fun checkEscapeKey(): Boolean {
 
 /**
  * Run live transcription from microphone
+ * Supports multiple ASR backends (SenseVoice, Whisper Turbo)
  */
 @OptIn(ExperimentalForeignApi::class)
 fun runLiveTranscription(
     vadModel: CoreMLModel,
-    asrModel: CoreMLModel,
+    asrModel: ASRModel,
     speakerModel: CoreMLModel,
     voiceLibraryPath: String = ""
 ) {
@@ -730,11 +752,12 @@ fun runLiveTranscription(
 
 /**
  * Process audio file with transcription
+ * Supports multiple ASR backends (SenseVoice, Whisper Turbo)
  */
 fun processFileTranscription(
     audioPath: String,
     vadModel: CoreMLModel,
-    asrModel: CoreMLModel,
+    asrModel: ASRModel,
     speakerModel: CoreMLModel,
     voiceLibraryPath: String = ""
 ): List<Segment> {

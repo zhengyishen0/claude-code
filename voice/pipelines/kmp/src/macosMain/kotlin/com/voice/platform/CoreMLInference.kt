@@ -5,12 +5,15 @@ import com.voice.core.*
 import kotlinx.cinterop.*
 import platform.CoreML.*
 import platform.Foundation.*
+import copyhelper.*
 
 /**
  * CoreML model wrapper for voice pipeline inference
  */
 @OptIn(ExperimentalForeignApi::class)
-class CoreMLModel(private val model: MLModel) {
+class CoreMLModel(val internalModel: MLModel) {
+    // Keep private alias for backward compatibility
+    private val model get() = internalModel
 
     companion object {
         /**
@@ -40,7 +43,7 @@ class CoreMLModel(private val model: MLModel) {
          * Uses deprecated initWithShape which is still functional
          */
         @Suppress("DEPRECATION_ERROR")
-        private fun createMLMultiArray(shape: List<Int>, dataType: MLMultiArrayDataType): MLMultiArray? {
+        fun createMLMultiArray(shape: List<Int>, dataType: MLMultiArrayDataType): MLMultiArray? {
             return memScoped {
                 val nsShape = shape.map { NSNumber(int = it) }
                 val errorPtr = alloc<ObjCObjectVar<NSError?>>()
@@ -128,11 +131,21 @@ class CoreMLModel(private val model: MLModel) {
                 val inputArray = createMLMultiArray(listOf(1, frames, featureDim), MLMultiArrayDataTypeFloat32)
                     ?: return null
 
-                // Copy features - flattened row-major
-                var idx = 0
-                for (frame in features) {
-                    for (value in frame) {
-                        setFloatInMLMultiArray(inputArray, idx++, value)
+                // OPTIMIZED: Bulk copy features using C memcpy
+                val inputPtr = inputArray.dataPointer
+                if (inputPtr != null) {
+                    // Flatten features into contiguous buffer for memcpy
+                    val totalInputSize = frames * featureDim
+                    val flatInput = FloatArray(totalInputSize)
+                    var idx = 0
+                    for (frame in features) {
+                        for (value in frame) {
+                            flatInput[idx++] = value
+                        }
+                    }
+                    // Single memcpy call via C helper
+                    flatInput.usePinned { pinned ->
+                        copy_floats_to_mlarray(pinned.addressOf(0), inputPtr, totalInputSize.toULong())
                     }
                 }
 
@@ -157,15 +170,26 @@ class CoreMLModel(private val model: MLModel) {
                 val time = outputShape[1]
                 val vocab = outputShape[2]
                 val stride1 = strides[1]
-                val stride2 = strides[2]
 
-                // Convert to List<FloatArray>
-                val logits = mutableListOf<FloatArray>()
+                // OPTIMIZED: Bulk copy using C memcpy helper
+                val outputPtr = logitsArray.dataPointer
+                    ?: return null
+
+                // Allocate flat output buffer and copy in one shot
+                val totalOutputSize = time * vocab
+                val flatOutput = FloatArray(totalOutputSize)
+
+                flatOutput.usePinned { pinned ->
+                    copy_2d_output(outputPtr, pinned.addressOf(0), time.toULong(), vocab.toULong(), stride1.toULong())
+                }
+
+                // Reshape flat output to List<FloatArray>
+                val logits = ArrayList<FloatArray>(time)
                 for (t in 0 until time) {
                     val frame = FloatArray(vocab)
+                    val startIdx = t * vocab
                     for (v in 0 until vocab) {
-                        val index = t * stride1 + v * stride2
-                        frame[v] = getFloatFromMLMultiArray(logitsArray, index)
+                        frame[v] = flatOutput[startIdx + v]
                     }
                     logits.add(frame)
                 }
@@ -264,6 +288,40 @@ class CoreMLModel(private val model: MLModel) {
             floatPtr[i] = src[i]
         }
     }
+
+    /**
+     * Run generic inference with input dictionary
+     * @param inputs Map of input name to MLMultiArray
+     * @return Map of output name to MLMultiArray
+     */
+    fun predict(inputs: Map<String, MLMultiArray>): Map<String, MLMultiArray>? {
+        return memScoped {
+            try {
+                val inputDict = inputs.mapKeys { it.key as Any? }.mapValues { it.value as Any? }
+                val errorPtr = alloc<ObjCObjectVar<NSError?>>()
+                val inputProvider = MLDictionaryFeatureProvider(inputDict, errorPtr.ptr)
+                    ?: return null
+
+                val output = model.predictionFromFeatures(inputProvider, errorPtr.ptr)
+                    ?: return null
+
+                // Extract all outputs
+                val result = mutableMapOf<String, MLMultiArray>()
+                val featureNames = output.featureNames
+                for (name in featureNames) {
+                    val nameStr = name as? String ?: continue
+                    val array = output.featureValueForName(nameStr)?.multiArrayValue
+                    if (array != null) {
+                        result[nameStr] = array
+                    }
+                }
+                result
+            } catch (e: Exception) {
+                println("Predict error: ${e.message}")
+                null
+            }
+        }
+    }
 }
 
 /**
@@ -309,16 +367,80 @@ private fun float16ToFloat(bits: UShort): Float {
 }
 
 /**
- * Model manager for loading all voice pipeline models
+ * Helper functions for MLMultiArray operations
  */
 @OptIn(ExperimentalForeignApi::class)
-class ModelManager(private val modelDir: String) {
+object MLArrayUtils {
+    fun copyFloatArray(src: FloatArray, dst: MLMultiArray) {
+        val ptr = dst.dataPointer ?: return
+        val floatPtr = ptr.reinterpret<FloatVar>()
+        for (i in src.indices) {
+            floatPtr[i] = src[i]
+        }
+    }
+
+    fun getFloat(array: MLMultiArray, index: Int): Float {
+        val ptr = array.dataPointer ?: return 0f
+        return ptr.reinterpret<FloatVar>()[index]
+    }
+
+    fun setFloat(array: MLMultiArray, index: Int, value: Float) {
+        val ptr = array.dataPointer ?: return
+        ptr.reinterpret<FloatVar>()[index] = value
+    }
+
+    fun setInt(array: MLMultiArray, index: Int, value: Int) {
+        val ptr = array.dataPointer ?: return
+        ptr.reinterpret<IntVar>()[index] = value
+    }
+
+    fun getShape(array: MLMultiArray): List<Int> {
+        return array.shape.map { (it as NSNumber).intValue }
+    }
+
+    fun getStrides(array: MLMultiArray): List<Int> {
+        return array.strides.map { (it as NSNumber).intValue }
+    }
+}
+
+/**
+ * Model manager for loading all voice pipeline models
+ * Supports multiple ASR backends (SenseVoice, Whisper)
+ */
+@OptIn(ExperimentalForeignApi::class)
+class ModelManager(
+    private val modelDir: String,
+    private val whisperModelDir: String? = null
+) {
     var vadModel: CoreMLModel? = null
-        private set
-    var asrModel: CoreMLModel? = null
         private set
     var speakerModel: CoreMLModel? = null
         private set
+
+    // ASR models
+    private var senseVoiceModel: CoreMLModel? = null
+    private var whisperModel: WhisperASR? = null
+
+    // Current ASR model selection
+    var currentASRType: ASRModelType = ASRModelType.SENSEVOICE
+        private set
+
+    /**
+     * Get the currently active ASR model
+     */
+    val asrModel: ASRModel?
+        get() = when (currentASRType) {
+            ASRModelType.SENSEVOICE -> senseVoiceModel?.let {
+                SenseVoiceASR(it)
+            }
+            ASRModelType.WHISPER_TURBO -> whisperModel
+        }
+
+    /**
+     * Get the raw SenseVoice CoreML model (for backward compatibility)
+     */
+    val senseVoiceCoreML: CoreMLModel?
+        get() = senseVoiceModel
 
     fun loadModels() {
         println("\nLoading models...")
@@ -328,14 +450,59 @@ class ModelManager(private val modelDir: String) {
         vadModel = CoreMLModel.load(path)
         println("  VAD: ${if (vadModel != null) "OK" else "FAILED"}")
 
-        // Load ASR model
+        // Load SenseVoice ASR model
         path = "$modelDir/sensevoice-500-itn.mlmodelc"
-        asrModel = CoreMLModel.load(path)
-        println("  ASR: ${if (asrModel != null) "OK" else "FAILED"}")
+        senseVoiceModel = CoreMLModel.load(path)
+        println("  SenseVoice ASR: ${if (senseVoiceModel != null) "OK" else "FAILED"}")
+
+        // Load Whisper model if path provided
+        if (whisperModelDir != null) {
+            println("  Loading Whisper Turbo...")
+            whisperModel = WhisperASR.load(whisperModelDir)
+            println("  Whisper Turbo: ${if (whisperModel != null) "OK" else "FAILED"}")
+        }
 
         // Load speaker model
         path = "$modelDir/xvector.mlmodelc"
         speakerModel = CoreMLModel.load(path)
         println("  Speaker: ${if (speakerModel != null) "OK" else "FAILED"}")
+    }
+
+    /**
+     * Switch to a different ASR model
+     */
+    fun setASRModel(type: ASRModelType): Boolean {
+        return when (type) {
+            ASRModelType.SENSEVOICE -> {
+                if (senseVoiceModel != null) {
+                    currentASRType = type
+                    println("Switched to SenseVoice ASR")
+                    true
+                } else {
+                    println("SenseVoice model not loaded")
+                    false
+                }
+            }
+            ASRModelType.WHISPER_TURBO -> {
+                if (whisperModel != null) {
+                    currentASRType = type
+                    println("Switched to Whisper Turbo ASR")
+                    true
+                } else {
+                    println("Whisper Turbo model not loaded")
+                    false
+                }
+            }
+        }
+    }
+
+    /**
+     * Get list of available ASR models
+     */
+    fun getAvailableASRModels(): List<ASRModelType> {
+        val available = mutableListOf<ASRModelType>()
+        if (senseVoiceModel != null) available.add(ASRModelType.SENSEVOICE)
+        if (whisperModel != null) available.add(ASRModelType.WHISPER_TURBO)
+        return available
     }
 }

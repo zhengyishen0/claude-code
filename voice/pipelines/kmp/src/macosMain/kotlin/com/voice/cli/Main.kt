@@ -5,16 +5,19 @@ import com.voice.platform.*
 
 fun main(args: Array<String>) {
     val useOnnx = args.contains("--onnx")
+    val useWhisper = args.contains("--whisper")
     val backend = if (useOnnx) Backend.ONNX else Backend.COREML
-    val filteredArgs = args.filter { it != "--onnx" }
+    val asrType = if (useWhisper) ASRModelType.WHISPER_TURBO else ASRModelType.SENSEVOICE
+    val filteredArgs = args.filter { it != "--onnx" && it != "--whisper" }
 
     when {
         filteredArgs.isEmpty() -> showHelp()
         filteredArgs[0] == "test" -> runTests()
-        filteredArgs[0] == "live" -> runLive(backend)
-        filteredArgs[0] == "file" && filteredArgs.size > 1 -> runFile(filteredArgs[1], backend)
+        filteredArgs[0] == "live" -> runLive(backend, asrType)
+        filteredArgs[0] == "file" && filteredArgs.size > 1 -> runFile(filteredArgs[1], backend, asrType)
         filteredArgs[0] == "benchmark" && filteredArgs.size > 1 -> runBenchmark(filteredArgs[1])
         filteredArgs[0] == "benchmark" -> runBenchmark(null)
+        filteredArgs[0] == "models" -> showModels()
         else -> showHelp()
     }
 }
@@ -26,49 +29,101 @@ KMP Voice Pipeline - macOS
 
 Usage:
   kmp-pipeline test                 Run all tests
-  kmp-pipeline live [--onnx]        Start live transcription (press ESC to stop)
-  kmp-pipeline file <path> [--onnx] Process audio file
+  kmp-pipeline live [options]       Start live transcription (press ESC to stop)
+  kmp-pipeline file <path> [opts]   Process audio file
   kmp-pipeline benchmark [path]     Compare CoreML vs ONNX performance
+  kmp-pipeline models               Show available ASR models
 
 Options:
-  --onnx    Use ONNX Runtime instead of CoreML (default: CoreML)
+  --onnx      Use ONNX Runtime instead of CoreML (default: CoreML)
+  --whisper   Use Whisper Turbo ASR model (default: SenseVoice)
+
+ASR Models:
+  SenseVoice  Fast non-autoregressive model (~0.045x RTF)
+  Whisper     OpenAI Whisper Turbo (~0.6x RTF, higher accuracy)
 
 Examples:
   ./build/bin/macos/debugExecutable/kmp-pipeline.kexe live
-  ./build/bin/macos/debugExecutable/kmp-pipeline.kexe live --onnx
-  ./build/bin/macos/debugExecutable/kmp-pipeline.kexe file recording.wav --onnx
-  ./build/bin/macos/debugExecutable/kmp-pipeline.kexe benchmark recording.wav
+  ./build/bin/macos/debugExecutable/kmp-pipeline.kexe live --whisper
+  ./build/bin/macos/debugExecutable/kmp-pipeline.kexe file recording.wav --whisper
+  ./build/bin/macos/debugExecutable/kmp-pipeline.kexe models
     """.trimIndent())
 }
 
-private fun runLive(backend: Backend) {
-    println("KMP Voice Pipeline - Live Mode (${backend.name})")
-    println("=" .repeat(40))
+private fun showModels() {
+    println("""
+Available ASR Models
+====================
 
-    // Load vocabulary
-    val vocabPath = "$ASSETS_DIR/vocab.json"
-    if (!TokenDecoder.loadVocabulary(vocabPath)) {
-        println("Warning: Could not load vocabulary from $vocabPath")
+1. SenseVoice (default)
+   - Type: Non-autoregressive CTC
+   - Speed: ~0.045x RTF (22x faster than real-time)
+   - Size: ~448MB
+   - Languages: Chinese, English, Japanese, Korean, Cantonese
+   - Use: Default, great for real-time transcription
+
+2. Whisper Turbo (--whisper)
+   - Type: Encoder-decoder (autoregressive)
+   - Speed: ~0.6x RTF (1.7x faster than real-time)
+   - Size: ~632MB
+   - Languages: 99+ languages
+   - Use: Higher accuracy, better for complex audio
+
+To switch models, use the --whisper flag:
+  kmp-pipeline live --whisper
+  kmp-pipeline file audio.wav --whisper
+    """.trimIndent())
+}
+
+private fun runLive(backend: Backend, asrType: ASRModelType) {
+    val asrName = if (asrType == ASRModelType.WHISPER_TURBO) "Whisper Turbo" else "SenseVoice"
+    println("KMP Voice Pipeline - Live Mode (${backend.name}, $asrName)")
+    println("=" .repeat(50))
+
+    // Load vocabulary (only needed for SenseVoice)
+    if (asrType == ASRModelType.SENSEVOICE) {
+        val vocabPath = "$ASSETS_DIR/vocab.json"
+        if (!TokenDecoder.loadVocabulary(vocabPath)) {
+            println("Warning: Could not load vocabulary from $vocabPath")
+        }
+
+        // Load mel filterbank
+        val filterbankPath = "$ASSETS_DIR/mel_filterbank.bin"
+        AudioProcessing.loadMelFilterbank(filterbankPath)
     }
 
-    // Load mel filterbank
-    val filterbankPath = "$ASSETS_DIR/mel_filterbank.bin"
-    AudioProcessing.loadMelFilterbank(filterbankPath)
-
     when (backend) {
-        Backend.COREML -> runLiveWithCoreML()
-        Backend.ONNX -> runLiveWithONNX()
+        Backend.COREML -> runLiveWithCoreML(asrType)
+        Backend.ONNX -> {
+            if (asrType == ASRModelType.WHISPER_TURBO) {
+                println("ERROR: Whisper model is only available with CoreML backend")
+                return
+            }
+            runLiveWithONNX()
+        }
     }
 }
 
-private fun runLiveWithCoreML() {
+private fun runLiveWithCoreML(asrType: ASRModelType) {
     // Load CoreML models
     print("Loading CoreML models... ")
     val startLoad = kotlin.system.getTimeMillis()
 
     val vadModel = CoreMLModel.load(VAD_MODEL_PATH)
-    val asrModel = CoreMLModel.load("$MODEL_DIR/sensevoice-500-itn.mlmodelc")
     val speakerModel = CoreMLModel.load("$MODEL_DIR/xvector.mlmodelc")
+
+    // Load ASR model based on type
+    val asrModel: ASRModel? = when (asrType) {
+        ASRModelType.SENSEVOICE -> {
+            val model = CoreMLModel.load("$MODEL_DIR/sensevoice-500-itn.mlmodelc")
+            model?.let { SenseVoiceASR(it) }
+        }
+        ASRModelType.WHISPER_TURBO -> {
+            println()
+            print("  Loading Whisper Turbo... ")
+            WhisperASR.load(WHISPER_TURBO_MODEL_DIR)
+        }
+    }
 
     val loadTime = kotlin.system.getTimeMillis() - startLoad
     println("${loadTime}ms")
@@ -77,6 +132,8 @@ private fun runLiveWithCoreML() {
         println("ERROR: Failed to load one or more CoreML models")
         return
     }
+
+    println("ASR Model: ${asrModel.modelType}")
 
     // Run live transcription
     runLiveTranscription(vadModel, asrModel, speakerModel, VOICE_LIBRARY_PATH)
@@ -100,34 +157,55 @@ private fun runLiveWithONNX() {
     runLiveTranscriptionONNX(onnxManager, VOICE_LIBRARY_PATH)
 }
 
-private fun runFile(audioPath: String, backend: Backend) {
-    println("KMP Voice Pipeline - File Mode (${backend.name})")
-    println("=" .repeat(40))
+private fun runFile(audioPath: String, backend: Backend, asrType: ASRModelType) {
+    val asrName = if (asrType == ASRModelType.WHISPER_TURBO) "Whisper Turbo" else "SenseVoice"
+    println("KMP Voice Pipeline - File Mode (${backend.name}, $asrName)")
+    println("=" .repeat(50))
 
-    // Load vocabulary
-    val vocabPath = "$ASSETS_DIR/vocab.json"
-    if (!TokenDecoder.loadVocabulary(vocabPath)) {
-        println("Warning: Could not load vocabulary from $vocabPath")
+    // Load vocabulary (only needed for SenseVoice)
+    if (asrType == ASRModelType.SENSEVOICE) {
+        val vocabPath = "$ASSETS_DIR/vocab.json"
+        if (!TokenDecoder.loadVocabulary(vocabPath)) {
+            println("Warning: Could not load vocabulary from $vocabPath")
+        }
+
+        // Load mel filterbank
+        val filterbankPath = "$ASSETS_DIR/mel_filterbank.bin"
+        AudioProcessing.loadMelFilterbank(filterbankPath)
     }
 
-    // Load mel filterbank
-    val filterbankPath = "$ASSETS_DIR/mel_filterbank.bin"
-    AudioProcessing.loadMelFilterbank(filterbankPath)
-
     when (backend) {
-        Backend.COREML -> runFileWithCoreML(audioPath)
-        Backend.ONNX -> runFileWithONNX(audioPath)
+        Backend.COREML -> runFileWithCoreML(audioPath, asrType)
+        Backend.ONNX -> {
+            if (asrType == ASRModelType.WHISPER_TURBO) {
+                println("ERROR: Whisper model is only available with CoreML backend")
+                return
+            }
+            runFileWithONNX(audioPath)
+        }
     }
 }
 
-private fun runFileWithCoreML(audioPath: String) {
+private fun runFileWithCoreML(audioPath: String, asrType: ASRModelType) {
     // Load CoreML models
     print("Loading CoreML models... ")
     val startLoad = kotlin.system.getTimeMillis()
 
     val vadModel = CoreMLModel.load(VAD_MODEL_PATH)
-    val asrModel = CoreMLModel.load("$MODEL_DIR/sensevoice-500-itn.mlmodelc")
     val speakerModel = CoreMLModel.load("$MODEL_DIR/xvector.mlmodelc")
+
+    // Load ASR model based on type
+    val asrModel: ASRModel? = when (asrType) {
+        ASRModelType.SENSEVOICE -> {
+            val model = CoreMLModel.load("$MODEL_DIR/sensevoice-500-itn.mlmodelc")
+            model?.let { SenseVoiceASR(it) }
+        }
+        ASRModelType.WHISPER_TURBO -> {
+            println()
+            print("  Loading Whisper Turbo... ")
+            WhisperASR.load(WHISPER_TURBO_MODEL_DIR)
+        }
+    }
 
     val loadTime = kotlin.system.getTimeMillis() - startLoad
     println("${loadTime}ms")
@@ -136,6 +214,8 @@ private fun runFileWithCoreML(audioPath: String) {
         println("ERROR: Failed to load one or more CoreML models")
         return
     }
+
+    println("ASR Model: ${asrModel.modelType}")
 
     // Process file
     processFileTranscription(audioPath, vadModel, asrModel, speakerModel, VOICE_LIBRARY_PATH)

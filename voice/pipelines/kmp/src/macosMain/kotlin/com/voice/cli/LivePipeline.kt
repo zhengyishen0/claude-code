@@ -10,10 +10,12 @@ import kotlin.math.sqrt
  * - VAD (Voice Activity Detection)
  * - ASR (Automatic Speech Recognition)
  * - Speaker identification
+ *
+ * Supports multiple ASR backends (SenseVoice, Whisper Turbo)
  */
 class LivePipeline(
     private val vadModel: CoreMLModel,
-    private val asrModel: CoreMLModel,
+    private val asrModel: ASRModel,
     private val speakerModel: CoreMLModel,
     private val onResult: (TranscriptionResult) -> Unit
 ) {
@@ -135,23 +137,12 @@ class LivePipeline(
             return
         }
 
-        // Compute mel spectrogram
-        val mel = AudioProcessing.computeMelSpectrogram(audio)
+        // Run ASR inference using the ASRModel interface
+        val asrResult = asrModel.transcribe(audio) ?: return
 
-        // Apply LFR transform
-        val lfr = LFRTransform.apply(mel)
-        val padded = LFRTransform.padToFixedFrames(lfr)
-
-        // Run ASR inference
-        val logits = asrModel.runASR(padded) ?: return
-
-        // Decode tokens
-        val tokens = CTCDecoder.greedyDecode(logits)
-        val (info, textTokens) = TokenMappings.decodeSpecialTokens(tokens)
-
-        // TODO: Convert tokens to text using SentencePiece tokenizer
-        // For now, just output token IDs
-        val text = textTokens.joinToString(" ") { "[$it]" }
+        val text = asrResult.text
+        val textTokens = asrResult.tokens
+        val language = asrResult.language ?: "unknown"
 
         // Speaker identification
         var speakerId = "Unknown"
@@ -184,9 +175,10 @@ class LivePipeline(
             text = text,
             tokens = textTokens,
             speakerId = speakerId,
-            language = info["language"] ?: "unknown",
-            emotion = info["emotion"] ?: "unknown",
-            duration = audio.size.toFloat() / SAMPLE_RATE
+            language = language,
+            emotion = "unknown",  // Whisper doesn't provide emotion
+            duration = audio.size.toFloat() / SAMPLE_RATE,
+            modelType = asrModel.modelType
         )
 
         onResult(result)
@@ -226,7 +218,8 @@ data class TranscriptionResult(
     val speakerId: String,
     val language: String,
     val emotion: String,
-    val duration: Float
+    val duration: Float,
+    val modelType: ASRModelType = ASRModelType.SENSEVOICE
 )
 
 /**
@@ -239,7 +232,7 @@ object FilePipeline {
     fun processFile(
         audioPath: String,
         vadModel: CoreMLModel,
-        asrModel: CoreMLModel,
+        asrModel: ASRModel,
         speakerModel: CoreMLModel
     ): List<TranscriptionResult> {
         val results = mutableListOf<TranscriptionResult>()

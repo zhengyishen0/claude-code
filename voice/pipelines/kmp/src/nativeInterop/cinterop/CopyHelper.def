@@ -1,0 +1,9 @@
+package = copyhelper
+headers = copyhelper.h
+
+headerFilter = copyhelper.h
+
+compilerOpts = -I/Users/zhengyishen/Codes/claude-code-kmp-whisper-turbo/voice/pipelines/kmp/libs/copyhelper
+
+staticLibraries = libCopyHelper.a
+libraryPaths = /Users/zhengyishen/Codes/claude-code-kmp-whisper-turbo/voice/pipelines/kmp/libs/copyhelper
