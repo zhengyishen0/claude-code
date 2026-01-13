@@ -1516,9 +1516,7 @@ function cmdProfile() {
 
   if (!chromeKey) {
     console.log('Chrome encryption key not available.\n');
-    console.log('Options:');
-    console.log('  1. Grant Keychain access when prompted');
-    console.log('  2. Use --debug mode (full profile copy to Chrome Canary)\n');
+    console.log('Grant Keychain access when prompted, or use --debug mode.\n');
     return;
   }
 
@@ -1545,41 +1543,27 @@ function cmdProfile() {
 
   if (services.length === 0) {
     console.log('No accounts found in Chrome.\n');
-    console.log('Login to services in Chrome, then run this command again.\n');
     return;
   }
 
-  console.log('Accounts in Chrome:\n');
-
+  // Build clean account list
+  const accountList = [];
   for (const service of services) {
     const accounts = serviceAccounts[service];
-    if (accounts.length === 1) {
-      const acc = accounts[0];
-      if (acc.account === '(logged in)') {
-        console.log(`  ${service}`);
-        console.log(`    --account ${service}`);
+    for (const acc of accounts) {
+      if (acc.account && acc.account !== '(logged in)') {
+        accountList.push(`${service}:${acc.account}`);
       } else {
-        console.log(`  ${service}: ${acc.account}`);
-        console.log(`    --account ${service}:${acc.account}`);
-      }
-    } else {
-      console.log(`  ${service}: ${accounts.length} accounts`);
-      for (const acc of accounts) {
-        if (acc.account === '(logged in)') {
-          console.log(`    - --account ${service}`);
-        } else {
-          console.log(`    - ${acc.account}`);
-          console.log(`      --account ${service}:${acc.account}`);
-        }
+        accountList.push(service);
       }
     }
-    console.log('');
   }
 
-  console.log('Usage:');
-  console.log(`  ${TOOL_NAME} --account github open "https://github.com"`);
-  console.log(`  ${TOOL_NAME} --account github:username open "https://github.com"`);
-  console.log(`  ${TOOL_NAME} --debug open "https://github.com"  # Full profile copy\n`);
+  console.log('Accounts in Chrome:\n');
+  for (const account of accountList) {
+    console.log(`  ${account}`);
+  }
+  console.log(`\nUsage: ${TOOL_NAME} --account <name> open <url>\n`);
 }
 
 // ============================================================================
