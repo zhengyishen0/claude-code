@@ -9,7 +9,7 @@ const { spawn, execSync, spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const http = require('http');
-const { createHash } = require('crypto');
+const { createHash, createDecipheriv, createCipheriv, pbkdf2Sync } = require('crypto');
 const readline = require('readline');
 
 // ============================================================================
@@ -18,42 +18,55 @@ const readline = require('readline');
 
 const SCRIPT_DIR = __dirname;
 const TOOL_NAME = path.basename(SCRIPT_DIR);
-const CHROME_APP = '/Applications/Chromium.app/Contents/MacOS/Chromium';
+
+// Browser paths
+const CHROME_CANARY = '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary';
+const CHROMIUM = '/Applications/Chromium.app/Contents/MacOS/Chromium';
 
 // Directories
 const DATA_DIR = path.join(SCRIPT_DIR, 'data');
-const PROFILES_DIR = path.join(SCRIPT_DIR, 'profiles');
-const DEFAULT_PROFILE = path.join(DATA_DIR, 'default');
+const SESSIONS_DIR = '/tmp/browser-sessions';  // Ephemeral session storage
+const DEFAULT_SESSION = path.join(SESSIONS_DIR, 'default');
 const SNAPSHOT_DIR = '/tmp/chrome-snapshots';
 const PORT_REGISTRY = path.join(DATA_DIR, 'port-registry');
 
-// CDP settings (can be overridden by profile)
+// CDP settings
 let CDP_PORT = parseInt(process.env.CDP_PORT || '9222', 10);
 let CDP_HOST = process.env.CDP_HOST || 'localhost';
 
 // Global flags
-let PROFILE = '';
-let PROFILE_PATH = '';
+let ACCOUNT = '';        // Format: "service" or "service:username"
+let ACCOUNT_SERVICE = '';
+let ACCOUNT_USER = '';
+let SESSION_PATH = '';
 let DEBUG_MODE = false;
 
 // Ensure directories exist
 fs.mkdirSync(DATA_DIR, { recursive: true });
-fs.mkdirSync(PROFILES_DIR, { recursive: true });
+fs.mkdirSync(SESSIONS_DIR, { recursive: true });
 fs.mkdirSync(SNAPSHOT_DIR, { recursive: true });
 
 // ============================================================================
-// Profile Utilities
+// Account & Session Utilities
 // ============================================================================
 
-function normalizeProfileName(name) {
+function normalizeAccountName(name) {
   return name.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_');
 }
 
-function expandProfilePath(profile) {
-  if (profile.startsWith('/') || profile.startsWith('~')) {
-    return profile;
-  }
-  return path.join(PROFILES_DIR, normalizeProfileName(profile));
+function parseAccount(account) {
+  // Parse "service" or "service:username" format
+  const parts = account.split(':');
+  return {
+    service: parts[0].toLowerCase(),
+    user: parts[1] || null
+  };
+}
+
+function getSessionPath(account) {
+  // Create session path from account identifier
+  const normalized = normalizeAccountName(account);
+  return path.join(SESSIONS_DIR, normalized);
 }
 
 function getServiceName(url) {
@@ -79,71 +92,8 @@ function getServiceName(url) {
   }
 }
 
-function writeProfileMetadata(profilePath, service, account, source, sourceType, sourcePath = '') {
-  const metaFile = path.join(profilePath, '.profile-meta.json');
-  const now = new Date().toISOString();
-
-  const meta = {
-    display: `<${service}> ${account} (${source})`,
-    service,
-    account,
-    source,
-    source_type: sourceType,
-    source_path: sourcePath,
-    created: now,
-    last_used: now,
-    status: 'enabled'
-  };
-
-  fs.writeFileSync(metaFile, JSON.stringify(meta, null, 2));
-}
-
-function readProfileMetadata(profilePath, field) {
-  const metaFile = path.join(profilePath, '.profile-meta.json');
-  if (!fs.existsSync(metaFile)) return null;
-
-  try {
-    const meta = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
-    return meta[field] || null;
-  } catch {
-    return null;
-  }
-}
-
-function updateProfileMetadata(profilePath, field, value) {
-  const metaFile = path.join(profilePath, '.profile-meta.json');
-  if (!fs.existsSync(metaFile)) return false;
-
-  try {
-    const meta = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
-    meta[field] = value;
-    fs.writeFileSync(metaFile, JSON.stringify(meta, null, 2));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function fuzzyMatchProfile(search) {
-  if (!fs.existsSync(PROFILES_DIR)) return [];
-
-  const searchLower = search.toLowerCase();
-  const matches = [];
-
-  for (const name of fs.readdirSync(PROFILES_DIR)) {
-    const profilePath = path.join(PROFILES_DIR, name);
-    if (!fs.statSync(profilePath).isDirectory()) continue;
-
-    if (name.toLowerCase().includes(searchLower)) {
-      matches.push(name);
-    }
-  }
-
-  return matches;
-}
-
 // ============================================================================
-// Port Registry and Profile Locking
+// Port Registry and Session Locking
 // ============================================================================
 
 function initRegistry() {
@@ -153,9 +103,9 @@ function initRegistry() {
   }
 }
 
-function getProfilePort(profile) {
+function getSessionPort(session) {
   // Hash-based port assignment (9222-9299)
-  const hash = createHash('md5').update(profile).digest();
+  const hash = createHash('md5').update(session).digest();
   const num = hash.readUInt32LE(0);
   return 9222 + (num % 78);
 }
@@ -178,11 +128,11 @@ function isProcessRunning(pid) {
   }
 }
 
-function isProfileInUse(profile) {
+function isSessionInUse(session) {
   initRegistry();
 
   const lines = fs.readFileSync(PORT_REGISTRY, 'utf8').split('\n').filter(Boolean);
-  const entry = lines.find(line => line.startsWith(`${profile}:`));
+  const entry = lines.find(line => line.startsWith(`${session}:`));
 
   if (!entry) return null;
 
@@ -191,40 +141,31 @@ function isProfileInUse(profile) {
   // Verify process is still running
   if (!isProcessRunning(parseInt(pid, 10))) {
     // Stale entry, clean it up
-    releaseProfile(profile);
+    releaseSession(session);
     return null;
   }
 
   // Verify port is in use
   if (!isPortInUse(parseInt(port, 10))) {
-    releaseProfile(profile);
+    releaseSession(session);
     return null;
   }
 
   return { port: parseInt(port, 10), pid: parseInt(pid, 10), startTime: parseInt(startTime, 10) };
 }
 
-function assignPortForProfile(profile) {
+function assignPortForSession(session) {
   initRegistry();
 
-  // Check if profile is already in use
-  const existing = isProfileInUse(profile);
+  // Check if session is already in use
+  const existing = isSessionInUse(session);
   if (existing) {
-    const elapsed = Math.floor(Date.now() / 1000) - existing.startTime;
-    const mins = Math.floor(elapsed / 60);
-    const secs = elapsed % 60;
-
-    console.error(`\nERROR: Profile '${profile}' is already in use\n`);
-    console.error('Details:');
-    console.error(`  Process ID: ${existing.pid}`);
-    console.error(`  CDP Port: ${existing.port}`);
-    console.error(`  Running for: ${mins > 0 ? `${mins}m ${secs}s` : `${secs}s`}\n`);
-
-    return null;
+    // Session already running - reuse it
+    return existing.port;
   }
 
-  // Get preferred port for this profile
-  const preferredPort = getProfilePort(profile);
+  // Get preferred port for this session
+  const preferredPort = getSessionPort(session);
 
   // Read current registry
   const lines = fs.readFileSync(PORT_REGISTRY, 'utf8').split('\n').filter(Boolean);
@@ -233,7 +174,7 @@ function assignPortForProfile(profile) {
   // Try preferred port first
   if (!usedPorts.has(preferredPort) && !isPortInUse(preferredPort)) {
     const startTime = Math.floor(Date.now() / 1000);
-    fs.appendFileSync(PORT_REGISTRY, `${profile}:${preferredPort}:${process.pid}:${startTime}\n`);
+    fs.appendFileSync(PORT_REGISTRY, `${session}:${preferredPort}:${process.pid}:${startTime}\n`);
     return preferredPort;
   }
 
@@ -243,7 +184,7 @@ function assignPortForProfile(profile) {
     if (isPortInUse(port)) continue;
 
     const startTime = Math.floor(Date.now() / 1000);
-    fs.appendFileSync(PORT_REGISTRY, `${profile}:${port}:${process.pid}:${startTime}\n`);
+    fs.appendFileSync(PORT_REGISTRY, `${session}:${port}:${process.pid}:${startTime}\n`);
     return port;
   }
 
@@ -251,11 +192,11 @@ function assignPortForProfile(profile) {
   return null;
 }
 
-function releaseProfile(profile) {
+function releaseSession(session) {
   initRegistry();
 
   const lines = fs.readFileSync(PORT_REGISTRY, 'utf8').split('\n').filter(Boolean);
-  const filtered = lines.filter(line => !line.startsWith(`${profile}:`));
+  const filtered = lines.filter(line => !line.startsWith(`${session}:`));
   fs.writeFileSync(PORT_REGISTRY, filtered.join('\n') + (filtered.length ? '\n' : ''));
 }
 
@@ -319,60 +260,81 @@ async function waitForCdp(timeout = 30) {
 }
 
 async function ensureChromeRunning() {
-  // For named profiles, use hash-based port assignment
-  if (PROFILE) {
-    CDP_PORT = getProfilePort(PROFILE);
-  }
+  // Determine session name for port assignment
+  const sessionName = ACCOUNT || 'default';
+  CDP_PORT = getSessionPort(sessionName);
 
   // Check if Chrome is already running on our port
   if (await cdpIsRunning()) {
     // Check if mode matches (headless vs headed)
     const isHeadless = await cdpIsHeadless();
-    const wantHeadless = PROFILE && !DEBUG_MODE;
+    const wantHeadless = ACCOUNT && !DEBUG_MODE;
 
     if (DEBUG_MODE && isHeadless) {
       // User wants headed but we have headless - restart Chrome
       console.log('Restarting Chrome in headed mode...');
       await closeChromeInstance();
-      await new Promise(r => setTimeout(r, 1000)); // Wait for port to be released
-      // Continue to start new instance below
+      await new Promise(r => setTimeout(r, 1000));
     } else if (wantHeadless && !isHeadless) {
       // User wants headless but we have headed - restart Chrome
       console.log('Restarting Chrome in headless mode...');
       await closeChromeInstance();
-      await new Promise(r => setTimeout(r, 1000)); // Wait for port to be released
-      // Continue to start new instance below
+      await new Promise(r => setTimeout(r, 1000));
     } else {
       // Mode matches, use existing instance
       return true;
     }
   }
 
-  // Determine profile path
-  const profilePath = PROFILE_PATH || DEFAULT_PROFILE;
-  fs.mkdirSync(profilePath, { recursive: true });
+  // Determine session path and browser
+  let browserPath, sessionPath;
+
+  if (DEBUG_MODE) {
+    // Debug mode: Chrome Canary with full profile copy
+    browserPath = CHROME_CANARY;
+    sessionPath = path.join(SESSIONS_DIR, 'debug');
+
+    // Copy Chrome profile to session directory if not already done
+    const chromeDefault = path.join(CHROME_APP_DIR, 'Default');
+    if (fs.existsSync(chromeDefault) && !fs.existsSync(path.join(sessionPath, 'Default'))) {
+      console.log('Copying Chrome profile for debug mode...');
+      fs.mkdirSync(sessionPath, { recursive: true });
+      execSync(`cp -r "${chromeDefault}" "${path.join(sessionPath, 'Default')}"`, { stdio: 'pipe' });
+    }
+  } else {
+    // Normal mode: Chromium with ephemeral session
+    browserPath = fs.existsSync(CHROMIUM) ? CHROMIUM : CHROME_CANARY;
+    sessionPath = SESSION_PATH || DEFAULT_SESSION;
+  }
+
+  fs.mkdirSync(sessionPath, { recursive: true });
 
   // Build Chrome args
   const args = [
     `--remote-debugging-port=${CDP_PORT}`,
-    `--user-data-dir=${profilePath}`,
+    `--user-data-dir=${sessionPath}`,
     '--no-first-run',
-    '--no-default-browser-check'
+    '--no-default-browser-check',
+    '--disable-session-crashed-bubble',
+    '--disable-infobars'
   ];
 
-  // Headless mode: --profile without --debug
-  if (PROFILE && !DEBUG_MODE) {
+  // Headless mode: --account without --debug
+  if (ACCOUNT && !DEBUG_MODE) {
     args.push('--headless=new', '--disable-gpu');
   }
 
-  const chrome = spawn(CHROME_APP, args, {
+  // Always start with about:blank to prevent session restore
+  args.push('about:blank');
+
+  const chrome = spawn(browserPath, args, {
     detached: true,
     stdio: 'ignore'
   });
   chrome.unref();
 
   if (!await waitForCdp(30)) {
-    console.error(`ERROR: Chrome failed to start (CDP not available on port ${CDP_PORT})`);
+    console.error(`ERROR: Browser failed to start (CDP not available on port ${CDP_PORT})`);
     process.exit(1);
   }
   return true;
@@ -381,11 +343,133 @@ async function ensureChromeRunning() {
 async function connectCDP() {
   await ensureChromeRunning();
   try {
-    return await CDP({ port: CDP_PORT, host: CDP_HOST });
+    const client = await CDP({ port: CDP_PORT, host: CDP_HOST });
+
+    // Inject cookies on-demand from Chrome if account specified
+    if (ACCOUNT && !DEBUG_MODE) {
+      await injectAccountCookies(client, ACCOUNT_SERVICE, ACCOUNT_USER);
+    }
+
+    return client;
   } catch (error) {
     console.error(`Failed to connect to Chrome CDP on ${CDP_HOST}:${CDP_PORT}`);
     console.error(`Error: ${error.message}`);
     process.exit(1);
+  }
+}
+
+async function injectAccountCookies(client, service, user = null) {
+  // Get Chrome encryption key
+  const chromeKey = getBrowserEncryptionKey('chrome');
+  if (!chromeKey) {
+    console.error('Warning: Could not get Chrome encryption key. Cookies not injected.');
+    return;
+  }
+
+  // Find matching account in Chrome
+  const chromeProfiles = getChromeProfiles();
+  let cookies = [];
+
+  for (const profileName of chromeProfiles) {
+    const profilePath = path.join(CHROME_APP_DIR, profileName);
+    const cookiesDb = path.join(profilePath, 'Cookies');
+
+    if (!fs.existsSync(cookiesDb)) continue;
+
+    // If user specified, verify it matches
+    if (user) {
+      const detected = detectChromeAccountsWithDetails(profilePath, chromeKey, service);
+      if (!detected[service]) continue;
+
+      const matchingAccount = detected[service].find(a =>
+        a.account === user || a.account.includes(user)
+      );
+      if (!matchingAccount) continue;
+    }
+
+    // Extract cookies for this service
+    const extracted = extractChromeCookies(cookiesDb, chromeKey, service);
+    if (extracted.length > 0) {
+      cookies = extracted;
+      break;  // Use first matching profile
+    }
+  }
+
+  if (cookies.length === 0) {
+    console.error(`Warning: No ${service} cookies found in Chrome.`);
+    return;
+  }
+
+  // Inject cookies via CDP
+  await injectCookiesViaCDP(client, cookies);
+}
+
+async function injectCookiesViaCDP(client, cookies) {
+  try {
+    if (!Array.isArray(cookies) || cookies.length === 0) return;
+
+    const { Network } = client;
+    await Network.enable();
+
+    // Clear existing cookies for domains we're about to inject
+    // This prevents server-set cookies from overriding our injected ones
+    const domains = [...new Set(cookies.map(c => c.domain.replace(/^\./, '')))];
+    for (const domain of domains) {
+      try {
+        await Network.deleteCookies({ domain });
+        await Network.deleteCookies({ domain: `.${domain}` });
+      } catch (e) {
+        // Ignore delete errors
+      }
+    }
+
+    let injected = 0;
+    for (const cookie of cookies) {
+      try {
+        // __Host- prefixed cookies require url instead of domain
+        const isHostCookie = cookie.name.startsWith('__Host-');
+        const domain = cookie.domain.replace(/^\./, '');
+
+        const cookieParams = {
+          name: cookie.name,
+          value: cookie.value,
+          path: cookie.path || '/',
+          secure: cookie.secure || false,
+          httpOnly: cookie.httpOnly || false,
+          sameSite: cookie.sameSite || 'Lax'
+        };
+
+        if (isHostCookie) {
+          // __Host- cookies: use url, no domain
+          cookieParams.url = `https://${domain}${cookie.path || '/'}`;
+        } else {
+          // Regular cookies: use domain
+          cookieParams.domain = cookie.domain;
+        }
+
+        const result = await Network.setCookie(cookieParams);
+        if (result.success) injected++;
+      } catch (e) {
+        // Ignore individual cookie errors
+      }
+    }
+
+    if (DEBUG_MODE) {
+      console.log(`  Injected ${injected}/${cookies.length} cookies`);
+
+      // Verify cookies are set
+      const check = await Network.getCookies({ urls: [`https://${domains[0]}`] });
+      console.log(`  Verification: ${check.cookies.length} cookies for ${domains[0]}`);
+      const loggedIn = check.cookies.find(c => c.name === 'logged_in');
+      if (loggedIn) {
+        console.log(`  logged_in = ${loggedIn.value}`);
+      }
+    }
+  } catch (e) {
+    // Ignore cookie injection errors
+    if (DEBUG_MODE) {
+      console.log(`  Cookie injection error: ${e.message}`);
+    }
   }
 }
 
@@ -551,8 +635,8 @@ async function cmdOpen(url) {
     const data = JSON.parse(result.result.value);
 
     // Show browser status line
-    const profileInfo = PROFILE ? `profile: ${PROFILE}` : 'default profile';
-    console.log(`Browser: open (${profileInfo}, port: ${CDP_PORT})\n`);
+    const accountInfo = ACCOUNT ? `account: ${ACCOUNT}` : (DEBUG_MODE ? 'debug mode' : 'default session');
+    console.log(`Browser: open (${accountInfo}, port: ${CDP_PORT})\n`);
 
     formatInspectOutput(data);
 
@@ -942,22 +1026,21 @@ async function cmdInspect() {
 
 async function cmdClose() {
   if (!await cdpIsRunning()) {
-    console.log('No Chrome instance running');
+    console.log('No browser instance running');
     return;
   }
 
-  const client = await connectCDP();
+  const client = await CDP({ port: CDP_PORT, host: CDP_HOST });
   const { Browser } = client;
 
   try {
     await Browser.close();
-    console.log('Chrome closed');
+    console.log('Browser closed');
   } catch {
-    console.log('Chrome closed');
+    console.log('Browser closed');
   } finally {
-    if (PROFILE) {
-      releaseProfile(PROFILE);
-    }
+    const sessionName = ACCOUNT || 'default';
+    releaseSession(sessionName);
   }
 }
 
@@ -966,6 +1049,238 @@ async function cmdClose() {
 // ============================================================================
 
 const CHROME_APP_DIR = path.join(process.env.HOME, 'Library/Application Support/Google/Chrome');
+
+// Cookie encryption constants (macOS Chrome uses AES-128-CBC)
+const COOKIE_SALT = 'saltysalt';
+const COOKIE_ITERATIONS = 1003;
+const COOKIE_KEY_LENGTH = 16;
+const COOKIE_IV = Buffer.alloc(16, 0x20); // 16 space characters
+
+function getBrowserEncryptionKey(browser) {
+  const serviceName = browser === 'chrome' ? 'Chrome Safe Storage' : 'Chromium Safe Storage';
+  const cacheFile = path.join(DATA_DIR, `.${browser}-key`);
+
+  // Check cache first (avoids repeated Keychain prompts)
+  if (fs.existsSync(cacheFile)) {
+    try {
+      const cached = fs.readFileSync(cacheFile, 'utf8').trim();
+      return Buffer.from(cached, 'hex');
+    } catch (err) {
+      // Cache corrupted, will regenerate
+    }
+  }
+
+  // Get encryption password from macOS Keychain (prompts user once)
+  try {
+    const password = execSync(`security find-generic-password -s "${serviceName}" -w`, {
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe']
+    }).trim();
+
+    // Derive AES key using PBKDF2
+    const key = pbkdf2Sync(password, COOKIE_SALT, COOKIE_ITERATIONS, COOKIE_KEY_LENGTH, 'sha1');
+
+    // Cache the derived key (not the password)
+    try {
+      fs.writeFileSync(cacheFile, key.toString('hex'), { mode: 0o600 });
+    } catch (err) {
+      // Cache write failed, continue anyway
+    }
+
+    return key;
+  } catch (err) {
+    return null;
+  }
+}
+
+function decryptCookieValue(encryptedValue, key) {
+  if (!encryptedValue || encryptedValue.length < 4) return null;
+
+  // Check for "v10" or "v11" prefix (macOS Chrome encryption marker)
+  const prefix = encryptedValue.slice(0, 3).toString('utf8');
+  if (prefix !== 'v10' && prefix !== 'v11') {
+    // Not encrypted or unknown format
+    return encryptedValue;
+  }
+
+  const ciphertext = encryptedValue.slice(3);
+  try {
+    const decipher = createDecipheriv('aes-128-cbc', key, COOKIE_IV);
+    let decrypted = decipher.update(ciphertext);
+    decrypted = Buffer.concat([decrypted, decipher.final()]);
+    return decrypted;
+  } catch (err) {
+    return null;
+  }
+}
+
+function encryptCookieValue(plainValue, key) {
+  if (!plainValue) return null;
+
+  try {
+    const cipher = createCipheriv('aes-128-cbc', key, COOKIE_IV);
+    let encrypted = cipher.update(plainValue);
+    encrypted = Buffer.concat([encrypted, cipher.final()]);
+    // Add "v10" prefix
+    return Buffer.concat([Buffer.from('v10', 'utf8'), encrypted]);
+  } catch (err) {
+    return null;
+  }
+}
+
+function reencryptCookiesDatabase(sourceCookiesDb, destCookiesDb, sourceKey, destKey) {
+  // Copy the cookies database first
+  execSync(`cp "${sourceCookiesDb}" "${destCookiesDb}"`);
+
+  // Read all encrypted cookies
+  const query = `SELECT rowid, encrypted_value FROM cookies WHERE length(encrypted_value) > 0`;
+  let rows;
+  try {
+    const result = execSync(`sqlite3 "${destCookiesDb}" "${query}"`, {
+      encoding: 'buffer',
+      maxBuffer: 50 * 1024 * 1024 // 50MB buffer for large cookie databases
+    });
+    rows = result.toString('utf8').trim().split('\n').filter(Boolean);
+  } catch (err) {
+    console.error('Failed to read cookies:', err.message);
+    return false;
+  }
+
+  if (rows.length === 0) {
+    console.log('  No encrypted cookies to convert');
+    return true;
+  }
+
+  console.log(`  Re-encrypting ${rows.length} cookies...`);
+
+  // Process each cookie - we need to use a different approach since encrypted_value is binary
+  // Use hex encoding for the binary data
+  const hexQuery = `SELECT rowid, hex(encrypted_value) FROM cookies WHERE length(encrypted_value) > 0`;
+  let hexResult;
+  try {
+    hexResult = execSync(`sqlite3 "${destCookiesDb}" "${hexQuery}"`, {
+      encoding: 'utf8',
+      maxBuffer: 50 * 1024 * 1024
+    });
+  } catch (err) {
+    console.error('Failed to read cookies as hex:', err.message);
+    return false;
+  }
+
+  const hexRows = hexResult.trim().split('\n').filter(Boolean);
+  let converted = 0;
+  let failed = 0;
+
+  for (const row of hexRows) {
+    const pipeIndex = row.indexOf('|');
+    if (pipeIndex === -1) continue;
+
+    const rowid = row.substring(0, pipeIndex);
+    const hexValue = row.substring(pipeIndex + 1);
+    const encryptedValue = Buffer.from(hexValue, 'hex');
+
+    // Decrypt with source key
+    const decrypted = decryptCookieValue(encryptedValue, sourceKey);
+    if (!decrypted) {
+      failed++;
+      continue;
+    }
+
+    // Re-encrypt with dest key
+    const reencrypted = encryptCookieValue(decrypted, destKey);
+    if (!reencrypted) {
+      failed++;
+      continue;
+    }
+
+    // Update the cookie in the database
+    const newHex = reencrypted.toString('hex');
+    const updateQuery = `UPDATE cookies SET encrypted_value = x'${newHex}' WHERE rowid = ${rowid}`;
+    try {
+      execSync(`sqlite3 "${destCookiesDb}" "${updateQuery}"`, { stdio: 'pipe' });
+      converted++;
+    } catch (err) {
+      failed++;
+    }
+  }
+
+  console.log(`  Converted: ${converted}, Failed: ${failed}`);
+  return converted > 0;
+}
+
+function extractChromeCookies(cookiesDb, chromeKey, service = null) {
+  if (!fs.existsSync(cookiesDb)) return [];
+
+  // Build domain filter if service specified
+  let domainFilter = '';
+  if (service) {
+    const mappingsFile = path.join(SCRIPT_DIR, 'domain-mappings.json');
+    if (fs.existsSync(mappingsFile)) {
+      const mappings = JSON.parse(fs.readFileSync(mappingsFile, 'utf8'));
+      const domains = Object.entries(mappings)
+        .filter(([, svc]) => svc === service)
+        .map(([domain]) => domain.replace(/^www\./, ''));
+
+      if (domains.length > 0) {
+        // Build SQL LIKE conditions for each domain
+        const conditions = [...new Set(domains)].map(d => `host_key LIKE '%${d}%'`);
+        domainFilter = `AND (${conditions.join(' OR ')})`;
+      }
+    }
+  }
+
+  // Query cookies with optional domain filter
+  const query = `
+    SELECT host_key, name, path, is_secure, is_httponly, samesite,
+           expires_utc, hex(encrypted_value) as enc_hex
+    FROM cookies
+    WHERE length(encrypted_value) > 0
+    ${domainFilter}
+  `;
+
+  let result;
+  try {
+    result = execSync(`sqlite3 -separator '|' "${cookiesDb}" "${query}"`, {
+      encoding: 'utf8',
+      maxBuffer: 50 * 1024 * 1024
+    });
+  } catch (err) {
+    return [];
+  }
+
+  const cookies = [];
+  const rows = result.trim().split('\n').filter(Boolean);
+
+  for (const row of rows) {
+    const parts = row.split('|');
+    if (parts.length < 8) continue;
+
+    const [host, name, cookiePath, secure, httpOnly, sameSite, expires, encHex] = parts;
+    const encrypted = Buffer.from(encHex, 'hex');
+
+    // Decrypt the cookie value
+    const decrypted = decryptCookieValue(encrypted, chromeKey);
+    if (!decrypted) continue;
+
+    // Skip first 32 bytes (hash prefix), actual value starts at byte 32
+    const value = decrypted.length > 32 ? decrypted.slice(32).toString('utf8') : decrypted.toString('utf8');
+
+    // Map sameSite values: 0=None, 1=Lax, 2=Strict
+    const sameSiteMap = { '0': 'None', '1': 'Lax', '2': 'Strict' };
+
+    cookies.push({
+      name,
+      value,
+      domain: host,
+      path: cookiePath || '/',
+      secure: secure === '1',
+      httpOnly: httpOnly === '1',
+      sameSite: sameSiteMap[sameSite] || 'Lax'
+    });
+  }
+
+  return cookies;
+}
 
 function getChromeProfiles() {
   if (!fs.existsSync(CHROME_APP_DIR)) return [];
@@ -987,6 +1302,144 @@ function formatTimeAgo(seconds) {
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
   return `${Math.floor(seconds / 86400)}d ago`;
+}
+
+// Account identifier cookies for each service
+const ACCOUNT_COOKIES = {
+  'github': ['dotcom_user'],  // Contains username directly
+  'gmail': ['OSID'],          // Google account indicator
+  'google-calendar': ['OSID'],
+  'google-docs': ['OSID'],
+  'google-drive': ['OSID'],
+  'google-sheets': ['OSID'],
+  'google-slides': ['OSID'],
+  'twitter': ['twid'],        // Contains user ID
+  'linkedin': ['li_at'],      // Session token (no username, but indicates logged in)
+  'amazon': ['at-main'],      // Auth token (no username)
+  'facebook': ['c_user'],     // User ID
+  'instagram': ['ds_user_id'] // User ID
+};
+
+function detectChromeAccountsWithDetails(profilePath, chromeKey, targetService = null) {
+  const cookiesDb = path.join(profilePath, 'Cookies');
+  if (!fs.existsSync(cookiesDb)) return [];
+
+  // Load domain mappings
+  const mappingsFile = path.join(SCRIPT_DIR, 'domain-mappings.json');
+  let mappings = {};
+  if (fs.existsSync(mappingsFile)) {
+    mappings = JSON.parse(fs.readFileSync(mappingsFile, 'utf8'));
+  }
+
+  // Reverse mapping: service -> domains
+  const serviceDomains = {};
+  for (const [domain, service] of Object.entries(mappings)) {
+    if (!serviceDomains[service]) serviceDomains[service] = [];
+    serviceDomains[service].push(domain);
+  }
+
+  // Chrome time epoch: Jan 1, 1601 (microseconds)
+  const CHROME_EPOCH_OFFSET = 11644473600000000n;
+  const nowChrome = BigInt(Date.now()) * 1000n + CHROME_EPOCH_OFFSET;
+
+  // Build query for account-identifying cookies
+  let accountCookieNames = new Set();
+  for (const names of Object.values(ACCOUNT_COOKIES)) {
+    names.forEach(n => accountCookieNames.add(n));
+  }
+  const cookieNameFilter = [...accountCookieNames].map(n => `name = '${n}'`).join(' OR ');
+
+  // Query for account-identifying cookies with decryption
+  const query = `
+    SELECT host_key, name, hex(encrypted_value), last_access_utc, expires_utc
+    FROM cookies
+    WHERE (${cookieNameFilter})
+      AND expires_utc > ${nowChrome}
+      AND last_access_utc > 0
+    ORDER BY last_access_utc DESC
+  `;
+
+  try {
+    const result = execSync(`sqlite3 -separator '|' "${cookiesDb}" "${query}"`, {
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      maxBuffer: 10 * 1024 * 1024
+    });
+
+    // Group by service with account info
+    const serviceAccounts = {}; // service -> [{account, timeAgo, domain}]
+
+    for (const line of result.trim().split('\n')) {
+      if (!line) continue;
+      const parts = line.split('|');
+      if (parts.length < 5) continue;
+
+      const [rawDomain, cookieName, encHex, lastAccessStr, expiresStr] = parts;
+      const domain = rawDomain.replace(/^\./, '');
+
+      // Find service for this domain
+      const service = mappings[domain] || mappings[rawDomain];
+      if (!service) continue;
+      if (targetService && service !== targetService) continue;
+
+      // Decrypt cookie value to get account identifier
+      let accountId = null;
+      if (chromeKey && encHex) {
+        try {
+          const encrypted = Buffer.from(encHex, 'hex');
+          const decrypted = decryptCookieValue(encrypted, chromeKey);
+          if (decrypted) {
+            // Skip 32-byte hash prefix for v24+ cookies
+            let value = decrypted.length > 32 ?
+              decrypted.slice(32).toString('utf8') :
+              decrypted.toString('utf8');
+
+            // Extract account info based on cookie type
+            if (cookieName === 'dotcom_user') {
+              // GitHub: value is the username directly
+              accountId = value;
+            } else if (cookieName === 'twid') {
+              // Twitter: format is "u=1234567890"
+              const match = value.match(/u=(\d+)/);
+              accountId = match ? `user:${match[1]}` : null;
+            } else if (cookieName === 'c_user' || cookieName === 'ds_user_id') {
+              // Facebook/Instagram: numeric user ID
+              accountId = `user:${value}`;
+            } else {
+              // Other cookies: just indicate "logged in"
+              accountId = '(logged in)';
+            }
+          }
+        } catch (err) {
+          // Decryption failed, skip
+        }
+      }
+
+      if (!accountId) continue;
+
+      // Calculate time ago
+      const lastAccess = BigInt(lastAccessStr);
+      const secondsAgo = Number((nowChrome - lastAccess) / 1000000n);
+
+      // Add to service accounts
+      if (!serviceAccounts[service]) serviceAccounts[service] = [];
+
+      // Check for duplicate accounts
+      const existing = serviceAccounts[service].find(a => a.account === accountId);
+      if (!existing) {
+        serviceAccounts[service].push({
+          account: accountId,
+          domain,
+          timeAgo: formatTimeAgo(secondsAgo),
+          secondsAgo
+        });
+      }
+    }
+
+    return serviceAccounts;
+  } catch (err) {
+    return {};
+  }
 }
 
 function detectChromeAccounts(profilePath, targetService) {
@@ -1054,326 +1507,79 @@ function detectChromeAccounts(profilePath, targetService) {
 }
 
 // ============================================================================
-// Profile Command
+// Profile Command - Lists all accounts from Chrome
 // ============================================================================
 
-async function cmdProfile(args) {
-  // No args: list profiles
-  if (args.length === 0) {
-    cmdProfileList();
+function cmdProfile() {
+  // Get Chrome encryption key for account detection
+  const chromeKey = getBrowserEncryptionKey('chrome');
+
+  if (!chromeKey) {
+    console.log('Chrome encryption key not available.\n');
+    console.log('Options:');
+    console.log('  1. Grant Keychain access when prompted');
+    console.log('  2. Use --debug mode (full profile copy to Chrome Canary)\n');
     return;
   }
 
-  // With arg: add profile (import from Chrome.app or manual login)
-  const filter = args[0];
-  await cmdProfileAdd(filter);
-}
-
-function cmdProfileList() {
-  // Get imported profiles
-  let importedProfiles = [];
-  if (fs.existsSync(PROFILES_DIR)) {
-    importedProfiles = fs.readdirSync(PROFILES_DIR).filter(name => {
-      return fs.statSync(path.join(PROFILES_DIR, name)).isDirectory();
-    });
-  }
-
-  // Get available services from Chrome.app (quick scan)
-  let availableServices = [];
-  if (fs.existsSync(path.join(CHROME_APP_DIR, 'Default'))) {
-    const chromeProfiles = getChromeProfiles();
-    const serviceSet = new Set();
-
-    for (const profileName of chromeProfiles) {
-      const profilePath = path.join(CHROME_APP_DIR, profileName);
-      const accounts = detectChromeAccounts(profilePath);
-      for (const acc of accounts) {
-        serviceSet.add(acc.service);
-      }
-    }
-    availableServices = Array.from(serviceSet).sort();
-  }
-
-  // Show imported profiles
-  if (importedProfiles.length > 0) {
-    console.log('Imported profiles:\n');
-    for (const name of importedProfiles) {
-      const profilePath = path.join(PROFILES_DIR, name);
-      const display = readProfileMetadata(profilePath, 'display');
-      const status = readProfileMetadata(profilePath, 'status');
-
-      if (display) {
-        if (status === 'disabled') {
-          console.log(`  ${display} [DISABLED]`);
-        } else {
-          console.log(`  ${display}`);
-        }
-        console.log(`    Use: --profile ${name}`);
-      } else {
-        console.log(`  ${name} (no metadata)`);
-      }
-      console.log('');
-    }
-  }
-
-  // Show available services from Chrome.app
-  if (availableServices.length > 0) {
-    // Filter out services that are already imported
-    const importedServices = new Set();
-    for (const name of importedProfiles) {
-      const profilePath = path.join(PROFILES_DIR, name);
-      const service = readProfileMetadata(profilePath, 'service');
-      if (service) importedServices.add(service);
-    }
-
-    const notImported = availableServices.filter(s => !importedServices.has(s));
-
-    if (notImported.length > 0) {
-      console.log('Available in Chrome.app:\n');
-      for (const service of notImported) {
-        console.log(`  ${service}`);
-      }
-      console.log(`\n  Add: ${TOOL_NAME} profile <service>\n`);
-    }
-  }
-
-  // If nothing found
-  if (importedProfiles.length === 0 && availableServices.length === 0) {
-    console.log('No profiles found.\n');
-    console.log('Add a profile:');
-    console.log(`  ${TOOL_NAME} profile <service>\n`);
-  }
-}
-
-// ============================================================================
-// Profile Add Helpers
-// ============================================================================
-
-// Resolve filter to service name (accepts URL, domain, or service name)
-function resolveServiceFilter(filter) {
-  // Load domain mappings
-  const mappingsFile = path.join(SCRIPT_DIR, 'domain-mappings.json');
-  let mappings = {};
-  if (fs.existsSync(mappingsFile)) {
-    mappings = JSON.parse(fs.readFileSync(mappingsFile, 'utf8'));
-  }
-
-  // Get all known services
-  const allServices = new Set(Object.values(mappings));
-
-  // 1. Try as URL first
-  if (filter.startsWith('http://') || filter.startsWith('https://')) {
-    try {
-      const domain = new URL(filter).hostname;
-      if (mappings[domain]) return mappings[domain];
-      // Fallback: strip www and TLD
-      return domain
-        .replace(/^www\./, '')
-        .replace(/\.(com|co\.uk|de|ca|fr|jp|org|net|io|app|dev)$/, '')
-        .replace(/\./g, '-');
-    } catch {
-      // Not a valid URL
-    }
-  }
-
-  // 2. Try as domain (contains a dot)
-  if (filter.includes('.')) {
-    const domain = filter.replace(/^www\./, '');
-    if (mappings[domain]) return mappings[domain];
-    if (mappings[`www.${domain}`]) return mappings[`www.${domain}`];
-    // Strip TLD
-    return domain
-      .replace(/\.(com|co\.uk|de|ca|fr|jp|org|net|io|app|dev)$/, '')
-      .replace(/\./g, '-');
-  }
-
-  // 3. Try as service name (exact match)
-  const lowerFilter = filter.toLowerCase();
-  if (allServices.has(lowerFilter)) return lowerFilter;
-
-  // 4. Fuzzy match service names
-  for (const service of allServices) {
-    if (service.includes(lowerFilter) || lowerFilter.includes(service)) {
-      return service;
-    }
-  }
-
-  // 5. Return as-is (let the caller handle no matches)
-  return lowerFilter;
-}
-
-async function cmdProfileAdd(filter) {
-  const service = resolveServiceFilter(filter);
-
-  // Check if profile already exists
-  const existingProfiles = [];
-  if (fs.existsSync(PROFILES_DIR)) {
-    for (const name of fs.readdirSync(PROFILES_DIR)) {
-      const profilePath = path.join(PROFILES_DIR, name);
-      if (!fs.statSync(profilePath).isDirectory()) continue;
-      const profService = readProfileMetadata(profilePath, 'service');
-      if (profService === service) {
-        existingProfiles.push(name);
-      }
-    }
-  }
-
-  if (existingProfiles.length > 0) {
-    console.log(`\nExisting <${service}> profiles:`);
-    for (const name of existingProfiles) {
-      console.log(`  --profile ${name}`);
-    }
-    console.log('');
-  }
-
-  // Try to find in Chrome.app
+  // Detect all accounts from Chrome
   const chromeProfiles = getChromeProfiles();
-  const options = [];
+  let serviceAccounts = {}; // service -> [{account, timeAgo, chromeProfile}]
 
   for (const profileName of chromeProfiles) {
     const profilePath = path.join(CHROME_APP_DIR, profileName);
-    const accounts = detectChromeAccounts(profilePath, service);
-    for (const acc of accounts) {
-      options.push({
-        chromeProfile: profileName,
-        domain: acc.domain,
-        timeAgo: acc.timeAgo
-      });
+    const detected = detectChromeAccountsWithDetails(profilePath, chromeKey);
+
+    for (const [service, accounts] of Object.entries(detected)) {
+      if (!serviceAccounts[service]) serviceAccounts[service] = [];
+      for (const acc of accounts) {
+        const exists = serviceAccounts[service].find(a => a.account === acc.account);
+        if (!exists) {
+          serviceAccounts[service].push({ ...acc, chromeProfile: profileName });
+        }
+      }
     }
   }
 
-  // If found in Chrome.app: import
-  if (options.length > 0) {
-    console.log(`\nFound <${service}> in Chrome.app:\n`);
+  const services = Object.keys(serviceAccounts).sort();
 
-    let optionNum = 1;
-    let currentProfile = null;
-    for (const opt of options) {
-      if (opt.chromeProfile !== currentProfile) {
-        if (currentProfile !== null) console.log('');
-        console.log(`  Chrome profile: ${opt.chromeProfile}`);
-        currentProfile = opt.chromeProfile;
-      }
-      console.log(`    [${optionNum}] ${service} account (${opt.timeAgo})`);
-      optionNum++;
-    }
-    console.log('');
-
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout
-    });
-
-    const selection = await new Promise(resolve => {
-      rl.question(`Select [1-${options.length}] or Ctrl+C to cancel: `, answer => {
-        resolve(answer.trim());
-      });
-    });
-
-    const selectedIndex = parseInt(selection, 10) - 1;
-    if (isNaN(selectedIndex) || selectedIndex < 0 || selectedIndex >= options.length) {
-      rl.close();
-      console.error('Invalid selection');
-      process.exit(1);
-    }
-
-    const selected = options[selectedIndex];
-
-    // Prompt for account identifier
-    const account = await new Promise(resolve => {
-      rl.question('Account name (email/username): ', answer => {
-        rl.close();
-        resolve(answer.trim());
-      });
-    });
-
-    if (!account) {
-      console.error('Error: Account name cannot be empty');
-      process.exit(1);
-    }
-
-    const profileName = `${service}-${normalizeProfileName(account)}`;
-    const destPath = path.join(PROFILES_DIR, profileName);
-
-    if (fs.existsSync(destPath)) {
-      console.error(`Error: Profile '${profileName}' already exists`);
-      process.exit(1);
-    }
-
-    console.log('\nCopying Chrome.app profile...');
-    const sourcePath = path.join(CHROME_APP_DIR, selected.chromeProfile);
-    fs.mkdirSync(PROFILES_DIR, { recursive: true });
-    execSync(`cp -r "${sourcePath}" "${destPath}"`);
-
-    writeProfileMetadata(destPath, service, account, `Chrome.app/${selected.chromeProfile}`, 'chrome_app');
-
-    console.log(`\n✓ Profile added: <${service}> ${account}`);
-    console.log(`  Use: --profile ${profileName}\n`);
-
-    if (service === 'gmail' || service.startsWith('google')) {
-      console.log('NOTE: Chrome profile may contain multiple Google accounts.\n');
-    }
+  if (services.length === 0) {
+    console.log('No accounts found in Chrome.\n');
+    console.log('Login to services in Chrome, then run this command again.\n');
     return;
   }
 
-  // Not found in Chrome.app: manual login
-  console.log(`\n<${service}> not found in Chrome.app. Opening browser for manual login...\n`);
+  console.log('Accounts in Chrome:\n');
 
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout
-  });
-
-  // Use service as default account name
-  const account = await new Promise(resolve => {
-    rl.question(`Account name [${service}]: `, answer => {
-      rl.close();
-      resolve(answer.trim() || service);
-    });
-  });
-
-  const profileName = `${service}-${normalizeProfileName(account)}`;
-  const profilePath = path.join(PROFILES_DIR, profileName);
-
-  if (fs.existsSync(profilePath)) {
-    console.error(`Error: Profile '${profileName}' already exists`);
-    process.exit(1);
-  }
-
-  fs.mkdirSync(profilePath, { recursive: true });
-
-  // Build URL for the service
-  const mappingsFile = path.join(SCRIPT_DIR, 'domain-mappings.json');
-  let loginUrl = `https://${service}.com`;
-  if (fs.existsSync(mappingsFile)) {
-    const mappings = JSON.parse(fs.readFileSync(mappingsFile, 'utf8'));
-    for (const [domain, svc] of Object.entries(mappings)) {
-      if (svc === service && !domain.startsWith('www.')) {
-        loginUrl = `https://${domain}`;
-        break;
+  for (const service of services) {
+    const accounts = serviceAccounts[service];
+    if (accounts.length === 1) {
+      const acc = accounts[0];
+      if (acc.account === '(logged in)') {
+        console.log(`  ${service}`);
+        console.log(`    --account ${service}`);
+      } else {
+        console.log(`  ${service}: ${acc.account}`);
+        console.log(`    --account ${service}:${acc.account}`);
+      }
+    } else {
+      console.log(`  ${service}: ${accounts.length} accounts`);
+      for (const acc of accounts) {
+        if (acc.account === '(logged in)') {
+          console.log(`    - --account ${service}`);
+        } else {
+          console.log(`    - ${acc.account}`);
+          console.log(`      --account ${service}:${acc.account}`);
+        }
       }
     }
+    console.log('');
   }
 
-  console.log(`Opening ${loginUrl}...`);
-  console.log('Login to your account, then close the browser window.\n');
-
-  const chrome = spawn(CHROME_APP, [
-    '--remote-debugging-port=0',
-    `--user-data-dir=${profilePath}`,
-    '--no-first-run',
-    '--no-default-browser-check',
-    loginUrl
-  ], {
-    stdio: 'inherit'
-  });
-
-  await new Promise(resolve => chrome.on('close', resolve));
-
-  writeProfileMetadata(profilePath, service, account, 'manual', 'manual');
-
-  console.log(`\n✓ Profile added: <${service}> ${account}`);
-  console.log(`  Use: --profile ${profileName}`);
+  console.log('Usage:');
+  console.log(`  ${TOOL_NAME} --account github open "https://github.com"`);
+  console.log(`  ${TOOL_NAME} --account github:username open "https://github.com"`);
+  console.log(`  ${TOOL_NAME} --debug open "https://github.com"  # Full profile copy\n`);
 }
 
 // ============================================================================
@@ -1488,8 +1694,8 @@ function showHelp() {
 Usage: browser [OPTIONS] <command> [args...]
 
 OPTIONS:
-  --profile NAME        Use named profile (enables headless by default)
-  --debug               Use headed browser (visible window)
+  --account SERVICE[:USER]  Use account from Chrome (headless, per-service cookies)
+  --debug                   Use headed browser (full profile copy to Chrome Canary)
 
 COMMANDS:
 
@@ -1513,21 +1719,19 @@ COMMANDS:
     wait [SELECTOR]       Wait for DOM stability or element
     execute JS            Execute JavaScript code
     screenshot            Capture page screenshot
-    close                 Close Chrome instance
+    close                 Close browser instance
 
-  Profiles:
-    profile               List profiles + available in Chrome.app
-    profile SERVICE       Add profile (import from Chrome.app or manual login)
+  Accounts:
+    profile               List all accounts from Chrome
 
   Options:
     --index N             Select Nth match when multiple elements found
 
 EXAMPLES:
   browser open "https://google.com"
-  browser click "Submit"
-  browser input "#email" "user@example.com"
-  browser --profile myaccount open "https://example.com"
-  browser --profile myaccount --debug open "https://example.com"
+  browser --account github open "https://github.com"
+  browser --account github:myuser open "https://github.com"
+  browser --debug open "https://github.com"
 `);
 }
 
@@ -1535,31 +1739,20 @@ EXAMPLES:
 // Signal Handlers (cleanup on exit)
 // ============================================================================
 
-// Track if we should cleanup on exit (only for explicit close)
-let shouldCleanupOnExit = false;
-
 function cleanup() {
-  if (PROFILE) {
-    releaseProfile(PROFILE);
-  }
+  const sessionName = ACCOUNT || 'default';
+  releaseSession(sessionName);
 }
 
 process.on('SIGINT', () => {
-  // User pressed Ctrl+C - cleanup registry
   cleanup();
   process.exit(130);
 });
 
 process.on('SIGTERM', () => {
-  // Process terminated - cleanup registry
   cleanup();
   process.exit(143);
 });
-
-// Note: Don't cleanup on normal exit - Chrome keeps running in background
-// Cleanup only happens on:
-// 1. SIGINT/SIGTERM (user interrupt)
-// 2. Explicit 'close' command (handled in cmdClose)
 
 // ============================================================================
 // Main
@@ -1571,9 +1764,12 @@ async function main() {
   // Parse global flags
   let i = 0;
   while (i < args.length && args[i].startsWith('--')) {
-    if (args[i] === '--profile' && args[i + 1]) {
-      PROFILE = args[i + 1];
-      PROFILE_PATH = expandProfilePath(PROFILE);
+    if ((args[i] === '--account' || args[i] === '-a') && args[i + 1]) {
+      ACCOUNT = args[i + 1];
+      const parsed = parseAccount(ACCOUNT);
+      ACCOUNT_SERVICE = parsed.service;
+      ACCOUNT_USER = parsed.user;
+      SESSION_PATH = getSessionPath(ACCOUNT);
       i += 2;
     } else if (args[i] === '--debug') {
       DEBUG_MODE = true;
@@ -1635,7 +1831,7 @@ async function main() {
         await cmdClose();
         break;
       case 'profile':
-        await cmdProfile(restArgs);
+        cmdProfile();
         break;
       default:
         console.error(`Unknown command: ${command}`);
