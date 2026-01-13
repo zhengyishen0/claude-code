@@ -130,11 +130,14 @@ class CoreMLModel(val internalModel: MLModel) {
                 val inputArray = createMLMultiArray(listOf(1, frames, featureDim), MLMultiArrayDataTypeFloat32)
                     ?: return null
 
-                // Copy features - flattened row-major
-                var idx = 0
-                for (frame in features) {
-                    for (value in frame) {
-                        setFloatInMLMultiArray(inputArray, idx++, value)
+                // OPTIMIZED: Bulk copy features using direct pointer access
+                val inputPtr = inputArray.dataPointer?.reinterpret<FloatVar>()
+                if (inputPtr != null) {
+                    var idx = 0
+                    for (frame in features) {
+                        for (value in frame) {
+                            inputPtr[idx++] = value
+                        }
                     }
                 }
 
@@ -161,15 +164,33 @@ class CoreMLModel(val internalModel: MLModel) {
                 val stride1 = strides[1]
                 val stride2 = strides[2]
 
-                // Convert to List<FloatArray>
+                // OPTIMIZED: Bulk copy using direct pointer access
+                val outputPtr = logitsArray.dataPointer?.reinterpret<FloatVar>()
+                    ?: return null
+
                 val logits = mutableListOf<FloatArray>()
-                for (t in 0 until time) {
-                    val frame = FloatArray(vocab)
-                    for (v in 0 until vocab) {
-                        val index = t * stride1 + v * stride2
-                        frame[v] = getFloatFromMLMultiArray(logitsArray, index)
+
+                // Check if strides allow contiguous copy (stride2 == 1)
+                if (stride2 == 1) {
+                    // Contiguous per time step - can copy entire vocab at once
+                    for (t in 0 until time) {
+                        val frame = FloatArray(vocab)
+                        val startIdx = t * stride1
+                        for (v in 0 until vocab) {
+                            frame[v] = outputPtr[startIdx + v]
+                        }
+                        logits.add(frame)
                     }
-                    logits.add(frame)
+                } else {
+                    // Non-contiguous - use strided access
+                    for (t in 0 until time) {
+                        val frame = FloatArray(vocab)
+                        for (v in 0 until vocab) {
+                            val index = t * stride1 + v * stride2
+                            frame[v] = outputPtr[index]
+                        }
+                        logits.add(frame)
+                    }
                 }
 
                 logits

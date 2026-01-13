@@ -26,6 +26,9 @@ kotlin {
             create("OnnxRuntime") {
                 defFile = file("src/nativeInterop/cinterop/OnnxRuntime.def")
             }
+            create("Accelerate") {
+                defFile = file("src/nativeInterop/cinterop/Accelerate.def")
+            }
         }
     }
 

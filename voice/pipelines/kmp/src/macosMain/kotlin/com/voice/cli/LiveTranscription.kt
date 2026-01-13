@@ -11,6 +11,8 @@ import kotlin.math.pow
 import kotlin.math.round
 import kotlin.math.sqrt
 import kotlin.system.getTimeMillis
+import kotlin.concurrent.AtomicReference
+import kotlin.native.concurrent.*
 
 // Helper for formatting doubles with specified decimal places
 private fun Double.format(decimals: Int): String {
@@ -172,41 +174,64 @@ class LiveTranscription(
         val startTime = startSample.toDouble() / SAMPLE_RATE
         val endTime = endSample.toDouble() / SAMPLE_RATE
 
-        // ASR - use the ASRModel interface (works with both SenseVoice and Whisper)
-        val asrResult = asrModel.transcribe(audio) ?: return
+        // Run ASR and Speaker Embedding in PARALLEL using GCD
+        val asrResultRef = AtomicReference<ASRResult?>(null)
+        val embeddingRef = AtomicReference<FloatArray?>(null)
+
+        // Use dispatch group for synchronization
+        val group = dispatch_group_create()
+
+        // Launch ASR task on global queue
+        dispatch_group_async(group, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH.toLong(), 0u)) {
+            val result = asrModel.transcribe(audio)
+            asrResultRef.value = result
+        }
+
+        // Launch Speaker Embedding task (if audio is long enough)
+        if (audio.size >= XVECTOR_SAMPLES) {
+            dispatch_group_async(group, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH.toLong(), 0u)) {
+                val center = (audio.size - XVECTOR_SAMPLES) / 2
+                val xvectorInput = audio.copyOfRange(center, center + XVECTOR_SAMPLES)
+                val emb = speakerModel.runSpeakerEmbedding(xvectorInput)
+                embeddingRef.value = emb
+            }
+        }
+
+        // Wait for both to complete
+        dispatch_group_wait(group, DISPATCH_TIME_FOREVER)
+
+        // Get results
+        val asrResult = asrResultRef.value
+        val embedding = embeddingRef.value
+
+        // Check ASR result
+        if (asrResult == null) return
         val text = asrResult.text
         val textTokens = asrResult.tokens
 
-        // Speaker identification
+        // Speaker identification (matching is fast, no need to parallelize)
         var speakerName: String? = null
         var confidence = "unknown"
         var isKnown = false
         var isConflict = false
-        var embedding: FloatArray? = null
         var learned = false
 
-        if (audio.size >= XVECTOR_SAMPLES) {
-            val center = (audio.size - XVECTOR_SAMPLES) / 2
-            val xvectorInput = audio.copyOfRange(center, center + XVECTOR_SAMPLES)
-            embedding = speakerModel.runSpeakerEmbedding(xvectorInput)
+        if (embedding != null) {
+            val (matchedName, score, matchConfidence) = voiceLibrary.match(embedding)
+            confidence = matchConfidence
 
-            if (embedding != null) {
-                val (matchedName, score, matchConfidence) = voiceLibrary.match(embedding)
-                confidence = matchConfidence
+            if (matchedName != null) {
+                speakerName = matchedName
+                isKnown = true
 
-                if (matchedName != null) {
-                    speakerName = matchedName
-                    isKnown = true
+                // Check for conflict (name contains "/")
+                if (matchedName.contains("/")) {
+                    isConflict = true
+                }
 
-                    // Check for conflict (name contains "/")
-                    if (matchedName.contains("/")) {
-                        isConflict = true
-                    }
-
-                    // Auto-learn if high confidence
-                    if (matchConfidence == "high") {
-                        learned = voiceLibrary.autoLearn(matchedName, embedding, score)
-                    }
+                // Auto-learn if high confidence
+                if (matchConfidence == "high") {
+                    learned = voiceLibrary.autoLearn(matchedName, embedding, score)
                 }
             }
         }
