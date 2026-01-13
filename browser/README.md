@@ -27,15 +27,28 @@ browser-js open "https://google.com"
 ## Usage
 
 ```bash
-claude-tools chrome --profile <name> <command> [args...]
+browser [OPTIONS] <command> [args...]
 ```
 
-**Important:** The `--profile` flag is required for all automation commands to prevent accidental use of your personal Chrome.
+**Options:**
+- `--account SERVICE[:USER]` - Use account from Chrome (cookie injection, Chromium)
+- `--keyless` - Use Chrome Canary with profile copy (no Keychain needed)
+- `--debug` - Use headed browser (visible window)
 
-**Modes:**
-- `--profile <name>`: Headless automation with saved credentials (default)
-- `--profile <name> --debug`: Headed mode for debugging (visible window)
-- `--debug`: Manual testing using system Chrome (no profile)
+**Behavior Matrix:**
+
+| Flags | Browser | Display | Auth Strategy |
+|-------|---------|---------|---------------|
+| (none) | Chromium | Headless | - |
+| `--account` | Chromium | Headless | Cookie injection |
+| `--keyless` | Chrome Canary | Headless | Profile copy |
+| `--debug` | (same) | Headed | (same) |
+| `--debug --keyless` | Chrome Canary | Headed | Profile copy |
+
+**Browser Roles:**
+- **Chrome.app** - Your personal browser (READ-ONLY: extract cookies/keys)
+- **Chromium** - Automation browser (default)
+- **Chrome Canary** - Fallback for keyless mode (profile copy)
 
 ## Commands
 
@@ -418,174 +431,68 @@ execute --file extract-data.js                        # Execute multi-line scrip
 - Keyboard events → Use `sendkey` instead
 
 ### profile
-Manage browser profiles for authentication
+List available accounts from Chrome.app
 
 ```bash
-profile list                # List all profiles
-profile create <url>        # Create profile with manual login
-profile import [url]        # Discover accounts from Chrome.app
-profile enable <name>       # Enable profile
-profile disable <name>      # Disable profile
-profile rename <old> <new>  # Rename profile
+browser profile
 ```
 
-**Profile Display Format:** `<service> account (source)`
+**Output:**
+```
+Accounts in Chrome:
 
-Examples:
-- `<gmail> alice@gmail.com (manual)`
-- `<amazon> testbuyer (Default)` (if imported from Chrome.app Default profile)
+  amazon
+  github:zhengyishen0
+  gmail:zhengyishen1@gmail.com
+  google-calendar:zhengyishen1@gmail.com
+  linkedin
 
-**Creating Profiles:**
+Usage: browser --account <name> open <url>
+```
 
+**Account Detection:**
+- Reads Chrome.app cookies (with Keychain decryption)
+- Shows username/email where available (GitHub username, Google email)
+- Groups by Chrome profile when multiple profiles exist
+
+**Multi-Profile Support:**
+
+When Chrome has multiple profiles (Default, Profile 1, etc.):
+```
+Accounts in Chrome:
+
+  Default:
+    github:personal-user
+    gmail:personal@gmail.com
+
+  Profile 1:
+    github:work-user
+    gmail:work@company.com
+
+Usage: browser --account "<Profile>/<service>" open <url>
+   eg: browser --account "Profile 1/github" open https://github.com
+```
+
+**Using Accounts:**
 ```bash
-# Create new profile
-chrome profile create https://gmail.com
+# Use account with cookie injection (Chromium, headless)
+browser --account github open "https://github.com"
+browser --account "github:zhengyishen0" open "https://github.com"
 
-# Prompts for account identifier
-Account identifier (email/username): alice@gmail.com
+# With specific Chrome profile
+browser --account "Profile 1/github" open "https://github.com"
 
-# Opens headed browser for manual login
-# Close browser when done
+# Keyless mode (Chrome Canary, profile copy - no Keychain needed)
+browser --keyless open "https://github.com"
 
-# Creates profile with filename: gmail-alice_gmail_com
-✓ Profile created: <gmail> alice@gmail.com (manual)
+# Debug mode (headed browser for debugging)
+browser --debug --account github open "https://github.com"
 ```
-
-**Importing from Chrome.app:**
-
-The import command scans your Chrome.app Default profile to discover existing accounts:
-
-```bash
-# Scan all services
-chrome profile import
-
-Scanning Chrome.app for all available accounts...
-
-Found 2 account(s) for <github>:
-  - github.com (2h ago, 145 visits)
-  - gist.github.com (5d ago, 23 visits)
-
-Found 1 account(s) for <gmail>:
-  - mail.google.com (just now, 892 visits)
-
-Found 3 account(s) for <amazon>:
-  - amazon.com (1d ago, 67 visits)
-  - amazon.co.uk (3d ago, 12 visits)
-  - amazon.de (7d ago, 5 visits)
-
-⚠️  Note: Cookie import is not yet implemented.
-   Use this output to identify which accounts exist, then run:
-   'profile create <service> <account>' to create profiles manually.
-
-# Scan specific service
-chrome profile import https://github.com
-
-Scanning Chrome.app for <github> accounts...
-
-Found 2 account(s) for <github>:
-  - github.com (2h ago, 145 visits)
-  - gist.github.com (5d ago, 23 visits)
-
-⚠️  Note: Cookie import is not yet implemented.
-   Use this output to identify which accounts exist, then run:
-   'profile create <service> <account>' to create profiles manually.
-```
-
-**How import works:**
-- Queries Chrome.app's Cookies and History databases (read-only)
-- Shows accounts accessed in the last 7 days
-- Includes visit count and last access time
-- Deduplicates services automatically (e.g., amazon.com and amazon.co.uk both show as "amazon")
-- Cookie import not yet implemented - use `profile create` to manually login
-
-**Listing Profiles:**
-
-```bash
-chrome profile list
-
-<gmail> alice@gmail.com (manual)
-<gmail> bob@work.com (manual)
-<amazon> testbuyer (manual) [DISABLED]
-
-Total: 3 profiles (2 enabled, 1 disabled)
-```
-
-**Managing Profiles:**
-
-```bash
-# Disable a profile
-chrome profile disable gmail-alice_gmail_com
-✓ Disabled: <gmail> alice@gmail.com (manual)
-
-# Enable a profile
-chrome profile enable gmail-alice_gmail_com
-✓ Enabled: <gmail> alice@gmail.com (manual)
-
-# Rename a profile
-chrome profile rename gmail-alice_gmail_com gmail-personal
-✓ Renamed: gmail-alice_gmail_com → gmail-personal
-  Display: <gmail> personal (manual)
-```
-
-**Profile Naming:**
-
-Filenames use format: `service-account_normalized`
-- Service auto-detected from URL
-- Account provided by user
-- Special characters normalized: `@` → `_`, `.` → `_`, etc.
-
-Examples:
-- Input: `alice@gmail.com` → Filename: `gmail-alice_gmail_com`
-- Input: `+1234567890` → Filename: `amazon-_1234567890`
-
-**Profile Locking:**
-
-Only one session can use a profile at a time (prevents multi-agent conflicts):
-
-```bash
-# Session 1 (Agent A)
-chrome --profile gmail-alice_gmail_com open "https://gmail.com"
-# ✓ Profile locked, assigned CDP port 9222
-
-# Session 2 (Agent B) - tries to use same profile
-chrome --profile gmail-alice_gmail_com open "https://gmail.com"
-# ✗ ERROR: Profile 'gmail-alice_gmail_com' is already in use
-#   Details: Process ID: 12345, CDP Port: 9222, Running for: 5m 23s
-```
-
-**For Parallel Agents:**
-
-Create separate profiles with different accounts:
-
-```bash
-# Create multiple accounts (different Gmail accounts!)
-chrome profile create https://gmail.com   # alice@gmail.com
-chrome profile create https://gmail.com   # bob@work.com
-
-# Use different profiles for each agent
-chrome --profile gmail-alice_gmail_com ...  # Agent 1
-chrome --profile gmail-bob_work_com ...     # Agent 2
-```
-
-**Important:** If you only have ONE account, you CANNOT run parallel agents. Profile locking prevents this.
-
-**Why AI Agents Can't Share Accounts:**
-
-AI agents lack coordination capabilities:
-- No shared memory, no inter-agent communication
-- Can't "wait politely" or check "if cart has my items"
-
-Shared server-side state causes chaos:
-- Same shopping cart, order history, session state
-- Agent A adds laptop → Agent B sees it, removes it (thinks error) → Task failure
-
-**Design principle:** Prevent conflicts at tool level (profile locking), don't rely on AI coordination.
 
 **Port Assignment:**
-- Each profile gets unique CDP port (9222-9299)
-- Auto-assigned based on profile name hash
-- Registry: `~/.claude/chrome/port-registry`
-- Supports up to 78 concurrent profiles
+- Each account gets unique CDP port (9222-9299)
+- Auto-assigned based on account name hash
+- Supports parallel sessions for different accounts
 
 ## Chaining Commands
 
