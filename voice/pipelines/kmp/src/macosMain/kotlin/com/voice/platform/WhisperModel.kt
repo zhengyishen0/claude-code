@@ -243,6 +243,7 @@ data class WhisperConfig(
     val suppressTokens: Set<Int> = emptySet()
 ) {
     companion object {
+        @OptIn(ExperimentalForeignApi::class)
         fun load(configPath: String, generationConfigPath: String): WhisperConfig? {
             try {
                 val configJson = NSString.stringWithContentsOfFile(configPath, NSUTF8StringEncoding, null)
@@ -292,6 +293,7 @@ class WhisperTokenizer private constructor(
     private val vocab: Map<Int, String>
 ) {
     companion object {
+        @OptIn(ExperimentalForeignApi::class)
         fun load(path: String): WhisperTokenizer? {
             try {
                 val json = NSString.stringWithContentsOfFile(path, NSUTF8StringEncoding, null)
