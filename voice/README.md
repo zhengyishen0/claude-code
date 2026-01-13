@@ -170,6 +170,68 @@ def transcribe_long_chunk(audio, max_frames=500):
     return merge_transcripts(transcripts)  # Handle overlaps
 ```
 
+## Pipeline Implementations
+
+Three production-ready implementations of the voice pipeline, all using CoreML for Apple Silicon optimization.
+
+### Technologies
+
+| Implementation | Language | Frameworks | Target |
+|----------------|----------|------------|--------|
+| **Swift** | Swift | AVFoundation, CoreML, Accelerate | macOS/iOS native |
+| **Python** | Python 3 | coremltools, torchaudio, numpy | Prototyping, testing |
+| **KMP** | Kotlin/Native | CoreML cinterop, KissFFT, GCD | Cross-platform (macOS now, Android later) |
+
+### ASR Models
+
+| Model | Type | Vocab | Languages | Speed | Accuracy |
+|-------|------|-------|-----------|-------|----------|
+| **SenseVoice** | Non-autoregressive (CTC) | 25,055 | zh/en/ja/ko/yue | Fast | Good |
+| **Whisper Turbo** | Autoregressive | 51,865 | Multilingual | Slower | Higher |
+
+### Performance Benchmarks (M4 MacBook Air)
+
+Measured on real audio segments (~3-5 seconds each):
+
+| Implementation | Model | Time/Segment | RTF | Notes |
+|----------------|-------|--------------|-----|-------|
+| **Swift** | SenseVoice | ~50ms | 0.017x | Native, fastest |
+| **Python** | SenseVoice | ~50-60ms | 0.026x | coremltools optimized |
+| **KMP** | SenseVoice | ~150-170ms | 0.05x | After C memcpy optimization |
+| **KMP (before opt)** | SenseVoice | ~550ms | 0.18x | Direct pointer access only |
+| **KMP (initial)** | SenseVoice | ~1100ms | 0.37x | Kotlin loops |
+| **Swift** | Whisper Turbo | ~1.8s | 0.6x | Higher accuracy |
+| **KMP** | Whisper Turbo | ~2s | 0.67x | Autoregressive overhead |
+
+*RTF = Real-Time Factor (lower is faster; 0.05x means 20x faster than real-time)*
+
+### KMP Optimization Journey
+
+| Stage | Technique | Time | Improvement |
+|-------|-----------|------|-------------|
+| Initial | Kotlin loops for MLMultiArray | 1100ms | baseline |
+| v1 | Direct pointer access | 550ms | 2x faster |
+| v2 | GCD parallel (ASR + speaker) | 500ms | 1.1x faster |
+| v3 | C memcpy helper | 160ms | 3.5x faster |
+
+**Key insight:** The bottleneck was 12.5M FFI boundary crossings when copying CoreML output. A single C `memcpy` call eliminated this overhead.
+
+### Usage
+
+```bash
+# Swift
+swift run voice-cli live
+
+# Python
+python voice/pipelines/python/live.py
+
+# KMP (default: SenseVoice)
+./voice/pipelines/kmp/build/bin/macos/debugExecutable/kmp-pipeline.kexe live
+
+# KMP with Whisper Turbo
+./voice/pipelines/kmp/build/bin/macos/debugExecutable/kmp-pipeline.kexe live --whisper
+```
+
 ## Components
 
 ### Implemented
