@@ -29,6 +29,9 @@ kotlin {
             create("Accelerate") {
                 defFile = file("src/nativeInterop/cinterop/Accelerate.def")
             }
+            create("CopyHelper") {
+                defFile = file("src/nativeInterop/cinterop/CopyHelper.def")
+            }
         }
     }
 

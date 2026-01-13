@@ -5,6 +5,7 @@ import com.voice.core.*
 import kotlinx.cinterop.*
 import platform.CoreML.*
 import platform.Foundation.*
+import copyhelper.*
 
 /**
  * CoreML model wrapper for voice pipeline inference
@@ -130,14 +131,21 @@ class CoreMLModel(val internalModel: MLModel) {
                 val inputArray = createMLMultiArray(listOf(1, frames, featureDim), MLMultiArrayDataTypeFloat32)
                     ?: return null
 
-                // OPTIMIZED: Bulk copy features using direct pointer access
-                val inputPtr = inputArray.dataPointer?.reinterpret<FloatVar>()
+                // OPTIMIZED: Bulk copy features using C memcpy
+                val inputPtr = inputArray.dataPointer
                 if (inputPtr != null) {
+                    // Flatten features into contiguous buffer for memcpy
+                    val totalInputSize = frames * featureDim
+                    val flatInput = FloatArray(totalInputSize)
                     var idx = 0
                     for (frame in features) {
                         for (value in frame) {
-                            inputPtr[idx++] = value
+                            flatInput[idx++] = value
                         }
+                    }
+                    // Single memcpy call via C helper
+                    flatInput.usePinned { pinned ->
+                        copy_floats_to_mlarray(pinned.addressOf(0), inputPtr, totalInputSize.toULong())
                     }
                 }
 
@@ -162,35 +170,28 @@ class CoreMLModel(val internalModel: MLModel) {
                 val time = outputShape[1]
                 val vocab = outputShape[2]
                 val stride1 = strides[1]
-                val stride2 = strides[2]
 
-                // OPTIMIZED: Bulk copy using direct pointer access
-                val outputPtr = logitsArray.dataPointer?.reinterpret<FloatVar>()
+                // OPTIMIZED: Bulk copy using C memcpy helper
+                val outputPtr = logitsArray.dataPointer
                     ?: return null
 
-                val logits = mutableListOf<FloatArray>()
+                // Allocate flat output buffer and copy in one shot
+                val totalOutputSize = time * vocab
+                val flatOutput = FloatArray(totalOutputSize)
 
-                // Check if strides allow contiguous copy (stride2 == 1)
-                if (stride2 == 1) {
-                    // Contiguous per time step - can copy entire vocab at once
-                    for (t in 0 until time) {
-                        val frame = FloatArray(vocab)
-                        val startIdx = t * stride1
-                        for (v in 0 until vocab) {
-                            frame[v] = outputPtr[startIdx + v]
-                        }
-                        logits.add(frame)
+                flatOutput.usePinned { pinned ->
+                    copy_2d_output(outputPtr, pinned.addressOf(0), time.toULong(), vocab.toULong(), stride1.toULong())
+                }
+
+                // Reshape flat output to List<FloatArray>
+                val logits = ArrayList<FloatArray>(time)
+                for (t in 0 until time) {
+                    val frame = FloatArray(vocab)
+                    val startIdx = t * vocab
+                    for (v in 0 until vocab) {
+                        frame[v] = flatOutput[startIdx + v]
                     }
-                } else {
-                    // Non-contiguous - use strided access
-                    for (t in 0 until time) {
-                        val frame = FloatArray(vocab)
-                        for (v in 0 until vocab) {
-                            val index = t * stride1 + v * stride2
-                            frame[v] = outputPtr[index]
-                        }
-                        logits.add(frame)
-                    }
+                    logits.add(frame)
                 }
 
                 logits
