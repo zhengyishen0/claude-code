@@ -35,11 +35,13 @@ let CDP_PORT = parseInt(process.env.CDP_PORT || '9222', 10);
 let CDP_HOST = process.env.CDP_HOST || 'localhost';
 
 // Global flags
-let ACCOUNT = '';        // Format: "service" or "service:username"
+let ACCOUNT = '';        // Format: "service", "service:user", "Profile/service", etc.
 let ACCOUNT_SERVICE = '';
 let ACCOUNT_USER = '';
+let ACCOUNT_PROFILE = null;  // Chrome profile name (Default, Profile 1, etc.)
 let SESSION_PATH = '';
-let DEBUG_MODE = false;
+let DEBUG_MODE = false;      // Headed browser (visible window)
+let KEYLESS_MODE = false;    // Use profile copy instead of cookie injection
 
 // Ensure directories exist
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -55,9 +57,30 @@ function normalizeAccountName(name) {
 }
 
 function parseAccount(account) {
-  // Parse "service" or "service:username" format
-  const parts = account.split(':');
+  // Parse account string formats:
+  // - "service" (eg: "github")
+  // - "service:username" (eg: "github:zhengyishen0")
+  // - "Profile/service" (eg: "Default/github")
+  // - "Profile/service:username" (eg: "Profile 1/gmail:user@example.com")
+
+  let chromeProfile = null;
+  let serviceStr = account;
+
+  // Check for profile prefix (contains "/" and profile name before it)
+  const slashIdx = account.indexOf('/');
+  if (slashIdx > 0) {
+    const possibleProfile = account.slice(0, slashIdx);
+    // Check if it looks like a Chrome profile name
+    if (possibleProfile === 'Default' || /^Profile \d+$/.test(possibleProfile)) {
+      chromeProfile = possibleProfile;
+      serviceStr = account.slice(slashIdx + 1);
+    }
+  }
+
+  // Parse service and user from remaining string
+  const parts = serviceStr.split(':');
   return {
+    chromeProfile,
     service: parts[0].toLowerCase(),
     user: parts[1] || null
   };
@@ -268,7 +291,7 @@ async function ensureChromeRunning() {
   if (await cdpIsRunning()) {
     // Check if mode matches (headless vs headed)
     const isHeadless = await cdpIsHeadless();
-    const wantHeadless = ACCOUNT && !DEBUG_MODE;
+    const wantHeadless = !DEBUG_MODE;  // Headless unless --debug
 
     if (DEBUG_MODE && isHeadless) {
       // User wants headed but we have headless - restart Chrome
@@ -286,24 +309,26 @@ async function ensureChromeRunning() {
     }
   }
 
-  // Determine session path and browser
-  let browserPath, sessionPath;
+  // Determine browser path
+  // - Keyless mode: Chrome Canary (profile copy requires same keychain)
+  // - Normal mode: Chromium (cookie injection works with any browser)
+  const browserPath = KEYLESS_MODE ? CHROME_CANARY : CHROMIUM;
 
-  if (DEBUG_MODE) {
-    // Debug mode: Chrome Canary with full profile copy
-    browserPath = CHROME_CANARY;
-    sessionPath = path.join(SESSIONS_DIR, 'debug');
+  // Determine session path
+  let sessionPath;
+  if (KEYLESS_MODE) {
+    // Keyless mode: use profile copy session
+    sessionPath = path.join(SESSIONS_DIR, 'keyless');
 
     // Copy Chrome profile to session directory if not already done
     const chromeDefault = path.join(CHROME_APP_DIR, 'Default');
     if (fs.existsSync(chromeDefault) && !fs.existsSync(path.join(sessionPath, 'Default'))) {
-      console.log('Copying Chrome profile for debug mode...');
+      console.log('Copying Chrome profile for keyless mode...');
       fs.mkdirSync(sessionPath, { recursive: true });
       execSync(`cp -r "${chromeDefault}" "${path.join(sessionPath, 'Default')}"`, { stdio: 'pipe' });
     }
   } else {
-    // Normal mode: Chromium with ephemeral session
-    browserPath = fs.existsSync(CHROMIUM) ? CHROMIUM : CHROME_CANARY;
+    // Normal mode: ephemeral session with cookie injection
     sessionPath = SESSION_PATH || DEFAULT_SESSION;
   }
 
@@ -319,8 +344,8 @@ async function ensureChromeRunning() {
     '--disable-infobars'
   ];
 
-  // Headless mode: --account without --debug
-  if (ACCOUNT && !DEBUG_MODE) {
+  // Headless mode: always unless --debug flag is used
+  if (!DEBUG_MODE) {
     args.push('--headless=new', '--disable-gpu');
   }
 
@@ -345,9 +370,9 @@ async function connectCDP() {
   try {
     const client = await CDP({ port: CDP_PORT, host: CDP_HOST });
 
-    // Inject cookies on-demand from Chrome if account specified
-    if (ACCOUNT && !DEBUG_MODE) {
-      await injectAccountCookies(client, ACCOUNT_SERVICE, ACCOUNT_USER);
+    // Inject cookies on-demand from Chrome if account specified (not in keyless mode)
+    if (ACCOUNT && !KEYLESS_MODE) {
+      await injectAccountCookies(client, ACCOUNT_SERVICE, ACCOUNT_USER, ACCOUNT_PROFILE);
     }
 
     return client;
@@ -358,7 +383,7 @@ async function connectCDP() {
   }
 }
 
-async function injectAccountCookies(client, service, user = null) {
+async function injectAccountCookies(client, service, user = null, chromeProfile = null) {
   // Get Chrome encryption key
   const chromeKey = getBrowserEncryptionKey('chrome');
   if (!chromeKey) {
@@ -367,7 +392,17 @@ async function injectAccountCookies(client, service, user = null) {
   }
 
   // Find matching account in Chrome
-  const chromeProfiles = getChromeProfiles();
+  let chromeProfiles = getChromeProfiles();
+
+  // If specific profile requested, filter to just that profile
+  if (chromeProfile) {
+    if (!chromeProfiles.includes(chromeProfile)) {
+      console.error(`Warning: Chrome profile "${chromeProfile}" not found.`);
+      return;
+    }
+    chromeProfiles = [chromeProfile];
+  }
+
   let cookies = [];
 
   for (const profileName of chromeProfiles) {
@@ -396,7 +431,8 @@ async function injectAccountCookies(client, service, user = null) {
   }
 
   if (cookies.length === 0) {
-    console.error(`Warning: No ${service} cookies found in Chrome.`);
+    const profileHint = chromeProfile ? ` in profile "${chromeProfile}"` : '';
+    console.error(`Warning: No ${service} cookies found in Chrome${profileHint}.`);
     return;
   }
 
@@ -635,8 +671,11 @@ async function cmdOpen(url) {
     const data = JSON.parse(result.result.value);
 
     // Show browser status line
-    const accountInfo = ACCOUNT ? `account: ${ACCOUNT}` : (DEBUG_MODE ? 'debug mode' : 'default session');
-    console.log(`Browser: open (${accountInfo}, port: ${CDP_PORT})\n`);
+    let modeInfo = 'default session';
+    if (ACCOUNT) modeInfo = `account: ${ACCOUNT}`;
+    if (KEYLESS_MODE) modeInfo += ', keyless';
+    if (DEBUG_MODE) modeInfo += ', headed';
+    console.log(`Browser: open (${modeInfo}, port: ${CDP_PORT})\n`);
 
     formatInspectOutput(data);
 
@@ -1297,6 +1336,24 @@ function getChromeProfiles() {
   });
 }
 
+// Read Google account email from Chrome Preferences file
+function getGoogleEmailFromPreferences(profilePath) {
+  const prefsFile = path.join(profilePath, 'Preferences');
+  if (!fs.existsSync(prefsFile)) return null;
+
+  try {
+    const prefs = JSON.parse(fs.readFileSync(prefsFile, 'utf8'));
+    const accountInfo = prefs.account_info;
+    if (Array.isArray(accountInfo) && accountInfo.length > 0) {
+      // Return the first account's email (primary account)
+      return accountInfo[0].email || null;
+    }
+  } catch (err) {
+    // Ignore parse errors
+  }
+  return null;
+}
+
 function formatTimeAgo(seconds) {
   if (seconds < 60) return 'just now';
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
@@ -1405,6 +1462,10 @@ function detectChromeAccountsWithDetails(profilePath, chromeKey, targetService =
             } else if (cookieName === 'c_user' || cookieName === 'ds_user_id') {
               // Facebook/Instagram: numeric user ID
               accountId = `user:${value}`;
+            } else if (cookieName === 'OSID') {
+              // Google services: get email from Chrome Preferences
+              const googleEmail = getGoogleEmailFromPreferences(profilePath);
+              accountId = googleEmail || '(logged in)';
             } else {
               // Other cookies: just indicate "logged in"
               accountId = '(logged in)';
@@ -1516,54 +1577,86 @@ function cmdProfile() {
 
   if (!chromeKey) {
     console.log('Chrome encryption key not available.\n');
-    console.log('Grant Keychain access when prompted, or use --debug mode.\n');
+    console.log('Grant Keychain access when prompted, or use --keyless mode.\n');
     return;
   }
 
-  // Detect all accounts from Chrome
+  // Detect all accounts from Chrome, grouped by Chrome profile
   const chromeProfiles = getChromeProfiles();
-  let serviceAccounts = {}; // service -> [{account, timeAgo, chromeProfile}]
+  const profileAccounts = {}; // chromeProfile -> [{service, account}]
 
   for (const profileName of chromeProfiles) {
     const profilePath = path.join(CHROME_APP_DIR, profileName);
     const detected = detectChromeAccountsWithDetails(profilePath, chromeKey);
 
-    for (const [service, accounts] of Object.entries(detected)) {
-      if (!serviceAccounts[service]) serviceAccounts[service] = [];
-      for (const acc of accounts) {
-        const exists = serviceAccounts[service].find(a => a.account === acc.account);
-        if (!exists) {
-          serviceAccounts[service].push({ ...acc, chromeProfile: profileName });
+    if (Object.keys(detected).length > 0) {
+      profileAccounts[profileName] = [];
+
+      for (const [service, accounts] of Object.entries(detected)) {
+        for (const acc of accounts) {
+          profileAccounts[profileName].push({
+            service,
+            account: acc.account,
+            timeAgo: acc.timeAgo
+          });
         }
       }
+
+      // Sort accounts within profile by service name
+      profileAccounts[profileName].sort((a, b) => a.service.localeCompare(b.service));
     }
   }
 
-  const services = Object.keys(serviceAccounts).sort();
+  const profilesWithAccounts = Object.keys(profileAccounts);
 
-  if (services.length === 0) {
+  if (profilesWithAccounts.length === 0) {
     console.log('No accounts found in Chrome.\n');
     return;
   }
 
-  // Build clean account list
-  const accountList = [];
-  for (const service of services) {
-    const accounts = serviceAccounts[service];
+  // Determine if we need profile prefixes (multiple profiles or not Default)
+  const needsProfilePrefix = profilesWithAccounts.length > 1 ||
+    (profilesWithAccounts.length === 1 && profilesWithAccounts[0] !== 'Default');
+
+  console.log('Accounts in Chrome:\n');
+
+  for (const profileName of profilesWithAccounts) {
+    const accounts = profileAccounts[profileName];
+
+    if (needsProfilePrefix) {
+      console.log(`  ${profileName}:`);
+    }
+
     for (const acc of accounts) {
+      const indent = needsProfilePrefix ? '    ' : '  ';
+      let accountStr;
+
       if (acc.account && acc.account !== '(logged in)') {
-        accountList.push(`${service}:${acc.account}`);
+        accountStr = `${acc.service}:${acc.account}`;
       } else {
-        accountList.push(service);
+        accountStr = acc.service;
       }
+
+      // Include profile prefix in usage hint when multiple profiles
+      if (needsProfilePrefix) {
+        console.log(`${indent}${accountStr}`);
+      } else {
+        console.log(`${indent}${accountStr}`);
+      }
+    }
+
+    if (needsProfilePrefix) {
+      console.log('');
     }
   }
 
-  console.log('Accounts in Chrome:\n');
-  for (const account of accountList) {
-    console.log(`  ${account}`);
+  // Show usage example
+  if (needsProfilePrefix) {
+    console.log(`Usage: ${TOOL_NAME} --account "<Profile>/<service>" open <url>`);
+    console.log(`   eg: ${TOOL_NAME} --account "Default/github" open https://github.com\n`);
+  } else {
+    console.log(`\nUsage: ${TOOL_NAME} --account <name> open <url>\n`);
   }
-  console.log(`\nUsage: ${TOOL_NAME} --account <name> open <url>\n`);
 }
 
 // ============================================================================
@@ -1678,8 +1771,9 @@ function showHelp() {
 Usage: browser [OPTIONS] <command> [args...]
 
 OPTIONS:
-  --account SERVICE[:USER]  Use account from Chrome (headless, per-service cookies)
-  --debug                   Use headed browser (full profile copy to Chrome Canary)
+  --account SERVICE[:USER]  Use account from Chrome (cookie injection, Chromium)
+  --keyless                 Use Chrome Canary with profile copy (no Keychain needed)
+  --debug                   Use headed browser (visible window)
 
 COMMANDS:
 
@@ -1715,7 +1809,9 @@ EXAMPLES:
   browser open "https://google.com"
   browser --account github open "https://github.com"
   browser --account github:myuser open "https://github.com"
+  browser --keyless open "https://github.com"
   browser --debug open "https://github.com"
+  browser --debug --keyless open "https://github.com"
 `);
 }
 
@@ -1753,10 +1849,14 @@ async function main() {
       const parsed = parseAccount(ACCOUNT);
       ACCOUNT_SERVICE = parsed.service;
       ACCOUNT_USER = parsed.user;
+      ACCOUNT_PROFILE = parsed.chromeProfile;
       SESSION_PATH = getSessionPath(ACCOUNT);
       i += 2;
     } else if (args[i] === '--debug') {
       DEBUG_MODE = true;
+      i++;
+    } else if (args[i] === '--keyless') {
+      KEYLESS_MODE = true;
       i++;
     } else {
       break;
