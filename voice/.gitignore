@@ -1,5 +1,7 @@
 # Large model files (download via scripts/setup.sh)
 models/*
+pretrained_models/
+*.mlmodelc/
 
 # Personal voice data (user-specific)
 data/voice_library*.json
