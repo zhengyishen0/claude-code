@@ -116,7 +116,7 @@ private fun runLiveWithCoreML(asrType: ASRModelType) {
     val asrModel: ASRModel? = when (asrType) {
         ASRModelType.SENSEVOICE -> {
             val model = CoreMLModel.load("$MODEL_DIR/sensevoice-500-itn.mlmodelc")
-            model?.let { SenseVoiceASR(it, SenseVoiceTokenizer("")) }
+            model?.let { SenseVoiceASR(it) }
         }
         ASRModelType.WHISPER_TURBO -> {
             println()
@@ -198,7 +198,7 @@ private fun runFileWithCoreML(audioPath: String, asrType: ASRModelType) {
     val asrModel: ASRModel? = when (asrType) {
         ASRModelType.SENSEVOICE -> {
             val model = CoreMLModel.load("$MODEL_DIR/sensevoice-500-itn.mlmodelc")
-            model?.let { SenseVoiceASR(it, SenseVoiceTokenizer("")) }
+            model?.let { SenseVoiceASR(it) }
         }
         ASRModelType.WHISPER_TURBO -> {
             println()

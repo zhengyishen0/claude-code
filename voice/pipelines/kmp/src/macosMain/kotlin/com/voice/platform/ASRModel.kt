@@ -39,8 +39,7 @@ interface ASRModel {
  * Non-autoregressive CTC-based model
  */
 class SenseVoiceASR(
-    private val model: CoreMLModel,
-    private val tokenizer: SenseVoiceTokenizer
+    private val model: CoreMLModel
 ) : ASRModel {
     override val modelType = ASRModelType.SENSEVOICE
 
@@ -59,24 +58,13 @@ class SenseVoiceASR(
         val tokens = CTCDecoder.greedyDecode(logits)
         val (info, textTokens) = TokenMappings.decodeSpecialTokens(tokens)
 
-        // Decode text using tokenizer
-        val text = tokenizer.decode(textTokens)
+        // Decode text using existing TokenDecoder (uses loaded vocabulary)
+        val text = TokenDecoder.decodeTextTokens(textTokens)
 
         return ASRResult(
             text = text,
             tokens = textTokens,
             language = info["language"]
         )
-    }
-}
-
-/**
- * SenseVoice tokenizer (placeholder - would use SentencePiece)
- */
-class SenseVoiceTokenizer(vocabPath: String) {
-    // In a full implementation, this would load SentencePiece model
-    // For now, return token IDs as string
-    fun decode(tokens: List<Int>): String {
-        return tokens.joinToString("") { "[$it]" }
     }
 }

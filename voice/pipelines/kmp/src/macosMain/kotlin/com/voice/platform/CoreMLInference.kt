@@ -409,7 +409,7 @@ class ModelManager(
     val asrModel: ASRModel?
         get() = when (currentASRType) {
             ASRModelType.SENSEVOICE -> senseVoiceModel?.let {
-                SenseVoiceASR(it, SenseVoiceTokenizer(""))
+                SenseVoiceASR(it)
             }
             ASRModelType.WHISPER_TURBO -> whisperModel
         }
