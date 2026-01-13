@@ -49,10 +49,11 @@ data class Segment(
 
 /**
  * Live transcription session with speaker identification
+ * Supports multiple ASR backends (SenseVoice, Whisper Turbo)
  */
 class LiveTranscription(
     private val vadModel: CoreMLModel,
-    private val asrModel: CoreMLModel,
+    private val asrModel: ASRModel,
     private val speakerModel: CoreMLModel,
     private val voiceLibraryPath: String = ""
 ) {
@@ -171,15 +172,10 @@ class LiveTranscription(
         val startTime = startSample.toDouble() / SAMPLE_RATE
         val endTime = endSample.toDouble() / SAMPLE_RATE
 
-        // ASR
-        val mel = AudioProcessing.computeMelSpectrogram(audio)
-        val lfr = LFRTransform.apply(mel)
-        val padded = LFRTransform.padToFixedFrames(lfr)
-        val logits = asrModel.runASR(padded) ?: return
-
-        val tokens = CTCDecoder.greedyDecode(logits)
-        val (info, textTokens) = TokenMappings.decodeSpecialTokens(tokens)
-        val text = TokenDecoder.decodeTextTokens(textTokens)
+        // ASR - use the ASRModel interface (works with both SenseVoice and Whisper)
+        val asrResult = asrModel.transcribe(audio) ?: return
+        val text = asrResult.text
+        val textTokens = asrResult.tokens
 
         // Speaker identification
         var speakerName: String? = null
@@ -656,11 +652,12 @@ internal fun checkEscapeKey(): Boolean {
 
 /**
  * Run live transcription from microphone
+ * Supports multiple ASR backends (SenseVoice, Whisper Turbo)
  */
 @OptIn(ExperimentalForeignApi::class)
 fun runLiveTranscription(
     vadModel: CoreMLModel,
-    asrModel: CoreMLModel,
+    asrModel: ASRModel,
     speakerModel: CoreMLModel,
     voiceLibraryPath: String = ""
 ) {
@@ -730,11 +727,12 @@ fun runLiveTranscription(
 
 /**
  * Process audio file with transcription
+ * Supports multiple ASR backends (SenseVoice, Whisper Turbo)
  */
 fun processFileTranscription(
     audioPath: String,
     vadModel: CoreMLModel,
-    asrModel: CoreMLModel,
+    asrModel: ASRModel,
     speakerModel: CoreMLModel,
     voiceLibraryPath: String = ""
 ): List<Segment> {

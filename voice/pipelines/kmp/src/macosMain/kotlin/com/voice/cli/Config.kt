@@ -9,5 +9,8 @@ const val VOICE_LIBRARY_PATH = "/Users/zhengyishen/Codes/claude-code/voice/data/
 const val TEST_AUDIO_PATH = "/Users/zhengyishen/Codes/claude-code/voice/data/recordings/recording_20260112_002226.wav"
 const val ALT_TEST_AUDIO_PATH = "/Users/zhengyishen/Codes/claude-code/voice/data/recordings/recording_20260111_235901.wav"
 
+// Whisper model path (Hex app models location)
+const val WHISPER_TURBO_MODEL_DIR = "/Users/zhengyishen/Library/Application Support/com.kitlangton.Hex/models/argmaxinc/whisperkit-coreml/openai_whisper-large-v3-v20240930_turbo_632MB"
+
 // Backend selection
 enum class Backend { COREML, ONNX }
