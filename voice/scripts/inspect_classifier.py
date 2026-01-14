@@ -6,7 +6,7 @@ from speechbrain.inference.speaker import SpeakerRecognition
 print("Loading classifier...")
 classifier = SpeakerRecognition.from_hparams(
     source="speechbrain/spkrec-xvect-voxceleb",
-    savedir="pretrained_models/spkrec-xvect-voxceleb",
+    savedir="models/pretrained/spkrec-xvect-voxceleb",
     run_opts={"device": "cpu"}
 )
 

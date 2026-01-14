@@ -61,13 +61,13 @@ VOICE_DIR = Path(__file__).parent
 SPEAKER_MODELS = {
     "ecapa": {
         "source": "speechbrain/spkrec-ecapa-voxceleb",
-        "savedir": "pretrained_models/spkrec-ecapa-voxceleb",
+        "savedir": "models/pretrained/spkrec-ecapa-voxceleb",
         "dim": 192,
         "library": VOICE_DIR / "speaker_id" / "voice_library_ecapa.json",
     },
     "xvector": {
         "source": "speechbrain/spkrec-xvect-voxceleb",
-        "savedir": "pretrained_models/spkrec-xvect-voxceleb",
+        "savedir": "models/pretrained/spkrec-xvect-voxceleb",
         "dim": 512,
         "library": VOICE_DIR / "speaker_id" / "voice_library_xvector.json",
     },
