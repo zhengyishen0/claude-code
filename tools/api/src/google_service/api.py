@@ -19,7 +19,7 @@ SERVICE_VERSIONS = {
     'tasks':      'v1',
     'slides':     'v1',
     'youtube':    'v3',
-    'admin':      'directory_v1',  # Google Workspace Admin
+    'workspace':  'directory_v1',  # Google Workspace Admin (renamed from 'admin')
 }
 
 
