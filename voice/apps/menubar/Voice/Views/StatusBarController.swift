@@ -9,6 +9,7 @@ enum RecordingState {
 class StatusBarController: NSObject {
     private var statusItem: NSStatusItem!
     private var menu: NSMenu!
+    private var modelSubmenu: NSMenu!
     private var modelMenuItems: [NSMenuItem] = []
     private var historySubmenu: NSMenu!
 
@@ -30,26 +31,23 @@ class StatusBarController: NSObject {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "Voice Translator")
+            button.image = createIcon("waveform.circle.fill", size: 18)
             button.image?.isTemplate = true
         }
+    }
+
+    private func createIcon(_ name: String, size: CGFloat) -> NSImage? {
+        let config = NSImage.SymbolConfiguration(pointSize: size, weight: .regular)
+        return NSImage(systemSymbolName: name, accessibilityDescription: "Voca")?
+            .withSymbolConfiguration(config)
     }
 
     private func setupMenu() {
         menu = NSMenu()
 
-        // Hotkey info (read-only)
-        let hotkeyInfo = NSMenuItem(title: "Double-tap ⌘ to record", action: nil, keyEquivalent: "")
-        hotkeyInfo.isEnabled = false
-        menu.addItem(hotkeyInfo)
-
-        menu.addItem(NSMenuItem.separator())
-
-        // Model selection header
-        let modelHeader = NSMenuItem(title: "ASR Model", action: nil, keyEquivalent: "")
-        modelHeader.isEnabled = false
-        menu.addItem(modelHeader)
-
+        // Model submenu
+        let modelItem = NSMenuItem(title: "Model", action: nil, keyEquivalent: "")
+        modelSubmenu = NSMenu()
         for model in ASRModel.allCases {
             let item = NSMenuItem(
                 title: model.displayName,
@@ -58,20 +56,24 @@ class StatusBarController: NSObject {
             )
             item.target = self
             item.representedObject = model
-            item.indentationLevel = 1
             modelMenuItems.append(item)
-            menu.addItem(item)
+            modelSubmenu.addItem(item)
         }
-
-        menu.addItem(NSMenuItem.separator())
+        modelItem.submenu = modelSubmenu
+        menu.addItem(modelItem)
 
         // History submenu
-        let historyItem = NSMenuItem(title: "History (⌃⇧V)", action: nil, keyEquivalent: "")
+        let historyItem = NSMenuItem(title: "History", action: nil, keyEquivalent: "")
         historySubmenu = NSMenu()
         historyItem.submenu = historySubmenu
         menu.addItem(historyItem)
 
         menu.addItem(NSMenuItem.separator())
+
+        // About
+        let aboutItem = NSMenuItem(title: "About Voca", action: #selector(aboutClicked), keyEquivalent: "")
+        aboutItem.target = self
+        menu.addItem(aboutItem)
 
         // Quit
         let quitItem = NSMenuItem(title: "Quit", action: #selector(quitClicked), keyEquivalent: "q")
@@ -82,21 +84,31 @@ class StatusBarController: NSObject {
         menu.delegate = self
     }
 
+    @objc private func aboutClicked() {
+        AboutWindowController.shared.show()
+    }
+
     func setState(_ state: RecordingState) {
         guard let button = statusItem.button else { return }
 
         switch state {
         case .idle:
-            button.image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: nil)
+            // Normal waveform icon (template = follows system appearance)
+            button.image = createIcon("waveform.circle.fill", size: 18)
+            button.image?.isTemplate = true
             button.contentTintColor = nil
 
         case .recording:
-            button.image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: nil)
+            // Red recording indicator
+            button.image = createIcon("record.circle.fill", size: 18)
+            button.image?.isTemplate = false
             button.contentTintColor = .systemRed
 
         case .processing:
-            button.image = NSImage(systemSymbolName: "ellipsis.circle.fill", accessibilityDescription: nil)
-            button.contentTintColor = .systemBlue
+            // Processing indicator (gear spinning feel)
+            button.image = createIcon("circle.dashed", size: 18)
+            button.image?.isTemplate = false
+            button.contentTintColor = .systemOrange
         }
     }
 

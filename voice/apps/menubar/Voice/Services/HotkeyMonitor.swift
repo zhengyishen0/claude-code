@@ -16,9 +16,9 @@ class HotkeyMonitor {
     private var isCmdHeld = false
     private let doubleTapThreshold: TimeInterval = 0.3  // 300ms between taps
 
-    // History hotkey: Ctrl+Shift+V
+    // History hotkey: Ctrl+Option+V
     private let historyKeyCode: UInt16 = 0x09  // V
-    private let historyModifiers: NSEvent.ModifierFlags = [.control, .shift]
+    private let historyModifiers: NSEvent.ModifierFlags = [.control, .option]
 
     init(onRecordStart: @escaping () -> Void,
          onRecordStop: @escaping () -> Void,

@@ -3,22 +3,22 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleIdentifier</key>
-    <string>com.voice.translator</string>
+    <string>com.voca.app</string>
     <key>CFBundleName</key>
-    <string>VoiceTranslator</string>
+    <string>Voca</string>
     <key>CFBundleDisplayName</key>
-    <string>Voice Translator</string>
+    <string>Voca</string>
     <key>CFBundleVersion</key>
-    <string>1.0</string>
+    <string>1</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>1.0.0</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
     <key>LSUIElement</key>
     <true/>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Voice Translator needs microphone access to record your voice for transcription.</string>
+    <string>Voca needs microphone access to record your voice for transcription.</string>
     <key>NSAppleEventsUsageDescription</key>
-    <string>Voice Translator needs accessibility access to simulate keyboard shortcuts for pasting transcriptions.</string>
+    <string>Voca needs accessibility access to paste transcriptions.</string>
 </dict>
 </plist>

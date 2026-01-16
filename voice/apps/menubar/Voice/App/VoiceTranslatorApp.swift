@@ -34,6 +34,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
 
+        // Set app icon (waveform.circle.fill)
+        setAppIcon()
+
         // Initialize ASR engine (loads CoreML models once at startup)
         print("Loading ASR models...")
         let loadStart = Date()
@@ -73,9 +76,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         transcriber.setModel(settings.selectedModel)
         statusBarController.updateSelectedModel(settings.selectedModel)
 
-        print("Voice started")
+        print("Voca started")
         print("Double-tap ⌘ to record, release to transcribe")
-        print("ESC to cancel | ⌃⇧V for history")
+        print("ESC to cancel | ⌃⌥V for history")
         print("─────────────────────────────────────")
     }
 
@@ -83,12 +86,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         print("🎤 Recording...")
         statusBarController.setState(.recording)
         recordingOverlay.show()
+
+        // Connect audio level to waveform visualization
+        audioRecorder.onAudioLevel = { [weak self] level in
+            self?.recordingOverlay.updateLevel(level)
+        }
+
         audioRecorder.startRecording()
     }
 
     private func stopRecordingAndTranscribe() {
         totalStartTime = Date()  // Start total timing when CMD released
         recordingOverlay.hide()
+        audioRecorder.onAudioLevel = nil
 
         audioRecorder.stopRecording { [weak self] audioURL in
             guard let self = self, let url = audioURL else {
@@ -179,5 +189,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         removeEscMonitor()
+    }
+
+    private func setAppIcon() {
+        // Create app icon from SF Symbol
+        if let symbol = NSImage(systemSymbolName: "waveform.circle.fill", accessibilityDescription: "Voca") {
+            let config = NSImage.SymbolConfiguration(pointSize: 512, weight: .regular)
+            if let configuredSymbol = symbol.withSymbolConfiguration(config) {
+                // Render to specific size
+                let size = NSSize(width: 512, height: 512)
+                let icon = NSImage(size: size)
+                icon.lockFocus()
+
+                // Draw with accent color
+                NSColor.controlAccentColor.set()
+                let rect = NSRect(origin: .zero, size: size)
+                configuredSymbol.draw(in: rect)
+
+                icon.unlockFocus()
+                NSApp.applicationIconImage = icon
+            }
+        }
     }
 }
