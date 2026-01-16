@@ -5,14 +5,32 @@ Universal API tool for AI agents. Call any API from any service with a unified i
 ## Quick Start
 
 ```bash
-# Setup (one-time)
-api google auth
+# Admin setup (one-time)
+api google admin     # Downloads credentials, enables APIs
+
+# User login
+api google auth      # Browser opens → click Allow
 
 # Use any Google API
 api google gmail users.messages.list userId=me
 api google calendar events.list calendarId=primary
 api google drive files.list
 ```
+
+## Service Command Pattern
+
+All services follow the same command structure:
+
+```
+api <service>
+├── admin       # One-time setup (credentials, API keys, project config)
+├── auth        # User authentication (OAuth, login)
+├── status      # Check current auth state
+├── revoke      # Remove authorization
+└── <resources> # Service-specific API calls
+```
+
+This pattern provides consistency across all services - learn it once, use everywhere.
 
 ## Services
 
@@ -28,25 +46,24 @@ api google drive files.list
 
 ### Setup
 
-1. **Create OAuth credentials** (one-time):
-   - Go to [Google Cloud Console](https://console.cloud.google.com/apis/credentials)
-   - Create a new project (or select existing)
-   - Enable the APIs you need (Gmail, Calendar, Drive, etc.)
-   - Create OAuth 2.0 Client ID → Desktop App
-   - Download the JSON file
+**Admin setup** (one-time, by project owner):
 
-2. **Save credentials**:
-   ```bash
-   mkdir -p ~/.config/api/google
-   mv ~/Downloads/client_secret_*.json ~/.config/api/google/client_secret.json
-   ```
+```bash
+api google admin
+```
 
-3. **Authorize**:
-   ```bash
-   api google auth
-   # Browser opens → Sign in → Grant permissions
-   # Done! Token saved automatically.
-   ```
+This interactive command will:
+1. Guide you to create OAuth credentials in Google Cloud Console
+2. Auto-detect the downloaded `client_secret.json` from ~/Downloads
+3. Enable all required APIs via gcloud (if installed)
+
+**User login** (each user who wants to use the tool):
+
+```bash
+api google auth
+# Browser opens → Sign in → Grant permissions
+# Done! Token saved automatically.
+```
 
 ### Usage
 
@@ -225,25 +242,26 @@ api <service> <resource> <method> [params...]
 
 ## Troubleshooting
 
+### "Admin setup required first"
+```bash
+api google admin   # Run admin setup first
+```
+
 ### "Not authorized"
 ```bash
-api google auth
+api google auth    # User login
 ```
 
 ### "Token expired"
 Token auto-refreshes. If it fails:
 ```bash
-api google auth  # Re-authorize
+api google auth    # Re-authorize
 ```
 
-### "client_secret.json not found"
-Download from Google Cloud Console:
-1. Go to https://console.cloud.google.com/apis/credentials
-2. Create OAuth 2.0 Client ID → Desktop App
-3. Download and save to `~/.config/api/google/client_secret.json`
-
 ### "API not enabled"
-Enable the API in Google Cloud Console:
-1. Go to https://console.cloud.google.com/apis/library
-2. Search for the API (Gmail, Calendar, Drive, etc.)
-3. Click Enable
+Run admin setup again (it will enable APIs):
+```bash
+api google admin
+```
+
+Or enable manually at https://console.cloud.google.com/apis/library
