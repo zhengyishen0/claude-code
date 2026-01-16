@@ -89,47 +89,6 @@ def services():
         click.echo(f"  {name:<12} (API {version})")
 
 
-# Admin command group
-@google_cli.group('admin')
-def admin():
-    """Admin commands (one-time project setup)
-
-    \b
-    Commands:
-        api google admin setup          Set up OAuth credentials
-        api google admin enable-apis    Enable all required Google APIs
-        api google admin project-id     Show current project ID
-    """
-    pass
-
-
-@admin.command('setup')
-def admin_setup():
-    """Set up OAuth credentials (one-time admin task)
-
-    \b
-    This will:
-    1. Guide you to create OAuth credentials in Google Cloud Console
-    2. Auto-detect the downloaded client_secret.json from ~/Downloads
-
-    \b
-    After setup, users can run: api google auth
-    """
-    from .auth import setup_client_secret_interactive, CLIENT_SECRET_PATH
-
-    if CLIENT_SECRET_PATH.exists():
-        click.echo(f"✅ OAuth credentials already configured.")
-        click.echo(f"   Location: {CLIENT_SECRET_PATH}")
-        click.echo(f"\n   To reconfigure, delete the file and run this command again.")
-        return
-
-    if setup_client_secret_interactive():
-        click.echo("\n✅ Admin setup complete.")
-        click.echo("   Users can now run: api google auth")
-    else:
-        sys.exit(1)
-
-
 # Mapping of service names to API identifiers for gcloud
 API_IDENTIFIERS = {
     'gmail': 'gmail.googleapis.com',
@@ -142,87 +101,82 @@ API_IDENTIFIERS = {
 }
 
 
-@admin.command('enable-apis')
-@click.option('--project', '-p', default=None, help='GCP project ID (auto-detected from credentials)')
-def enable_apis(project):
-    """Enable all required Google APIs via gcloud
+@google_cli.command('admin')
+def admin():
+    """One-time project setup (run this first)
 
     \b
-    Requires:
-        - gcloud CLI installed (brew install google-cloud-sdk)
-        - gcloud auth login (run once)
+    This will:
+    1. Guide you to create OAuth credentials in Google Cloud Console
+    2. Auto-detect client_secret.json from ~/Downloads
+    3. Enable all required APIs via gcloud (if installed)
 
     \b
-    This enables: Gmail, Calendar, Drive, Sheets, Docs, Tasks, Contacts APIs
+    After setup, users can run: api google auth
     """
     import subprocess
     import shutil
-    from .auth import CLIENT_SECRET_PATH
+    from .auth import setup_client_secret_interactive, CLIENT_SECRET_PATH
 
-    # Check if gcloud is installed
-    if not shutil.which('gcloud'):
-        click.echo("❌ gcloud CLI not found.")
-        click.echo("   Install: brew install google-cloud-sdk")
-        click.echo("   Then run: gcloud auth login")
-        sys.exit(1)
+    click.echo("\n" + "=" * 60)
+    click.echo("  Google API - Admin Setup")
+    click.echo("=" * 60)
 
-    # Get project ID
-    if not project:
-        # Try to get from client_secret.json
-        if CLIENT_SECRET_PATH.exists():
-            try:
-                data = json.loads(CLIENT_SECRET_PATH.read_text())
-                installed = data.get('installed', data.get('web', {}))
-                project = installed.get('project_id')
-            except Exception:
-                pass
-
-        if not project:
-            click.echo("❌ Could not detect project ID.")
-            click.echo("   Run: api google admin enable-apis --project YOUR_PROJECT_ID")
+    # Step 1: Check/setup OAuth credentials
+    if CLIENT_SECRET_PATH.exists():
+        click.echo("\n✅ Step 1: OAuth credentials already configured")
+        click.echo(f"   {CLIENT_SECRET_PATH}")
+    else:
+        click.echo("\n📋 Step 1: OAuth Credentials Setup")
+        if not setup_client_secret_interactive():
             sys.exit(1)
+        click.echo("   ✅ Credentials saved")
 
-    click.echo(f"Project: {project}")
-    click.echo(f"Enabling {len(API_IDENTIFIERS)} APIs...\n")
-
-    # Enable each API
-    apis = list(API_IDENTIFIERS.values())
-    cmd = ['gcloud', 'services', 'enable'] + apis + [f'--project={project}']
-
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode == 0:
-            click.echo("✅ All APIs enabled successfully:")
-            for name, api_id in API_IDENTIFIERS.items():
-                click.echo(f"   {name:<12} ({api_id})")
-        else:
-            click.echo(f"❌ Error enabling APIs:")
-            click.echo(result.stderr)
-            if "PERMISSION_DENIED" in result.stderr:
-                click.echo("\n   Run 'gcloud auth login' to authenticate.")
-            sys.exit(1)
-    except Exception as e:
-        click.echo(f"❌ Failed to run gcloud: {e}")
-        sys.exit(1)
-
-
-@admin.command('project-id')
-def project_id():
-    """Show current GCP project ID from credentials"""
-    from .auth import CLIENT_SECRET_PATH
-
-    if not CLIENT_SECRET_PATH.exists():
-        click.echo("❌ No credentials found. Run 'api google auth' first.")
-        sys.exit(1)
-
+    # Step 2: Extract and show project ID
     try:
         data = json.loads(CLIENT_SECRET_PATH.read_text())
         installed = data.get('installed', data.get('web', {}))
-        pid = installed.get('project_id', 'unknown')
-        click.echo(pid)
+        project_id = installed.get('project_id')
+        click.echo(f"\n✅ Step 2: Project ID: {project_id}")
     except Exception as e:
-        click.echo(f"❌ Error reading credentials: {e}")
+        click.echo(f"\n❌ Step 2: Could not read project ID: {e}")
         sys.exit(1)
+
+    # Step 3: Enable APIs via gcloud
+    click.echo(f"\n📋 Step 3: Enable APIs")
+
+    if not shutil.which('gcloud'):
+        click.echo("   ⚠️  gcloud CLI not found - skipping API enabling")
+        click.echo("   Install: brew install google-cloud-sdk")
+        click.echo("   Then run: gcloud auth login && api google admin")
+        click.echo("\n   Or enable APIs manually at:")
+        click.echo(f"   https://console.cloud.google.com/apis/library?project={project_id}")
+    else:
+        click.echo(f"   Enabling {len(API_IDENTIFIERS)} APIs...")
+        apis = list(API_IDENTIFIERS.values())
+        cmd = ['gcloud', 'services', 'enable'] + apis + [f'--project={project_id}']
+
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode == 0:
+                click.echo("   ✅ All APIs enabled:")
+                for name in API_IDENTIFIERS.keys():
+                    click.echo(f"      • {name}")
+            else:
+                if "PERMISSION_DENIED" in result.stderr:
+                    click.echo("   ⚠️  Permission denied - run 'gcloud auth login' first")
+                else:
+                    click.echo(f"   ⚠️  Could not enable APIs: {result.stderr.strip()}")
+                click.echo("\n   Enable APIs manually at:")
+                click.echo(f"   https://console.cloud.google.com/apis/library?project={project_id}")
+        except Exception as e:
+            click.echo(f"   ⚠️  gcloud error: {e}")
+
+    # Done
+    click.echo("\n" + "=" * 60)
+    click.echo("  ✅ Admin setup complete!")
+    click.echo("  Users can now run: api google auth")
+    click.echo("=" * 60 + "\n")
 
 
 # The main API command - handles dynamic service/method calls
