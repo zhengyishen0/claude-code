@@ -85,6 +85,114 @@ def services():
         click.echo(f"  {name:<12} (API {version})")
 
 
+# Admin command group
+@google_cli.group('admin')
+def admin():
+    """Admin commands (API management, project setup)
+
+    \b
+    Commands:
+        api google admin enable-apis    Enable all required Google APIs
+        api google admin project-id     Show current project ID
+    """
+    pass
+
+
+# Mapping of service names to API identifiers for gcloud
+API_IDENTIFIERS = {
+    'gmail': 'gmail.googleapis.com',
+    'calendar': 'calendar-json.googleapis.com',
+    'drive': 'drive.googleapis.com',
+    'sheets': 'sheets.googleapis.com',
+    'docs': 'docs.googleapis.com',
+    'tasks': 'tasks.googleapis.com',
+    'contacts': 'people.googleapis.com',  # Contacts uses People API
+}
+
+
+@admin.command('enable-apis')
+@click.option('--project', '-p', default=None, help='GCP project ID (auto-detected from credentials)')
+def enable_apis(project):
+    """Enable all required Google APIs via gcloud
+
+    \b
+    Requires:
+        - gcloud CLI installed (brew install google-cloud-sdk)
+        - gcloud auth login (run once)
+
+    \b
+    This enables: Gmail, Calendar, Drive, Sheets, Docs, Tasks, Contacts APIs
+    """
+    import subprocess
+    import shutil
+    from .auth import CLIENT_SECRET_PATH
+
+    # Check if gcloud is installed
+    if not shutil.which('gcloud'):
+        click.echo("❌ gcloud CLI not found.")
+        click.echo("   Install: brew install google-cloud-sdk")
+        click.echo("   Then run: gcloud auth login")
+        sys.exit(1)
+
+    # Get project ID
+    if not project:
+        # Try to get from client_secret.json
+        if CLIENT_SECRET_PATH.exists():
+            try:
+                data = json.loads(CLIENT_SECRET_PATH.read_text())
+                installed = data.get('installed', data.get('web', {}))
+                project = installed.get('project_id')
+            except Exception:
+                pass
+
+        if not project:
+            click.echo("❌ Could not detect project ID.")
+            click.echo("   Run: api google admin enable-apis --project YOUR_PROJECT_ID")
+            sys.exit(1)
+
+    click.echo(f"Project: {project}")
+    click.echo(f"Enabling {len(API_IDENTIFIERS)} APIs...\n")
+
+    # Enable each API
+    apis = list(API_IDENTIFIERS.values())
+    cmd = ['gcloud', 'services', 'enable'] + apis + [f'--project={project}']
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode == 0:
+            click.echo("✅ All APIs enabled successfully:")
+            for name, api_id in API_IDENTIFIERS.items():
+                click.echo(f"   {name:<12} ({api_id})")
+        else:
+            click.echo(f"❌ Error enabling APIs:")
+            click.echo(result.stderr)
+            if "PERMISSION_DENIED" in result.stderr:
+                click.echo("\n   Run 'gcloud auth login' to authenticate.")
+            sys.exit(1)
+    except Exception as e:
+        click.echo(f"❌ Failed to run gcloud: {e}")
+        sys.exit(1)
+
+
+@admin.command('project-id')
+def project_id():
+    """Show current GCP project ID from credentials"""
+    from .auth import CLIENT_SECRET_PATH
+
+    if not CLIENT_SECRET_PATH.exists():
+        click.echo("❌ No credentials found. Run 'api google auth' first.")
+        sys.exit(1)
+
+    try:
+        data = json.loads(CLIENT_SECRET_PATH.read_text())
+        installed = data.get('installed', data.get('web', {}))
+        pid = installed.get('project_id', 'unknown')
+        click.echo(pid)
+    except Exception as e:
+        click.echo(f"❌ Error reading credentials: {e}")
+        sys.exit(1)
+
+
 # The main API command - handles dynamic service/method calls
 @google_cli.command('api', hidden=True)
 @click.argument('args', nargs=-1)

@@ -68,10 +68,22 @@ def get_credentials() -> Credentials:
     return creds
 
 
+def find_client_secret_in_folder(folder: Path) -> Optional[Path]:
+    """
+    Find client_secret*.json file in a folder.
+    Returns the most recently modified one if multiple exist.
+    """
+    matches = list(folder.glob("client_secret*.json"))
+    if not matches:
+        return None
+    # Return most recent
+    return max(matches, key=lambda p: p.stat().st_mtime)
+
+
 def setup_client_secret_interactive() -> bool:
     """
     Interactive setup for client_secret.json.
-    Prompts user to create OAuth credentials and paste the JSON.
+    Auto-detects downloaded file from ~/Downloads.
 
     Returns:
         True if setup successful, False if user cancelled
@@ -92,36 +104,48 @@ def setup_client_secret_interactive() -> bool:
     print("    5. Click 'Create'")
     print("    6. Click 'DOWNLOAD JSON'")
     print()
-    print("  Step 3: Open the downloaded file and copy ALL its content")
-    print()
     print("-" * 60)
-    print("  Paste the JSON content below (then press Enter twice):")
+    print("  Once downloaded, press Enter to continue...")
     print("-" * 60)
 
-    # Read multiline input until empty line
-    lines = []
     try:
-        while True:
-            line = input()
-            if line == "" and lines:
-                break
-            lines.append(line)
-    except EOFError:
-        pass
+        input()
     except KeyboardInterrupt:
         print("\n\nSetup cancelled.")
         return False
 
-    json_content = "\n".join(lines).strip()
+    # Ask for downloads folder
+    default_folder = Path.home() / "Downloads"
+    print(f"\n  Downloads folder [{default_folder}]: ", end="")
 
-    if not json_content:
-        print("\nNo content provided. Setup cancelled.")
+    try:
+        folder_input = input().strip()
+    except KeyboardInterrupt:
+        print("\n\nSetup cancelled.")
         return False
 
-    # Validate JSON
+    folder = Path(folder_input) if folder_input else default_folder
+    folder = folder.expanduser()
+
+    if not folder.exists():
+        print(f"\n❌ Folder not found: {folder}")
+        return False
+
+    # Find client_secret*.json
+    secret_file = find_client_secret_in_folder(folder)
+
+    if not secret_file:
+        print(f"\n❌ No client_secret*.json found in {folder}")
+        print("   Make sure you downloaded the JSON file from Google Cloud Console.")
+        return False
+
+    print(f"\n  Found: {secret_file.name}")
+
+    # Read and validate
     try:
+        json_content = secret_file.read_text()
         data = json.loads(json_content)
-        # Check for required fields
+
         if 'installed' not in data and 'web' not in data:
             print("\n❌ Invalid OAuth client JSON. Missing 'installed' or 'web' key.")
             print("   Make sure you downloaded the OAuth client JSON, not a service account key.")
@@ -133,7 +157,7 @@ def setup_client_secret_interactive() -> bool:
     # Save the file
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     CLIENT_SECRET_PATH.write_text(json_content)
-    print(f"\n✅ Credentials saved to {CLIENT_SECRET_PATH}")
+    print(f"  Saved to: {CLIENT_SECRET_PATH}")
     return True
 
 
