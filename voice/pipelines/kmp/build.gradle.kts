@@ -17,6 +17,11 @@ kotlin {
             executable {
                 entryPoint = "com.voice.cli.main"
             }
+            // Framework for Swift consumption
+            framework {
+                baseName = "VoicePipeline"
+                isStatic = false
+            }
         }
 
         compilations["main"].cinterops {

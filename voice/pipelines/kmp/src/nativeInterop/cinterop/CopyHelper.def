@@ -3,7 +3,7 @@ headers = copyhelper.h
 
 headerFilter = copyhelper.h
 
-compilerOpts = -I/Users/zhengyishen/Codes/claude-code-kmp-whisper-turbo/voice/pipelines/kmp/libs/copyhelper
+compilerOpts = -I/Users/zhengyishen/Codes/claude-code-kmp-framework/voice/pipelines/kmp/libs/copyhelper
 
 staticLibraries = libCopyHelper.a
-libraryPaths = /Users/zhengyishen/Codes/claude-code-kmp-whisper-turbo/voice/pipelines/kmp/libs/copyhelper
+libraryPaths = /Users/zhengyishen/Codes/claude-code-kmp-framework/voice/pipelines/kmp/libs/copyhelper
