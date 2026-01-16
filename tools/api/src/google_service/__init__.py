@@ -35,25 +35,29 @@ def google_cli(ctx):
 @click.option('--scopes', '-s', default=None,
               help='Comma-separated scopes: gmail,calendar,drive,sheets,docs,contacts,tasks')
 def auth(scopes):
-    """Authorize Google account (interactive setup)
+    """Authorize your Google account (user login)
 
     \b
-    This will:
-    1. Check if OAuth credentials exist
-    2. If not, guide you through setup (just paste JSON)
-    3. Open browser for you to click "Allow"
+    This opens a browser for you to log in and grant access.
+    Requires admin setup first (api google admin setup).
 
     \b
     Examples:
         api google auth                         # All scopes
         api google auth --scopes gmail,calendar # Specific scopes
     """
-    from .auth import AuthError
+    from .auth import AuthError, CLIENT_SECRET_PATH
+
+    # Check if admin setup is done
+    if not CLIENT_SECRET_PATH.exists():
+        click.echo("❌ Admin setup required first.")
+        click.echo("   Run: api google admin setup")
+        sys.exit(1)
 
     scope_list = scopes.split(',') if scopes else None
     try:
-        authorize(scope_list, interactive=True)
-        click.echo("\n✅ Google authorization complete. You can now use all Google APIs.")
+        authorize(scope_list, interactive=False)  # No interactive setup, just OAuth
+        click.echo("\n✅ Authorization complete. You can now use Google APIs.")
     except AuthError as e:
         click.echo(f"\n❌ {e}", err=True)
         sys.exit(1)
@@ -88,14 +92,42 @@ def services():
 # Admin command group
 @google_cli.group('admin')
 def admin():
-    """Admin commands (API management, project setup)
+    """Admin commands (one-time project setup)
 
     \b
     Commands:
+        api google admin setup          Set up OAuth credentials
         api google admin enable-apis    Enable all required Google APIs
         api google admin project-id     Show current project ID
     """
     pass
+
+
+@admin.command('setup')
+def admin_setup():
+    """Set up OAuth credentials (one-time admin task)
+
+    \b
+    This will:
+    1. Guide you to create OAuth credentials in Google Cloud Console
+    2. Auto-detect the downloaded client_secret.json from ~/Downloads
+
+    \b
+    After setup, users can run: api google auth
+    """
+    from .auth import setup_client_secret_interactive, CLIENT_SECRET_PATH
+
+    if CLIENT_SECRET_PATH.exists():
+        click.echo(f"✅ OAuth credentials already configured.")
+        click.echo(f"   Location: {CLIENT_SECRET_PATH}")
+        click.echo(f"\n   To reconfigure, delete the file and run this command again.")
+        return
+
+    if setup_client_secret_interactive():
+        click.echo("\n✅ Admin setup complete.")
+        click.echo("   Users can now run: api google auth")
+    else:
+        sys.exit(1)
 
 
 # Mapping of service names to API identifiers for gcloud
