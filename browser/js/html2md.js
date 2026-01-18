@@ -15,6 +15,38 @@
     return el.getAttribute(attr) || '';
   }
 
+  // Get state attributes for interactive elements
+  function getState(el) {
+    const states = [];
+
+    // Disabled state (buttons, inputs)
+    if (el.disabled || el.getAttribute('aria-disabled') === 'true') {
+      states.push('[disabled]');
+    }
+
+    // Checked state (checkboxes, radio buttons)
+    if (el.checked) {
+      states.push('[checked]');
+    }
+
+    // Expanded state (dropdowns, accordions, menus)
+    if (el.getAttribute('aria-expanded') === 'true') {
+      states.push('[expanded]');
+    }
+
+    // Pressed state (toggle buttons)
+    if (el.getAttribute('aria-pressed') === 'true') {
+      states.push('[pressed]');
+    }
+
+    // Selected state (tabs, options)
+    if (el.getAttribute('aria-selected') === 'true') {
+      states.push('[selected]');
+    }
+
+    return states.length > 0 ? ' ' + states.join(' ') : '';
+  }
+
   // Build full CSS selector with all useful attributes (ignore class)
   function getSelector(el) {
     const parts = [];
@@ -109,10 +141,11 @@
       if (isExpanded) {
         const text = node.innerText.trim().replace(/\s+/g, ' ').substring(0, 50);
         const selector = getSelector(node);
+        const state = getState(node);
         if (selector) {
-          lines.push(indent(depth) + `Button ${selector}: ${text || '(no text)'}`);
+          lines.push(indent(depth) + `Button ${selector}${state}: ${text || '(no text)'}`);
         } else if (text) {
-          lines.push(indent(depth) + `Button: ${text}`);
+          lines.push(indent(depth) + `Button${state}: ${text}`);
         }
       }
       return lines;
@@ -123,11 +156,12 @@
       if (isExpanded) {
         const type = getAttr(node, 'type') || 'text';
         const selector = getSelector(node);
+        const state = getState(node);
         const value = node.value ? ` = "${node.value.substring(0, 30)}"` : '';
         if (selector) {
-          lines.push(indent(depth) + `Input ${selector}${value} (${type})`);
+          lines.push(indent(depth) + `Input ${selector}${state}${value} (${type})`);
         } else {
-          lines.push(indent(depth) + `Input (${type})`);
+          lines.push(indent(depth) + `Input${state} (${type})`);
         }
       }
       return lines;
