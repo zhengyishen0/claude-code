@@ -1,0 +1,10 @@
+package = OnnxRuntime
+headers = onnx_wrapper.h
+headerFilter = onnx_wrapper.h
+
+compilerOpts = -I/Users/zhengyishen/Codes/claude-code/voice/pipelines/kmp/libs/onnx_wrapper
+
+staticLibraries = libOnnxWrapper_x86_64.a
+libraryPaths = /Users/zhengyishen/Codes/claude-code/voice/pipelines/kmp/libs
+
+linkerOpts = -L/Users/zhengyishen/Codes/claude-code/voice/pipelines/kmp/libs/onnxruntime-osx-x86_64-1.17.0/lib -lonnxruntime -rpath @executable_path/../Frameworks -rpath @loader_path/../Frameworks

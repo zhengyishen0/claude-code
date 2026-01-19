@@ -1,0 +1,9 @@
+package = kissfft
+headers = kiss_fft.h kiss_fftr.h
+
+headerFilter = kiss_fft.h kiss_fftr.h
+
+compilerOpts = -I/Users/zhengyishen/Codes/claude-code/voice/pipelines/kmp/libs/kissfft -I/Users/zhengyishen/Codes/claude-code/voice/pipelines/kmp/libs/kissfft/tools
+
+staticLibraries = libKissFFT_x86_64.a
+libraryPaths = /Users/zhengyishen/Codes/claude-code/voice/pipelines/kmp/libs
