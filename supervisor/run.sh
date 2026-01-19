@@ -18,6 +18,7 @@ USAGE:
     supervisor level1 [command]  Run Level 1 supervisor
     supervisor check             Check processes and cleanup
     supervisor once              Run all supervisor levels once
+    supervisor daemon [interval] Run continuously (default: 30s)
 
 COMMANDS:
     spawn <task-id>
@@ -40,6 +41,11 @@ COMMANDS:
         Run all supervisor levels once:
         - Level 1: Trigger pending tasks with met conditions
 
+    daemon [interval]
+        Run supervisor continuously in a loop.
+        Default interval: 30 seconds.
+        Each iteration runs: check + once
+
 OPTIONS (via environment):
     DRY_RUN=true    Show what would be done without doing it
 
@@ -51,6 +57,8 @@ EXAMPLES:
     supervisor check                # Check processes and cleanup
     supervisor once                 # Run all levels once
     DRY_RUN=true supervisor once    # Dry run all levels
+    supervisor daemon               # Run continuously (30s interval)
+    supervisor daemon 10            # Run continuously (10s interval)
 
 WORKFLOW:
     1. Create a task:
@@ -77,11 +85,33 @@ run_once() {
     echo "=== Running Supervisor (once) ==="
     echo ""
 
+    echo ">>> Checking processes and cleanup"
+    "$LEVEL1" check
+    echo ""
+
     echo ">>> Level 1: Trigger Pending Tasks"
     DRY_RUN="${DRY_RUN:-false}" "$LEVEL1" run
     echo ""
 
     echo "=== Done ==="
+}
+
+run_daemon() {
+    local interval="${1:-30}"
+    echo "=== Supervisor Daemon ==="
+    echo "Interval: ${interval}s"
+    echo "Press Ctrl+C to stop"
+    echo ""
+
+    trap 'echo ""; echo "Daemon stopped."; exit 0' INT TERM
+
+    while true; do
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Running supervisor..."
+        run_once
+        echo ""
+        echo "Sleeping ${interval}s..."
+        sleep "$interval"
+    done
 }
 
 # No args = help
@@ -110,6 +140,10 @@ case "$1" in
         ;;
     once)
         run_once
+        ;;
+    daemon)
+        shift
+        run_daemon "${1:-30}"
         ;;
     help|-h|--help)
         show_help
