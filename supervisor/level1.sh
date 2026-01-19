@@ -54,27 +54,44 @@ EXAMPLES:
 EOF
 }
 
-# Get pending tasks from world.log
+# Get pending tasks from markdown files
 get_pending_tasks() {
-    if [ ! -f "$WORLD_LOG" ]; then
+    local tasks_dir="$PROJECT_DIR/tasks"
+    [ -d "$tasks_dir" ] || return
+
+    # Ensure yq is installed
+    if ! command -v yq >/dev/null 2>&1; then
         return
     fi
 
-    # Find all pending tasks
-    # Format: [timestamp] [task] <id> | pending | <trigger> | <description> | need: <criteria>
-    grep '\[task\].*| pending' "$WORLD_LOG" 2>/dev/null || true
+    # Find all pending tasks in markdown files
+    for md_file in "$tasks_dir"/*.md; do
+        [ -e "$md_file" ] || continue
+
+        local status
+        status=$(yq eval --front-matter=extract '.status' "$md_file" 2>/dev/null || echo "")
+
+        if [ "$status" = "pending" ]; then
+            echo "$md_file"
+        fi
+    done
 }
 
 # Check if a task is already running
 is_task_running() {
     local task_id="$1"
+    local task_md="$PROJECT_DIR/tasks/$task_id.md"
 
-    # Check if there's a 'running' entry for this task AFTER the pending entry
-    # We look for the most recent status entry for this task
-    local last_status
-    last_status=$(grep "\[task\] $task_id |" "$WORLD_LOG" | tail -1 | grep -o '| [a-z]*' | head -1 | tr -d '| ' || true)
+    [ -f "$task_md" ] || return 1
 
-    if [ "$last_status" = "running" ]; then
+    if ! command -v yq >/dev/null 2>&1; then
+        return 1
+    fi
+
+    local status
+    status=$(yq eval --front-matter=extract '.status' "$task_md" 2>/dev/null || echo "")
+
+    if [ "$status" = "running" ]; then
         return 0  # true, is running
     fi
     return 1  # false, not running
@@ -123,15 +140,20 @@ list_pending() {
         return
     fi
 
-    echo "$pending" | while IFS= read -r line; do
-        # Parse task entry
-        local task_id trigger description
-        task_id=$(echo "$line" | sed 's/.*\[task\] \([^ ]*\) |.*/\1/')
-        trigger=$(echo "$line" | cut -d'|' -f3 | sed 's/^ *//;s/ *$//')
-        description=$(echo "$line" | cut -d'|' -f4 | sed 's/^ *//;s/ *$//')
+    if ! command -v yq >/dev/null 2>&1; then
+        echo "Error: yq not installed. Install with: brew install yq"
+        return
+    fi
 
-        echo "  [$task_id] trigger=$trigger"
-        echo "    $description"
+    echo "$pending" | while IFS= read -r md_file; do
+        # Parse task from markdown
+        local task_id title wait
+        task_id=$(yq eval --front-matter=extract '.id' "$md_file" 2>/dev/null || echo "")
+        title=$(yq eval --front-matter=extract '.title' "$md_file" 2>/dev/null || echo "Untitled")
+        wait=$(yq eval --front-matter=extract '.wait // "-"' "$md_file" 2>/dev/null || echo "-")
+
+        echo "  [$task_id] wait=$wait"
+        echo "    $title"
 
         # Check if running
         if is_task_running "$task_id"; then
@@ -156,16 +178,21 @@ run_level1() {
         return
     fi
 
+    if ! command -v yq >/dev/null 2>&1; then
+        echo "Error: yq not installed. Install with: brew install yq"
+        return
+    fi
+
     local triggered=0
     local skipped=0
 
-    echo "$pending" | while IFS= read -r line; do
-        # Parse task entry
-        local task_id trigger
-        task_id=$(echo "$line" | sed 's/.*\[task\] \([^ ]*\) |.*/\1/')
-        trigger=$(echo "$line" | cut -d'|' -f3 | sed 's/^ *//;s/ *$//')
+    echo "$pending" | while IFS= read -r md_file; do
+        # Parse task from markdown
+        local task_id wait
+        task_id=$(yq eval --front-matter=extract '.id' "$md_file" 2>/dev/null || echo "")
+        wait=$(yq eval --front-matter=extract '.wait // "-"' "$md_file" 2>/dev/null || echo "-")
 
-        echo "Checking task: $task_id (trigger: $trigger)"
+        echo "Checking task: $task_id (wait: $wait)"
 
         # Skip if already running
         if is_task_running "$task_id"; then
@@ -174,7 +201,13 @@ run_level1() {
             continue
         fi
 
-        # Check trigger condition
+        # Check trigger condition (convert wait to trigger for compatibility)
+        # For now, treat "-" as "now", other values need to be parsed
+        local trigger="$wait"
+        if [ "$wait" = "-" ]; then
+            trigger="now"
+        fi
+
         if ! check_trigger "$trigger"; then
             skipped=$((skipped + 1))
             continue
@@ -226,9 +259,13 @@ check_running_tasks() {
 
         echo "  [ENDED] Process no longer running"
 
-        # Check if task reported completion in world.log
-        local last_status
-        last_status=$(grep "\[task\] $task_id |" "$WORLD_LOG" 2>/dev/null | tail -1 | grep -o '| [a-z]*' | head -1 | tr -d '| ' || true)
+        # Check task status from markdown file
+        local task_md="$PROJECT_DIR/tasks/$task_id.md"
+        local last_status=""
+
+        if [ -f "$task_md" ] && command -v yq >/dev/null 2>&1; then
+            last_status=$(yq eval --front-matter=extract '.status' "$task_md" 2>/dev/null || echo "")
+        fi
 
         if [ "$last_status" = "done" ]; then
             echo "  [DONE] Task completed successfully"
@@ -242,8 +279,14 @@ check_running_tasks() {
             if [ "$DRY_RUN" = "true" ]; then
                 echo "  [DRY-RUN] Would mark task as failed"
             else
-                "$WORLD_CMD" create --task "$task_id" failed
-                echo "  [UPDATED] Marked as failed in world.log"
+                if [ -f "$task_md" ] && command -v yq >/dev/null 2>&1; then
+                    yq -i '.status = "failed"' "$task_md"
+                    yq -i ".failed = \"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\"" "$task_md"
+                    yq -i '.result = "Process crashed without reporting status"' "$task_md"
+                    echo "  [UPDATED] Marked as failed in $task_md"
+                else
+                    echo "  [WARNING] Could not update task file (yq not installed or file missing)"
+                fi
             fi
             crashed=$((crashed + 1))
         fi
@@ -262,21 +305,34 @@ check_running_tasks() {
     echo "Summary: checked=$checked, completed=$completed, crashed=$crashed"
 }
 
-# Cleanup worktrees for completed tasks
+# Cleanup worktrees for verified/canceled tasks
 cleanup_completed_tasks() {
     echo ""
-    echo "=== Cleaning Up Completed Tasks ==="
+    echo "=== Cleaning Up Verified/Canceled Tasks ==="
     echo ""
 
     local cleaned=0
+    local tasks_dir="$PROJECT_DIR/tasks"
 
-    # Find done/failed tasks in world.log
-    for status in done failed; do
-        local tasks
-        tasks=$(grep "\[task\].*| $status" "$WORLD_LOG" 2>/dev/null | sed 's/.*\[task\] \([^ ]*\) |.*/\1/' | sort -u || true)
+    # Ensure yq is installed
+    if ! command -v yq >/dev/null 2>&1; then
+        echo "Warning: yq not installed. Skipping cleanup."
+        echo "Install with: brew install yq"
+        return
+    fi
 
-        for task_id in $tasks; do
+    # Only clean up verified and canceled tasks
+    for status in verified canceled; do
+        # Find all task markdown files
+        for md_file in "$tasks_dir"/*.md; do
+            [ -e "$md_file" ] || continue
+
+            local task_id file_status
+            task_id=$(yq eval --front-matter=extract '.id' "$md_file" 2>/dev/null || echo "")
+            file_status=$(yq eval --front-matter=extract '.status' "$md_file" 2>/dev/null || echo "")
+
             [ -z "$task_id" ] && continue
+            [ "$file_status" != "$status" ] && continue
 
             local worktree_path
             worktree_path="$(dirname "$PROJECT_DIR")/claude-code-task-$task_id"

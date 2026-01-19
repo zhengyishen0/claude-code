@@ -13,19 +13,18 @@ create - Write event or task to world.log
 
 USAGE:
     create --event <type> [--session <id>] <content>
-    create --task <id> <status> [<trigger>] [<description>] [--need <criteria>]
+    create --task <id> <title> [--wait <condition>] [--need <criteria>]
     create --agent <status> <session-id> <content>
 
 EVENT OPTIONS:
     --event <type>     Event type (git:commit, system, user, browser, file, api)
     --session <id>     Optional session ID
 
-TASK OPTIONS:
-    --task <id>        Task ID
-    <status>           pending, running, done, failed
-    <trigger>          now, <datetime>, after:<task-id> (only for pending)
-    <description>      Task description (only for pending)
-    --need <criteria>  Success criteria (only for pending)
+TASK OPTIONS (creates markdown file):
+    --task <id>        Task ID (alphanumeric and dashes only)
+    <title>            Task title/description
+    --wait <cond>      Wait condition (default: "-" for immediate)
+    --need <criteria>  Success criteria (default: "-")
 
 AGENT OPTIONS (shorthand for --event):
     --agent <status>   start, active, finish, failed
@@ -35,15 +34,14 @@ AGENT OPTIONS (shorthand for --event):
 EXAMPLES:
     create --event "git:commit" "fix: login bug"
     create --event "system" --session abc123 "task started"
-    create --task "login-fix" "pending" "now" "Fix login" --need "tests pass"
-    create --task "login-fix" "running"
-    create --task "login-fix" "done"
+    create --task "login-fix" "Fix user login bug" --need "tests pass"
+    create --task "update-docs" "Update API documentation" --wait "after:login-fix"
     create --agent start abc123 "Starting task"
     create --agent finish abc123 "Task completed"
 
 FORMAT:
     Event:  [timestamp] [event] <type> | <content>
-    Task:   [timestamp] [task] <id> | <status> | <trigger> | <description> | need: <criteria>
+    Task:   Creates tasks/<id>.md with frontmatter and structure
 EOF
 }
 
@@ -99,68 +97,92 @@ case "$1" in
     --task)
         shift
         if [ $# -lt 2 ]; then
-            echo "Error: --task requires <id> <status>"
+            echo "Error: --task requires <id> <title>"
             exit 1
         fi
 
         task_id="$1"
-        status="$2"
+        title="$2"
         shift 2
 
-        # Validate status
-        case "$status" in
-            pending|running|done|failed) ;;
-            *)
-                echo "Error: Invalid status '$status'. Must be: pending, running, done, failed"
-                exit 1
-                ;;
-        esac
-
-        # For pending, we need trigger and description
-        if [ "$status" = "pending" ]; then
-            if [ $# -lt 2 ]; then
-                echo "Error: pending task requires <trigger> <description>"
-                exit 1
-            fi
-
-            trigger="$1"
-            shift
-
-            # Parse remaining args for description and --need
-            description=""
-            need=""
-            while [ $# -gt 0 ]; do
-                if [ "$1" = "--need" ]; then
-                    shift
-                    need="$1"
-                    shift
-                else
-                    if [ -n "$description" ]; then
-                        description="$description $1"
-                    else
-                        description="$1"
-                    fi
-                    shift
-                fi
-            done
-
-            if [ -z "$description" ]; then
-                echo "Error: pending task requires <description>"
-                exit 1
-            fi
-
-            if [ -n "$need" ]; then
-                entry="[$timestamp] [task] $task_id | $status | $trigger | $description | need: $need"
-            else
-                entry="[$timestamp] [task] $task_id | $status | $trigger | $description"
-            fi
-        else
-            # For running/done/failed, just update status
-            entry="[$timestamp] [task] $task_id | $status"
+        # Validate task_id format (alphanumeric and dashes only)
+        if ! [[ "$task_id" =~ ^[a-zA-Z0-9-]+$ ]]; then
+            echo "Error: Task ID must contain only alphanumeric characters and dashes"
+            exit 1
         fi
 
-        echo "$entry" >> "$WORLD_LOG"
-        echo "$entry"
+        # Parse optional parameters
+        wait="-"
+        need="-"
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                --wait)
+                    if [ $# -lt 2 ]; then
+                        echo "Error: --wait requires a value"
+                        exit 1
+                    fi
+                    wait="$2"
+                    shift 2
+                    ;;
+                --need)
+                    if [ $# -lt 2 ]; then
+                        echo "Error: --need requires a value"
+                        exit 1
+                    fi
+                    need="$2"
+                    shift 2
+                    ;;
+                *)
+                    echo "Error: Unknown option '$1'"
+                    exit 1
+                    ;;
+            esac
+        done
+
+        # Generate session_id
+        session_id=$(uuidgen | tr '[:upper:]' '[:lower:]')
+
+        # Create tasks directory (at project root, not in world/)
+        tasks_dir="$SCRIPT_DIR/../../tasks"
+        mkdir -p "$tasks_dir"
+
+        # Check if task already exists
+        task_file="$tasks_dir/$task_id.md"
+        if [ -f "$task_file" ]; then
+            echo "Error: Task '$task_id' already exists at $task_file"
+            exit 1
+        fi
+
+        # Create markdown file
+        cat > "$task_file" <<EOF
+---
+id: $task_id
+session_id: $session_id
+title: $title
+status: pending
+wait: "$wait"
+need: "$need"
+created: $timestamp
+---
+
+# $title
+
+## Wait Condition
+$wait
+
+## Execution Steps
+1.
+
+## Progress
+- [ ]
+
+EOF
+
+        echo "✓ Created task: tasks/$task_id.md"
+        echo "  Session ID: $session_id"
+        echo "  Title: $title"
+        echo "  Wait: $wait"
+        echo "  Need: $need"
         ;;
 
     --agent)

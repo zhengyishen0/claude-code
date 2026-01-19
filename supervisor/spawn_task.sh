@@ -21,17 +21,18 @@ USAGE:
     spawn_task.sh <task-id>
 
 DESCRIPTION:
-    1. Reads task info from world.log
+    1. Reads task info from tasks/<id>.md
     2. Creates git worktree: ../claude-code-task-<id>
     3. Sets environment variables for the agent
-    4. Updates task status to 'running'
+    4. Updates task status to 'running' in markdown file
     5. Starts claude with --print mode
 
 ENVIRONMENT VARIABLES SET:
     AGENT_TYPE=task
-    AGENT_SESSION_ID=<task-id>
-    AGENT_DESCRIPTION=<task description>
+    AGENT_SESSION_ID=<session-id from md file>
+    AGENT_DESCRIPTION=<task title>
     CLAUDE_PROJECT_DIR=<worktree path>
+    TASK_FILE=<path to tasks/<id>.md>
 
 EXAMPLES:
     spawn_task.sh login-fix
@@ -47,34 +48,42 @@ fi
 
 task_id="$1"
 
-# Check if world.log exists
-if [ ! -f "$WORLD_LOG" ]; then
-    echo "Error: world.log not found at $WORLD_LOG"
+# Ensure yq is installed
+if ! command -v yq >/dev/null 2>&1; then
+    echo "Error: yq not installed. Install with: brew install yq"
     exit 1
 fi
 
-# Find the most recent pending entry for this task
-task_entry=$(grep "\[task\] $task_id | pending" "$WORLD_LOG" | tail -1 || true)
-
-if [ -z "$task_entry" ]; then
-    echo "Error: No pending task found with id '$task_id'"
-    echo "Run 'world check --task --status pending' to see pending tasks"
+# Check if task markdown file exists
+task_md="$PROJECT_DIR/tasks/$task_id.md"
+if [ ! -f "$task_md" ]; then
+    echo "Error: Task file not found: $task_md"
+    echo "Create task with: world create --task <id> <title>"
     exit 1
 fi
 
-# Parse task entry
-# Format: [timestamp] [task] <id> | <status> | <trigger> | <description> | need: <criteria>
-# Extract description (4th field after splitting by |)
-task_description=$(echo "$task_entry" | cut -d'|' -f4 | sed 's/^ *//;s/ *$//')
-task_need=$(echo "$task_entry" | grep -o 'need: .*' | sed 's/need: //' || true)
+# Read task info from markdown frontmatter
+session_id=$(yq eval --front-matter=extract '.session_id' "$task_md" 2>/dev/null || echo "")
+title=$(yq eval --front-matter=extract '.title' "$task_md" 2>/dev/null || echo "Untitled")
+status=$(yq eval --front-matter=extract '.status' "$task_md" 2>/dev/null || echo "pending")
+wait=$(yq eval --front-matter=extract '.wait // "-"' "$task_md" 2>/dev/null || echo "-")
+need=$(yq eval --front-matter=extract '.need // "-"' "$task_md" 2>/dev/null || echo "-")
 
-if [ -z "$task_description" ]; then
-    task_description="Task $task_id"
+if [ -z "$session_id" ]; then
+    echo "Error: Invalid task file (missing session_id)"
+    exit 1
+fi
+
+if [ "$status" != "pending" ]; then
+    echo "Error: Task '$task_id' is not pending (current status: $status)"
+    exit 1
 fi
 
 echo "=== Spawning Task: $task_id ==="
-echo "Description: $task_description"
-[ -n "$task_need" ] && echo "Success criteria: $task_need"
+echo "Title: $title"
+echo "Session ID: $session_id"
+echo "Wait: $wait"
+[ "$need" != "-" ] && echo "Success criteria: $need"
 echo ""
 
 # Determine worktree path
@@ -100,26 +109,33 @@ fi
 
 # Update task status to running
 echo "Updating task status to 'running'..."
-"$WORLD_CMD" create --task "$task_id" running
+yq -i --front-matter=process '.status = "running"' "$task_md"
+yq -i --front-matter=process ".started = \"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\"" "$task_md"
 
 # Build prompt for claude
 prompt="You are a task agent.
 
-Task ID: $task_id
-Description: $task_description"
+Your task information is in: $task_md
 
-if [ -n "$task_need" ]; then
-    prompt="$prompt
-Success Criteria: $task_need"
-fi
+IMPORTANT: Read this file to understand:
+1. Your task ID: $task_id
+2. Task title: $title
+3. Wait condition: $wait
+4. Success criteria: $need
 
-prompt="$prompt
+WORKFLOW:
+1. Read the task markdown file using the Read tool
+2. Understand the frontmatter (id, title, wait, need)
+3. If wait != \"-\", implement wait logic (e.g., check if dependency task is done)
+4. Execute the task steps
+5. When complete, update the markdown file:
+   - Set status to 'done'
+   - Add 'completed' timestamp
+   - Add 'result' field with summary
+   - Add a '## Task Report' section at the end
 
-When done, report completion with:
-  world create --task $task_id done
-
-If you encounter a blocker, report failure with:
-  world create --task $task_id failed"
+Do NOT use world create commands. Just edit the markdown file directly.
+The MD watcher will automatically sync status changes to world.log."
 
 echo ""
 echo "Starting claude agent..."
@@ -127,22 +143,25 @@ echo "---"
 
 # Start claude with environment variables
 export AGENT_TYPE="task"
-export AGENT_SESSION_ID="$task_id"
-export AGENT_DESCRIPTION="$task_description"
+export AGENT_SESSION_ID="$session_id"
+export AGENT_DESCRIPTION="$title"
 export CLAUDE_PROJECT_DIR="$worktree_path"
+export TASK_FILE="$task_md"
 
 # Run claude in background and save PID
-claude --print --cwd "$worktree_path" "$prompt" &
+claude --print --session-id "$session_id" --cwd "$worktree_path" "$prompt" &
 CLAUDE_PID=$!
 
 # Save PID file
 echo "$CLAUDE_PID" > "$PID_DIR/$task_id.pid"
 
-# Save session info (task_id, worktree_path, description)
+# Save session info (task_id, worktree_path, title)
 cat > "$PID_DIR/$task_id.session" <<EOF
 task_id=$task_id
+session_id=$session_id
 worktree_path=$worktree_path
-description=$task_description
+title=$title
+task_file=$task_md
 started_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 EOF
 
