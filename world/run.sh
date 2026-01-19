@@ -1,94 +1,86 @@
 #!/usr/bin/env bash
 # world/run.sh
 # World log tool - single source of truth for agent coordination
+# New interface: read/write with unified format
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMMANDS_DIR="$SCRIPT_DIR/commands"
-SUPERVISORS_DIR="$SCRIPT_DIR/supervisors"
 
 show_help() {
     cat <<'EOF'
 world - Single source of truth for agent coordination
 
 USAGE:
-    world event <source> <identifier> <output>    Log an event
-    world agent <status> <session-id> <output>    Log agent status
-    world check [agent-id]                        Read new entries
-    world query <type>                            Query the log
-    world respond <session-id> <response>         Human response to failed agent
-    world supervisor [command]                    Run supervisors
+    world create <options>             Create event or task
+    world check [options]              Check/read entries
+
+NOTE: Supervisor is now a separate tool. Run 'supervisor' directly.
+
+CREATE COMMANDS:
+
+  Events (facts, one-time):
+    world create --event <type> [--session <id>] <content>
+
+  Tasks (to-dos with lifecycle):
+    world create --task <id> <status> <trigger> <description> [--need <criteria>]
+
+  Agent (shorthand for event):
+    world create --agent <status> <session-id> <content>
+
+CHECK COMMANDS:
+
+    world check                        All entries
+    world check --event                Only events
+    world check --task                 Only tasks
+    world check --event --type <type>  Filter by event type
+    world check --task --status <s>    Filter by task status
+    world check --session <id>         Filter by session
+    world check --since <date>         Filter by time
 
 EXAMPLES:
-    # Log events
-    world event browser "airbnb.com" "clicked Search, 24 results"
-    world event bash "git-status" "clean working directory"
-    world event file "src/config.json" "modified"
-    world event user "abc123" "captcha solved: boats"
 
-    # Log agent lifecycle
-    world agent start abc123 "Book Tokyo flights | need: confirmation number"
-    world agent active abc123 "searching flights"
-    world agent finish abc123 "Booked JAL $450, confirmation #XYZ"
-    world agent verified abc123 "success criteria met"
-    world agent retry abc123 "prices not found, try again"
-    world agent failed abc123 "captcha required | need: solve captcha"
+  # Create events
+  world create --event "git:commit" --session abc123 "fix: token refresh"
+  world create --event "system" "supervisor started"
 
-    # Check for new entries
-    world check                    # Anonymous check
-    world check manager-xyz        # Check as specific agent
+  # Create tasks
+  world create --task "login-fix" "pending" "now" "修复登录bug" --need "测试通过"
+  world create --task "login-fix" "running"
+  world create --task "login-fix" "done"
 
-    # Query
-    world query active             # Active agents
-    world query pending            # Agents awaiting verification
-    world query failed             # Failed agents
+  # Create agent status (shorthand)
+  world create --agent start abc123 "开始执行任务"
+  world create --agent finish abc123 "任务完成"
 
-    # Human-in-the-loop
-    world respond abc123 "captcha solved: boats"
+  # Check/read
+  world check --task --status pending
+  world check --event --type "git:commit"
+  world check --session abc123
 
-    # Run supervisors
-    world supervisor once          # Run once
-    world supervisor level1        # Only state enforcement
-    world supervisor level2        # Only verification
+DATA FORMAT:
 
-FORMAT:
-    Events:  [timestamp][event:source][identifier] output
-    Agents:  [timestamp][agent:status][session-id] output | need: criteria
+  Event:  [timestamp] [event] <type> | <content>
+  Task:   [timestamp] [task] <id> | <status> | <trigger> | <description> | need: <criteria>
 
-EVENT SOURCES:
-    browser, bash, file, api, system, user
+TASK STATUSES:
+  pending, running, done, failed
 
-AGENT STATUSES:
-    start, active, finish, verified, retry, failed
+EVENT TYPES:
+  git:commit, git:push, system, user, task:<id>, browser, file, api
 EOF
 }
 
 # Route to command
 case "${1:-}" in
-    event)
+    create)
         shift
-        "$COMMANDS_DIR/event.sh" "$@"
-        ;;
-    agent)
-        shift
-        "$COMMANDS_DIR/agent.sh" "$@"
+        "$COMMANDS_DIR/create.sh" "$@"
         ;;
     check)
         shift
         "$COMMANDS_DIR/check.sh" "$@"
-        ;;
-    query)
-        shift
-        "$COMMANDS_DIR/query.sh" "$@"
-        ;;
-    respond)
-        shift
-        "$COMMANDS_DIR/respond.sh" "$@"
-        ;;
-    supervisor|supervisors)
-        shift
-        "$SUPERVISORS_DIR/run.sh" "$@"
         ;;
     help|-h|--help|"")
         show_help

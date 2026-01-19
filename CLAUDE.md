@@ -119,15 +119,37 @@ Single source of truth for agent coordination
 
 Run `world` for full help.
 
-**Commands:** event, agent, check, query, respond, supervisor
+**Commands:** create, check, supervisor
+
+**Create Examples:**
+```bash
+# Events (facts)
+world create --event "git:commit" "fix: login bug"
+world create --event "system" --session abc123 "task started"
+
+# Tasks (to-dos with lifecycle)
+world create --task "login-fix" "pending" "now" "Fix login" --need "tests pass"
+world create --task "login-fix" "running"
+world create --task "login-fix" "done"
+
+# Agent status (shorthand)
+world create --agent start abc123 "Starting task"
+world create --agent finish abc123 "Task completed"
+```
+
+**Check Examples:**
+```bash
+world check                           # All entries
+world check --task --status pending   # Pending tasks
+world check --session abc123          # Filter by session
+```
 
 **Key Principles:**
-1. **Plain text** - Human readable, grep-able with `rg`
-2. **Append-only** - Never delete, only add
-3. **Two types** - Events (facts) and Agents (tracked projects)
-4. **Marker-based reading** - Only see new entries after last check
-5. **| need:** - Success criteria (start) or blocker requirement (failed)
-6. **Two-level supervision** - Level 1 (state enforcement) and Level 2 (AI verification)
+1. **Two commands** - `create` and `check` only
+2. **Two data types** - Events (facts) and Tasks (to-dos)
+3. **Plain text** - Human readable, grep-able with `rg`
+4. **Append-only** - Never delete, only add
+5. **Unified format** - `|` separators for parsing
 
 ### memory
 Cross-session knowledge sharing for Claude Code - search and consult previous sessions like a hive mind.
