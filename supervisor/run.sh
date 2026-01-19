@@ -16,6 +16,7 @@ USAGE:
     supervisor                   Show this help
     supervisor spawn <task-id>   Manually spawn a task agent
     supervisor level1 [command]  Run Level 1 supervisor
+    supervisor check             Check processes and cleanup
     supervisor once              Run all supervisor levels once
 
 COMMANDS:
@@ -23,10 +24,17 @@ COMMANDS:
         Create a worktree and start claude for the specified task.
         The task must exist in world.log with status 'pending'.
 
-    level1 [run|list]
+    level1 [run|list|check]
         Level 1: State enforcement
         - 'run' (default): Check pending tasks and spawn those ready
         - 'list': Show pending tasks without spawning
+        - 'check': Check running processes and cleanup
+
+    check
+        Shortcut for 'level1 check':
+        - Detect crashed processes (PID exists but process gone)
+        - Sync status to world.log (mark crashed as failed)
+        - Cleanup worktrees for done/failed tasks
 
     once
         Run all supervisor levels once:
@@ -40,6 +48,7 @@ EXAMPLES:
     supervisor spawn login-fix      # Spawn task 'login-fix'
     supervisor level1               # Run level1 (trigger pending)
     supervisor level1 list          # List pending tasks
+    supervisor check                # Check processes and cleanup
     supervisor once                 # Run all levels once
     DRY_RUN=true supervisor once    # Dry run all levels
 
@@ -95,6 +104,9 @@ case "$1" in
     level1)
         shift
         "$LEVEL1" "${@:-run}"
+        ;;
+    check)
+        "$LEVEL1" check
         ;;
     once)
         run_once

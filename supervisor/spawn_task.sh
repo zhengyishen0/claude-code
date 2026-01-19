@@ -9,6 +9,10 @@ PROJECT_DIR="${CLAUDE_PROJECT_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 WORLD_CMD="$PROJECT_DIR/world/run.sh"
 WORLD_LOG="$PROJECT_DIR/world/world.log"
 
+# PID management directory
+PID_DIR="/tmp/supervisor/pids"
+mkdir -p "$PID_DIR"
+
 show_help() {
     cat <<'EOF'
 spawn_task - Create worktree and start claude for a task
@@ -127,5 +131,23 @@ export AGENT_SESSION_ID="$task_id"
 export AGENT_DESCRIPTION="$task_description"
 export CLAUDE_PROJECT_DIR="$worktree_path"
 
-# Run claude
-exec claude --print --cwd "$worktree_path" "$prompt"
+# Run claude in background and save PID
+claude --print --cwd "$worktree_path" "$prompt" &
+CLAUDE_PID=$!
+
+# Save PID file
+echo "$CLAUDE_PID" > "$PID_DIR/$task_id.pid"
+
+# Save session info (task_id, worktree_path, description)
+cat > "$PID_DIR/$task_id.session" <<EOF
+task_id=$task_id
+worktree_path=$worktree_path
+description=$task_description
+started_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+EOF
+
+echo "Task spawned with PID: $CLAUDE_PID"
+echo "PID file: $PID_DIR/$task_id.pid"
+
+# Wait for the process to complete
+wait $CLAUDE_PID || true
