@@ -7,7 +7,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMMANDS_DIR="$SCRIPT_DIR/commands"
-SUPERVISORS_DIR="$SCRIPT_DIR/supervisors"
 
 show_help() {
     cat <<'EOF'
@@ -16,7 +15,8 @@ world - Single source of truth for agent coordination
 USAGE:
     world create <options>             Create event or task
     world check [options]              Check/read entries
-    world supervisor [command]         Run supervisors
+
+NOTE: Supervisor is now a separate tool. Run 'supervisor' directly.
 
 CREATE COMMANDS:
 
@@ -81,10 +81,6 @@ case "${1:-}" in
     check)
         shift
         "$COMMANDS_DIR/check.sh" "$@"
-        ;;
-    supervisor|supervisors)
-        shift
-        "$SUPERVISORS_DIR/run.sh" "$@"
         ;;
     help|-h|--help|"")
         show_help
