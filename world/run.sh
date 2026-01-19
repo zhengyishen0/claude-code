@@ -14,50 +14,50 @@ show_help() {
 world - Single source of truth for agent coordination
 
 USAGE:
-    world write <options>              Write event or task
-    world read [options]               Read entries
+    world create <options>             Create event or task
+    world check [options]              Check/read entries
     world supervisor [command]         Run supervisors
 
-WRITE COMMANDS:
+CREATE COMMANDS:
 
   Events (facts, one-time):
-    world write --event <type> [--session <id>] <content>
+    world create --event <type> [--session <id>] <content>
 
   Tasks (to-dos with lifecycle):
-    world write --task <id> <status> <trigger> <description> [--need <criteria>]
+    world create --task <id> <status> <trigger> <description> [--need <criteria>]
 
   Agent (shorthand for event):
-    world write --agent <status> <session-id> <content>
+    world create --agent <status> <session-id> <content>
 
-READ COMMANDS:
+CHECK COMMANDS:
 
-    world read                         All entries
-    world read --event                 Only events
-    world read --task                  Only tasks
-    world read --event --type <type>   Filter by event type
-    world read --task --status <s>     Filter by task status
-    world read --session <id>          Filter by session
-    world read --since <date>          Filter by time
+    world check                        All entries
+    world check --event                Only events
+    world check --task                 Only tasks
+    world check --event --type <type>  Filter by event type
+    world check --task --status <s>    Filter by task status
+    world check --session <id>         Filter by session
+    world check --since <date>         Filter by time
 
 EXAMPLES:
 
-  # Write events
-  world write --event "git:commit" --session abc123 "fix: token refresh"
-  world write --event "system" "supervisor started"
+  # Create events
+  world create --event "git:commit" --session abc123 "fix: token refresh"
+  world create --event "system" "supervisor started"
 
-  # Write tasks
-  world write --task "login-fix" "pending" "now" "修复登录bug" --need "测试通过"
-  world write --task "login-fix" "running"
-  world write --task "login-fix" "done"
+  # Create tasks
+  world create --task "login-fix" "pending" "now" "修复登录bug" --need "测试通过"
+  world create --task "login-fix" "running"
+  world create --task "login-fix" "done"
 
-  # Write agent status (shorthand)
-  world write --agent start abc123 "开始执行任务"
-  world write --agent finish abc123 "任务完成"
+  # Create agent status (shorthand)
+  world create --agent start abc123 "开始执行任务"
+  world create --agent finish abc123 "任务完成"
 
-  # Read
-  world read --task --status pending
-  world read --event --type "git:commit"
-  world read --session abc123
+  # Check/read
+  world check --task --status pending
+  world check --event --type "git:commit"
+  world check --session abc123
 
 DATA FORMAT:
 
@@ -74,13 +74,13 @@ EOF
 
 # Route to command
 case "${1:-}" in
-    write)
+    create)
         shift
-        "$COMMANDS_DIR/write.sh" "$@"
+        "$COMMANDS_DIR/create.sh" "$@"
         ;;
-    read)
+    check)
         shift
-        "$COMMANDS_DIR/read.sh" "$@"
+        "$COMMANDS_DIR/check.sh" "$@"
         ;;
     supervisor|supervisors)
         shift

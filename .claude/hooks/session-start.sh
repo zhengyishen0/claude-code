@@ -20,7 +20,7 @@ fi
 if [ -n "$AGENT_SESSION_ID" ] && [ -n "$AGENT_DESCRIPTION" ]; then
   world_cmd="$CLAUDE_PROJECT_DIR/world/run.sh"
   if [ -x "$world_cmd" ]; then
-    "$world_cmd" write --agent start "$AGENT_SESSION_ID" "$AGENT_DESCRIPTION" 2>/dev/null || true
+    "$world_cmd" create --agent start "$AGENT_SESSION_ID" "$AGENT_DESCRIPTION" 2>/dev/null || true
   fi
 fi
 

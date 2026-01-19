@@ -119,33 +119,33 @@ Single source of truth for agent coordination
 
 Run `world` for full help.
 
-**Commands:** write, read, supervisor
+**Commands:** create, check, supervisor
 
-**Write Examples:**
+**Create Examples:**
 ```bash
 # Events (facts)
-world write --event "git:commit" "fix: login bug"
-world write --event "system" --session abc123 "task started"
+world create --event "git:commit" "fix: login bug"
+world create --event "system" --session abc123 "task started"
 
 # Tasks (to-dos with lifecycle)
-world write --task "login-fix" "pending" "now" "Fix login" --need "tests pass"
-world write --task "login-fix" "running"
-world write --task "login-fix" "done"
+world create --task "login-fix" "pending" "now" "Fix login" --need "tests pass"
+world create --task "login-fix" "running"
+world create --task "login-fix" "done"
 
 # Agent status (shorthand)
-world write --agent start abc123 "Starting task"
-world write --agent finish abc123 "Task completed"
+world create --agent start abc123 "Starting task"
+world create --agent finish abc123 "Task completed"
 ```
 
-**Read Examples:**
+**Check Examples:**
 ```bash
-world read                           # All entries
-world read --task --status pending   # Pending tasks
-world read --session abc123          # Filter by session
+world check                           # All entries
+world check --task --status pending   # Pending tasks
+world check --session abc123          # Filter by session
 ```
 
 **Key Principles:**
-1. **Two commands** - `read` and `write` only
+1. **Two commands** - `create` and `check` only
 2. **Two data types** - Events (facts) and Tasks (to-dos)
 3. **Plain text** - Human readable, grep-able with `rg`
 4. **Append-only** - Never delete, only add

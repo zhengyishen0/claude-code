@@ -1,86 +1,152 @@
 #!/usr/bin/env bash
-# claude-tools/world/commands/check.sh
-# Read new entries since last marker
+# world/commands/check.sh
+# Unified check/read command for events and tasks
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORLD_LOG="$SCRIPT_DIR/../world.log"
-MARKER_LINE="=================READ-MARKER================="
 
 show_help() {
     cat <<'EOF'
-check - Read new entries since last marker
+check - Check/read entries from world.log
 
 USAGE:
-    check [agent-id]
+    check [options]
 
-ARGUMENTS:
-    agent-id    Optional identifier for who is reading (for audit trail)
-
-BEHAVIOR:
-    1. Returns all entries after the last READ-MARKER
-    2. Adds audit entry: "[timestamp][event:system][agent-id] checked N entries"
-    3. Adds new READ-MARKER at end
+OPTIONS:
+    --event              Only show events
+    --task               Only show tasks
+    --type <type>        Filter events by type (requires --event)
+    --status <status>    Filter tasks by status (requires --task)
+    --session <id>       Filter by session ID
+    --since <date>       Filter entries since date (YYYY-MM-DD)
+    --tail <n>           Show last n entries (default: all)
 
 EXAMPLES:
-    check                    # Anonymous check
-    check manager-xyz        # Check as specific agent
-    check level2-supervisor  # Check as Level 2 supervisor
+    check                           # All entries
+    check --event                   # Only events
+    check --task                    # Only tasks
+    check --event --type git:commit # Events of specific type
+    check --task --status pending   # Pending tasks
+    check --session abc123          # All entries for session
+    check --since 2024-01-19        # Entries since date
+    check --tail 20                 # Last 20 entries
 
-OUTPUT:
-    New entries since last marker, or "no new entries"
+FORMAT:
+    Event:  [timestamp] [event] <type> | <content>
+    Task:   [timestamp] [task] <id> | <status> | ...
 EOF
 }
 
-if [ "${1:-}" = "help" ] || [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
-    show_help
+# Check if log exists
+if [ ! -f "$WORLD_LOG" ]; then
+    echo "No entries yet."
     exit 0
 fi
 
-agent_id="${1:-anonymous}"
+# Parse arguments
+filter_event=false
+filter_task=false
+filter_type=""
+filter_status=""
+filter_session=""
+filter_since=""
+tail_count=""
 
-# Ensure log exists with initial marker
-if [ ! -f "$WORLD_LOG" ]; then
-    touch "$WORLD_LOG"
-    echo "$MARKER_LINE" >> "$WORLD_LOG"
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --event)
+            filter_event=true
+            shift
+            ;;
+        --task)
+            filter_task=true
+            shift
+            ;;
+        --type)
+            shift
+            filter_type="$1"
+            shift
+            ;;
+        --status)
+            shift
+            filter_status="$1"
+            shift
+            ;;
+        --session)
+            shift
+            filter_session="$1"
+            shift
+            ;;
+        --since)
+            shift
+            filter_since="$1"
+            shift
+            ;;
+        --tail)
+            shift
+            tail_count="$1"
+            shift
+            ;;
+        help|-h|--help)
+            show_help
+            exit 0
+            ;;
+        *)
+            echo "Error: Unknown option '$1'"
+            echo "Run 'world check --help' for usage"
+            exit 1
+            ;;
+    esac
+done
+
+# Build grep pattern
+pattern=""
+
+if $filter_event && ! $filter_task; then
+    pattern="\[event\]"
+elif $filter_task && ! $filter_event; then
+    pattern="\[task\]"
 fi
 
-# Find last marker line number
-marker_line_num=$(grep -n "^$MARKER_LINE$" "$WORLD_LOG" | tail -1 | cut -d: -f1 || echo "0")
+# Read and filter
+result=$(cat "$WORLD_LOG")
 
-if [ "$marker_line_num" = "0" ]; then
-    # No marker found, add one at end
-    echo "$MARKER_LINE" >> "$WORLD_LOG"
-    marker_line_num=$(wc -l < "$WORLD_LOG" | tr -d ' ')
+# Filter by event/task type
+if [ -n "$pattern" ]; then
+    result=$(echo "$result" | grep "$pattern" || true)
 fi
 
-# Get total lines
-total_lines=$(wc -l < "$WORLD_LOG" | tr -d ' ')
-lines_after_marker=$((total_lines - marker_line_num))
-
-# Read entries after marker
-entry_count=0
-new_entries=""
-
-if [ "$lines_after_marker" -gt 0 ]; then
-    new_entries=$(tail -n "$lines_after_marker" "$WORLD_LOG")
-    # Count non-empty lines
-    entry_count=$(echo "$new_entries" | grep -c '.' || echo "0")
+# Filter by event type
+if [ -n "$filter_type" ]; then
+    result=$(echo "$result" | grep "\[event\] $filter_type" || true)
 fi
 
-# Generate timestamp
-timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+# Filter by task status
+if [ -n "$filter_status" ]; then
+    result=$(echo "$result" | grep "\[task\].*| $filter_status" || true)
+fi
 
-# Add audit entry
-echo "[$timestamp][event:system][$agent_id] checked $entry_count entries" >> "$WORLD_LOG"
+# Filter by session
+if [ -n "$filter_session" ]; then
+    result=$(echo "$result" | grep "$filter_session" || true)
+fi
 
-# Add new marker
-echo "$MARKER_LINE" >> "$WORLD_LOG"
+# Filter by date (simple grep-based approach)
+if [ -n "$filter_since" ]; then
+    # Filter entries starting from the date
+    result=$(echo "$result" | grep -E "^\[$filter_since" || true)
+fi
+
+# Apply tail
+if [ -n "$tail_count" ] && [ -n "$result" ]; then
+    result=$(echo "$result" | tail -n "$tail_count")
+fi
 
 # Output
-if [ "$entry_count" -eq 0 ]; then
-    echo "no new entries"
+if [ -z "$result" ]; then
+    echo "No matching entries."
 else
-    echo "$new_entries"
+    echo "$result"
 fi

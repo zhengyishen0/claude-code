@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# world/commands/write.sh
-# Unified write command for events and tasks
+# world/commands/create.sh
+# Unified create command for events and tasks
 
 set -euo pipefail
 
@@ -9,12 +9,12 @@ WORLD_LOG="$SCRIPT_DIR/../world.log"
 
 show_help() {
     cat <<'EOF'
-write - Write event or task to world.log
+create - Write event or task to world.log
 
 USAGE:
-    write --event <type> [--session <id>] <content>
-    write --task <id> <status> [<trigger>] [<description>] [--need <criteria>]
-    write --agent <status> <session-id> <content>
+    create --event <type> [--session <id>] <content>
+    create --task <id> <status> [<trigger>] [<description>] [--need <criteria>]
+    create --agent <status> <session-id> <content>
 
 EVENT OPTIONS:
     --event <type>     Event type (git:commit, system, user, browser, file, api)
@@ -33,13 +33,13 @@ AGENT OPTIONS (shorthand for --event):
     <content>          Status description
 
 EXAMPLES:
-    write --event "git:commit" "fix: login bug"
-    write --event "system" --session abc123 "task started"
-    write --task "login-fix" "pending" "now" "Fix login" --need "tests pass"
-    write --task "login-fix" "running"
-    write --task "login-fix" "done"
-    write --agent start abc123 "Starting task"
-    write --agent finish abc123 "Task completed"
+    create --event "git:commit" "fix: login bug"
+    create --event "system" --session abc123 "task started"
+    create --task "login-fix" "pending" "now" "Fix login" --need "tests pass"
+    create --task "login-fix" "running"
+    create --task "login-fix" "done"
+    create --agent start abc123 "Starting task"
+    create --agent finish abc123 "Task completed"
 
 FORMAT:
     Event:  [timestamp] [event] <type> | <content>
@@ -197,7 +197,7 @@ case "$1" in
 
     *)
         echo "Error: Unknown option '$1'"
-        echo "Run 'world write --help' for usage"
+        echo "Run 'world create --help' for usage"
         exit 1
         ;;
 esac
