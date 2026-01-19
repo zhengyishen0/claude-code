@@ -107,4 +107,13 @@ class ASREngine(
      * Get the assets directory path.
      */
     fun getAssetsDir(): String = assetsDir
+
+    /**
+     * Trigger garbage collection to free memory after transcription.
+     * Call this after transcription completes to avoid memory buildup.
+     */
+    @OptIn(kotlin.native.runtime.NativeRuntimeApi::class)
+    fun collectGarbage() {
+        kotlin.native.runtime.GC.collect()
+    }
 }
