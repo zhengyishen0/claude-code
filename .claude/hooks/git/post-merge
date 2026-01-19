@@ -1,0 +1,12 @@
+#!/bin/bash
+# .claude/hooks/git/post-merge
+# Log merges to world
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+WORLD_CMD="$PROJECT_DIR/world/run.sh"
+
+if [ -x "$WORLD_CMD" ]; then
+    merge_msg=$(git log -1 --format='%s')
+    "$WORLD_CMD" create --event "git:merge" "$merge_msg" 2>/dev/null || true
+fi

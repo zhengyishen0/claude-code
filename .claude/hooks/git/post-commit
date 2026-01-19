@@ -1,0 +1,13 @@
+#!/bin/bash
+# .claude/hooks/git/post-commit
+# Log commits to world
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+WORLD_CMD="$PROJECT_DIR/world/run.sh"
+
+if [ -x "$WORLD_CMD" ]; then
+    commit_msg=$(git log -1 --format='%s')
+    commit_hash=$(git log -1 --format='%h')
+    "$WORLD_CMD" create --event "git:commit" "$commit_hash: $commit_msg" 2>/dev/null || true
+fi
