@@ -80,9 +80,8 @@ if [ $# -lt 2 ]; then
 fi
 
 # Last argument is the question, rest are session IDs
-ARGS=("$@")
-QUESTION="${ARGS[-1]}"
-SESSION_IDS=("${ARGS[@]:0:$#-1}")
+QUESTION="${!#}"
+SESSION_IDS=("${@:1:$#-1}")
 
 # Resolve and validate session IDs
 RESOLVED_IDS=()
