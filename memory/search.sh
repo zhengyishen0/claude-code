@@ -14,7 +14,6 @@ SESSIONS=10
 MESSAGES=5
 CONTEXT=300
 QUERY=""
-RECALL_QUESTION=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -30,10 +29,6 @@ while [[ $# -gt 0 ]]; do
       CONTEXT="$2"
       shift 2
       ;;
-    --recall|-r)
-      RECALL_QUESTION="$2"
-      shift 2
-      ;;
     -*)
       echo "Error: Unknown flag '$1'" >&2
       exit 1
@@ -47,11 +42,11 @@ done
 
 # Validation
 if [ -z "$QUERY" ]; then
-  echo "Usage: memory search \"<keywords>\" [--recall \"question\"]" >&2
+  echo "Usage: memory search \"<keywords>\"" >&2
   echo "" >&2
   echo "Examples:" >&2
   echo "  memory search \"browser automation\"" >&2
-  echo "  memory search \"worktree\" --recall \"how to create?\"" >&2
+  echo "  memory search \"error debug\"" >&2
   exit 1
 fi
 
@@ -169,31 +164,5 @@ if [ -z "$RESULTS" ]; then
   exit 0
 fi
 
-# Format results
-OUTPUT=$(echo "$RESULTS" | python3 "$SCRIPT_DIR/format-results.py" "$SESSIONS" "$MESSAGES" "$CONTEXT" "$QUERY" "simple")
-
-# If --recall, run parallel recall
-if [ -n "$RECALL_QUESTION" ]; then
-  SESSION_IDS=$(echo "$OUTPUT" | grep -E '^\S.* \| [0-9a-f-]{36} \|' | sed 's/.* | \([0-9a-f-]*\) |.*/\1/' | head -$SESSIONS)
-
-  if [ -z "$SESSION_IDS" ]; then
-    echo "$OUTPUT"
-    exit 0
-  fi
-
-  RECALL_ARGS=()
-  while IFS= read -r sid; do
-    [ -z "$sid" ] && continue
-    RECALL_ARGS+=("$sid:$RECALL_QUESTION")
-  done <<< "$SESSION_IDS"
-
-  RECALL_OUTPUT=$("$SCRIPT_DIR/recall.sh" "${RECALL_ARGS[@]}")
-
-  if echo "$RECALL_OUTPUT" | grep -q "^RECALL_FALLBACK$"; then
-    echo "No relevant answers found. Try different search terms." >&2
-  else
-    echo "$RECALL_OUTPUT"
-  fi
-else
-  echo "$OUTPUT"
-fi
+# Format and output results
+echo "$RESULTS" | python3 "$SCRIPT_DIR/format-results.py" "$SESSIONS" "$MESSAGES" "$CONTEXT" "$QUERY" "simple"

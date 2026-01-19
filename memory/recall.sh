@@ -1,10 +1,36 @@
 #!/bin/bash
-# Recall sessions - internal module for search --recall
-# Not intended to be called directly (use: claude --resume "id" -p "question")
+# Recall sessions - ask session(s) a question using haiku
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INDEX_FILE="$SCRIPT_DIR/data/memory-index.tsv"
+
+show_help() {
+  cat << 'EOF'
+memory recall - Ask session(s) a question
+
+USAGE
+  memory recall <session-id> "<question>"
+  memory recall <id1> <id2> ... "<question>"
+
+EXAMPLES
+  memory recall b8546b08 "how was the bug fixed?"
+  memory recall b8546b08 6c2c0b4c "what was discussed?"
+
+NOTES
+  - Session IDs can be partial (first 7+ chars)
+  - Multiple sessions run in parallel
+  - Uses haiku model for speed
+
+EOF
+}
+
+# Resolve partial session ID to full ID
+resolve_session_id() {
+  local partial="$1"
+  local full_id=$(grep "^$partial" "$INDEX_FILE" 2>/dev/null | head -1 | cut -f1)
+  echo "$full_id"
+}
 
 # Get session date from index
 get_session_date() {
@@ -22,12 +48,6 @@ get_session_date() {
 recall_session() {
   local session_id="$1"
   local question="$2"
-
-  # Verify session exists in index
-  if ! grep -q "^$session_id" "$INDEX_FILE" 2>/dev/null; then
-    echo "Error: Session not found: $session_id" >&2
-    return 1
-  fi
 
   local formatted_prompt="Answer concisely:
 
@@ -47,111 +67,116 @@ Question: $question"
   claude --model haiku --resume "$session_id" -p "$formatted_prompt" --no-session-persistence --output-format json 2>/dev/null | jq -r '.result // empty'
 }
 
-# Batch recall with parallel execution
-batch_recall() {
-  local queries=("$@")
-  local total=${#queries[@]}
-  local timeout=15  # seconds
+# Main
+if [ $# -eq 0 ] || [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+  show_help
+  exit 0
+fi
 
-  if [ $total -eq 0 ]; then
-    echo "Error: No queries" >&2
-    return 1
+if [ $# -lt 2 ]; then
+  echo "Error: Need at least one session ID and a question" >&2
+  echo "Usage: memory recall <session-id> \"<question>\"" >&2
+  exit 1
+fi
+
+# Last argument is the question, rest are session IDs
+ARGS=("$@")
+QUESTION="${ARGS[-1]}"
+SESSION_IDS=("${ARGS[@]:0:$#-1}")
+
+# Resolve and validate session IDs
+RESOLVED_IDS=()
+for partial_id in "${SESSION_IDS[@]}"; do
+  full_id=$(resolve_session_id "$partial_id")
+  if [ -z "$full_id" ]; then
+    echo "Error: Session not found: $partial_id" >&2
+    exit 1
   fi
+  RESOLVED_IDS+=("$full_id")
+done
 
-  # Single query
-  if [ $total -eq 1 ]; then
-    local query="${queries[0]}"
-    local session_id="${query%%:*}"
-    local question="${query#*:}"
-    recall_session "$session_id" "$question"
-    return
-  fi
+# Single session - direct call
+if [ ${#RESOLVED_IDS[@]} -eq 1 ]; then
+  recall_session "${RESOLVED_IDS[0]}" "$QUESTION"
+  exit 0
+fi
 
-  # Multiple queries - parallel
-  local first_question="${queries[0]#*:}"
-  echo "Q: $first_question"
-  echo ""
+# Multiple sessions - parallel execution
+echo "Q: $QUESTION"
+echo ""
 
-  local pids=()
-  local temp_files=()
-  local session_ids=()
+TIMEOUT=15
+PIDS=()
+TEMP_FILES=()
 
-  # Start all in parallel
-  for i in "${!queries[@]}"; do
-    local query="${queries[$i]}"
-    local session_id="${query%%:*}"
-    local question="${query#*:}"
-    local temp_file="/tmp/memory-$$-$i.txt"
-    temp_files+=("$temp_file")
-    session_ids+=("$session_id")
+# Start all in parallel
+for i in "${!RESOLVED_IDS[@]}"; do
+  session_id="${RESOLVED_IDS[$i]}"
+  temp_file="/tmp/memory-$$-$i.txt"
+  TEMP_FILES+=("$temp_file")
 
-    (recall_session "$session_id" "$question") > "$temp_file" 2>&1 &
-    pids+=($!)
-  done
+  (recall_session "$session_id" "$QUESTION") > "$temp_file" 2>&1 &
+  PIDS+=($!)
+done
 
-  # Wait with timeout
-  local elapsed=0
-  while [ $elapsed -lt $timeout ]; do
-    local all_done=true
-    for pid in "${pids[@]}"; do
-      if kill -0 "$pid" 2>/dev/null; then
-        all_done=false
-        break
-      fi
-    done
-    $all_done && break
-    sleep 1
-    ((elapsed++))
-  done
-
-  # Kill remaining
-  for pid in "${pids[@]}"; do
-    kill -9 "$pid" 2>/dev/null || true
-  done
-
-  # Collect results
-  local good_ids=()
-  local good_contents=()
-  local good_dates=()
-  local no_info=0
-  local errors=0
-
-  for i in "${!temp_files[@]}"; do
-    local temp_file="${temp_files[$i]}"
-    local session_id="${session_ids[$i]}"
-
-    if [ -f "$temp_file" ] && [ -s "$temp_file" ]; then
-      local content=$(cat "$temp_file")
-      if echo "$content" | grep -qiE "(I don't have (enough )?information|no information about)"; then
-        ((no_info++))
-      elif echo "$content" | grep -qiE "^Error:"; then
-        ((errors++))
-      else
-        good_ids+=("${session_id:0:7}")
-        good_contents+=("$content")
-        good_dates+=("$(get_session_date "$session_id")")
-      fi
-    else
-      ((errors++))
+# Wait with timeout
+elapsed=0
+while [ $elapsed -lt $TIMEOUT ]; do
+  all_done=true
+  for pid in "${PIDS[@]}"; do
+    if kill -0 "$pid" 2>/dev/null; then
+      all_done=false
+      break
     fi
   done
+  $all_done && break
+  sleep 1
+  ((elapsed++))
+done
 
-  # Output results
-  local total_good=${#good_ids[@]}
-  if [ $total_good -gt 0 ]; then
-    for i in "${!good_ids[@]}"; do
-      echo "[$((i+1))/$total_good] ${good_ids[$i]} • ${good_dates[$i]}"
-      echo "${good_contents[$i]}"
-      echo ""
-    done
-    [ $no_info -gt 0 ] || [ $errors -gt 0 ] && echo "($no_info no info, $errors errors)" >&2
+# Kill remaining
+for pid in "${PIDS[@]}"; do
+  kill -9 "$pid" 2>/dev/null || true
+done
+
+# Collect results
+GOOD_IDS=()
+GOOD_CONTENTS=()
+GOOD_DATES=()
+NO_INFO=0
+ERRORS=0
+
+for i in "${!TEMP_FILES[@]}"; do
+  temp_file="${TEMP_FILES[$i]}"
+  session_id="${RESOLVED_IDS[$i]}"
+
+  if [ -f "$temp_file" ] && [ -s "$temp_file" ]; then
+    content=$(cat "$temp_file")
+    if echo "$content" | grep -qiE "(I don't have (enough )?information|no information about)"; then
+      ((NO_INFO++))
+    elif echo "$content" | grep -qiE "^Error:"; then
+      ((ERRORS++))
+    else
+      GOOD_IDS+=("${session_id:0:7}")
+      GOOD_CONTENTS+=("$content")
+      GOOD_DATES+=("$(get_session_date "$session_id")")
+    fi
   else
-    echo "RECALL_FALLBACK"
+    ((ERRORS++))
   fi
+done
 
-  rm -f "${temp_files[@]}"
-}
+# Output results
+TOTAL_GOOD=${#GOOD_IDS[@]}
+if [ $TOTAL_GOOD -gt 0 ]; then
+  for i in "${!GOOD_IDS[@]}"; do
+    echo "[$((i+1))/$TOTAL_GOOD] ${GOOD_IDS[$i]} • ${GOOD_DATES[$i]}"
+    echo "${GOOD_CONTENTS[$i]}"
+    echo ""
+  done
+  [ $NO_INFO -gt 0 ] || [ $ERRORS -gt 0 ] && echo "($NO_INFO no info, $ERRORS errors)" >&2
+else
+  echo "No relevant answers found." >&2
+fi
 
-# Main - only batch_recall, no standalone command
-[ $# -eq 0 ] && { echo "Internal module. Use: memory search \"x\" --recall \"question\"" >&2; exit 1; }
-batch_recall "$@"
+rm -f "${TEMP_FILES[@]}"
