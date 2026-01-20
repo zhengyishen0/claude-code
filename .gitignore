@@ -1,9 +1,27 @@
-/tmp/*
+# Temp directories
+/tmp/
+/.tmp/
+
+# Hidden files (except tracked ones)
+.*
+!.gitignore
+!.gitkeep
+!.claude/
+
+# Secrets
+.env
+.env.*
 
 # Large model files
 pretrained_models/
 *.mlmodelc/
 *.ckpt
+*.bin
+*.safetensors
 
-# Generated paths config
-.env
+# OS
+.DS_Store
+
+# Editor
+*.swp
+*~
