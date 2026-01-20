@@ -3,10 +3,9 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+: "${PROJECT_DIR:?PROJECT_DIR not set - source env.sh}"
 
-# Use env vars from shell-init.sh, fallback to script-relative paths
-: "${TASKS_DIR:=$SCRIPT_DIR/../tasks}"
+TASKS_DIR="$PROJECT_DIR/world/tasks"
 
 show_help() {
     cat <<'HELP'

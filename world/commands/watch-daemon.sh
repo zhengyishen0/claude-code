@@ -4,17 +4,16 @@
 
 set -euo pipefail
 
-# Require environment variables (set by shell-init.sh or LaunchAgent)
-: "${TASKS_DIR:?TASKS_DIR not set}"
-: "${WORLD_LOG:?WORLD_LOG not set}"
-: "${PID_DIR:?PID_DIR not set}"
-: "${PROJECT_DIR:?PROJECT_DIR not set}"
-: "${PROJECT_WORKTREES:?PROJECT_WORKTREES not set}"
-: "${PROJECT_ARCHIVE:?PROJECT_ARCHIVE not set}"
+: "${PROJECT_DIR:?PROJECT_DIR not set - source env.sh}"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SPAWN_CMD="$SCRIPT_DIR/spawn.sh"
-LOG_CMD="$SCRIPT_DIR/log.sh"
+TASKS_DIR="$PROJECT_DIR/world/tasks"
+WORLD_LOG="$PROJECT_DIR/world/world.log"
+PID_DIR="/tmp/world/pids"
+PROJECT_WORKTREES="$(dirname "$PROJECT_DIR")/.worktrees/$(basename "$PROJECT_DIR")"
+PROJECT_ARCHIVE="$PROJECT_WORKTREES/.archive"
+
+SPAWN_CMD="$PROJECT_DIR/world/commands/spawn.sh"
+LOG_CMD="$PROJECT_DIR/world/commands/log.sh"
 DAEMON_LOG="/tmp/world/daemon.log"
 
 mkdir -p "$PID_DIR" "$TASKS_DIR" "$(dirname "$DAEMON_LOG")"
@@ -36,8 +35,7 @@ COMMANDS:
     help        Show this help
 
 ENVIRONMENT:
-    Requires: TASKS_DIR, WORLD_LOG, PID_DIR, PROJECT_DIR,
-              PROJECT_WORKTREES, PROJECT_ARCHIVE
+    Requires: PROJECT_DIR (source env.sh)
 
 DESCRIPTION:
     Uses fswatch to monitor task files for changes.

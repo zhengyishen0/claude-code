@@ -6,7 +6,7 @@ set -eo pipefail
 input=$(cat)
 cwd=$(echo "$input" | jq -r '.cwd')
 
-# Use env vars (set by shell-init.sh) or fallback to cwd-based paths
+# Use env vars (set by spawn.sh) or fallback to cwd-based paths
 : "${CLAUDE_PROJECT_DIR:=$cwd}"
 
 # 1. Provide agent-specific documentation based on AGENT_TYPE

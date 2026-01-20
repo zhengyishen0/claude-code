@@ -5,12 +5,10 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Use env vars from shell-init.sh, fallback to defaults
-: "${CLAUDE_DATA_DIR:=$HOME/.claude}"
-: "${CLAUDE_PROJECTS_DIR:=$CLAUDE_DATA_DIR/projects}"
+: "${CLAUDE_DIR:=$HOME/.claude}"
 
 DATA_DIR="$SCRIPT_DIR/data"
-SESSION_DIR="$CLAUDE_PROJECTS_DIR"
+SESSION_DIR="$CLAUDE_DIR/projects"
 INDEX_FILE="$DATA_DIR/memory-index.tsv"
 
 # Parse args

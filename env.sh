@@ -1,30 +1,12 @@
 #!/usr/bin/env bash
-# shell-init.sh
-# Source this in ~/.zshrc:
-#   source ~/Codes/claude-code/shell-init.sh
+# env.sh - Source this in ~/.zshrc:
+#   source ~/Codes/claude-code/env.sh
 
 # ============================================================
-# Paths (single source of truth)
+# Core paths (only these two - scripts derive the rest)
 # ============================================================
-export CLAUDE_CODE_HOME="${CLAUDE_CODE_HOME:-$HOME/Codes/claude-code}"
-export PROJECT_DIR="$CLAUDE_CODE_HOME"
-export PROJECT_NAME="$(basename "$PROJECT_DIR")"
-export BASE_DIR="$(dirname "$PROJECT_DIR")"
-
-# Worktrees
-export WORKTREES_DIR="$BASE_DIR/.worktrees"
-export PROJECT_WORKTREES="$WORKTREES_DIR/$PROJECT_NAME"
-export PROJECT_ARCHIVE="$PROJECT_WORKTREES/.archive"
-
-# Claude data
-export CLAUDE_DATA_DIR="${CLAUDE_DATA_DIR:-$HOME/.claude}"
-export CLAUDE_PROJECTS_DIR="$CLAUDE_DATA_DIR/projects"
-export CLAUDE_TODOS_DIR="$CLAUDE_DATA_DIR/todos"
-
-# World tool
-export TASKS_DIR="$PROJECT_DIR/world/tasks"
-export WORLD_LOG="$PROJECT_DIR/world/world.log"
-export PID_DIR="/tmp/world/pids"
+export PROJECT_DIR="$HOME/Codes/claude-code"
+export CLAUDE_DIR="${CLAUDE_DIR:-$HOME/.claude}"
 
 # ============================================================
 # Tool aliases
@@ -81,8 +63,4 @@ world-daemon() {
 # ============================================================
 # Auto-init
 # ============================================================
-# Proxy auto-init (provides proxy_on/proxy_off)
 [[ -f "$PROJECT_DIR/tools/proxy/init.sh" ]] && source "$PROJECT_DIR/tools/proxy/init.sh"
-
-# Ensure directories exist
-mkdir -p "$TASKS_DIR" "$PID_DIR" "$PROJECT_WORKTREES" "$PROJECT_ARCHIVE" 2>/dev/null

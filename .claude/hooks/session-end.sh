@@ -7,7 +7,7 @@ input=$(cat)
 session_id=$(echo "$input" | jq -r '.session_id // empty')
 cwd=$(echo "$input" | jq -r '.cwd // empty')
 
-# Use env vars (set by shell-init.sh) or defaults
+# Use env vars (set by spawn.sh) or defaults
 : "${PID_DIR:=/tmp/world/pids}"
 
 # Only process if this is a task agent

@@ -4,14 +4,11 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR_DEFAULT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+: "${PROJECT_DIR:?PROJECT_DIR not set - source env.sh}"
 
-# Use env vars from shell-init.sh, fallback to script-relative paths
-: "${PROJECT_DIR:=$PROJECT_DIR_DEFAULT}"
-: "${TASKS_DIR:=$PROJECT_DIR/world/tasks}"
-: "${PID_DIR:=/tmp/world/pids}"
-: "${PROJECT_WORKTREES:=$(dirname "$PROJECT_DIR")/.worktrees/$(basename "$PROJECT_DIR")}"
+TASKS_DIR="$PROJECT_DIR/world/tasks"
+PID_DIR="/tmp/world/pids"
+PROJECT_WORKTREES="$(dirname "$PROJECT_DIR")/.worktrees/$(basename "$PROJECT_DIR")"
 
 
 show_help() {
@@ -112,7 +109,7 @@ yq -i --front-matter=process '.status = "running"' "$task_md"
 yq -i --front-matter=process ".started = \"$timestamp\"" "$task_md"
 
 # System prompt from markdown file
-prompt_file="$SCRIPT_DIR/../agent-prompt.md"
+prompt_file="$PROJECT_DIR/world/agent-prompt.md"
 if [ ! -f "$prompt_file" ]; then
     echo "Error: Agent prompt file not found: $prompt_file" >&2
     exit 1

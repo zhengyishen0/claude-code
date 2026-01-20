@@ -4,12 +4,9 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORLD_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-PROJECT_DIR="$(cd "$WORLD_DIR/.." && pwd)"
-WORKTREES_DIR="$(dirname "$PROJECT_DIR")/.worktrees/$(basename "$PROJECT_DIR")"
+: "${PROJECT_DIR:?PROJECT_DIR not set - source env.sh}"
 
-PLIST_TEMPLATE="$WORLD_DIR/com.claude.world.watch.plist"
+PLIST_TEMPLATE="$PROJECT_DIR/world/com.claude.world.watch.plist"
 PLIST_DEST="$HOME/Library/LaunchAgents/com.claude.world.watch.plist"
 LABEL="com.claude.world.watch"
 
@@ -55,8 +52,7 @@ cmd_install() {
     mkdir -p "$HOME/Library/LaunchAgents" /tmp/world/pids
 
     # Generate plist from template
-    sed -e "s|__PROJECT_DIR__|$PROJECT_DIR|g" \
-        -e "s|__WORKTREES_DIR__|$WORKTREES_DIR|g" \
+    sed "s|__PROJECT_DIR__|$PROJECT_DIR|g" \
         "$PLIST_TEMPLATE" > "$PLIST_DEST"
 
     echo "Installed: $PLIST_DEST"

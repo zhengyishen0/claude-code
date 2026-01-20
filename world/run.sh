@@ -3,12 +3,11 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-COMMANDS_DIR="$SCRIPT_DIR/commands"
+: "${PROJECT_DIR:?PROJECT_DIR not set - source env.sh}"
 
-# Use env vars from shell-init.sh, fallback to defaults
-: "${WORLD_LOG:=$SCRIPT_DIR/world.log}"
-: "${TASKS_DIR:=$SCRIPT_DIR/tasks}"
+COMMANDS_DIR="$PROJECT_DIR/world/commands"
+WORLD_LOG="$PROJECT_DIR/world/world.log"
+TASKS_DIR="$PROJECT_DIR/world/tasks"
 
 show_help() {
     cat <<'HELP'
