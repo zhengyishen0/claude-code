@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# hooks/git/post-commit - Log commits to world.log
+# Install: setup git-hooks (symlinks to .git/hooks/)
+
+set -euo pipefail
+
+# Skip if PROJECT_DIR not set (not in our project context)
+[ -z "${PROJECT_DIR:-}" ] && exit 0
+
+# Get commit info
+COMMIT_HASH=$(git rev-parse --short HEAD)
+COMMIT_MSG=$(git log -1 --pretty=format:"%s")
+
+# Record to world.log
+"$PROJECT_DIR/world/commands/record.sh" "git:commit" "$COMMIT_HASH: $COMMIT_MSG"

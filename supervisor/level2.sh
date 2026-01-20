@@ -11,7 +11,7 @@ set -euo pipefail
 
 : "${PROJECT_DIR:?PROJECT_DIR not set - source env.sh}"
 
-TASKS_DIR="$PROJECT_DIR/world/tasks"
+TASKS_DIR="$PROJECT_DIR/tasks"
 
 MAX_RETRIES="${MAX_RETRIES:-3}"
 DRY_RUN="${DRY_RUN:-false}"

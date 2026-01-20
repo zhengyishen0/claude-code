@@ -6,14 +6,14 @@ set -euo pipefail
 
 : "${PROJECT_DIR:?PROJECT_DIR not set - source env.sh}"
 
-TASKS_DIR="$PROJECT_DIR/world/tasks"
+TASKS_DIR="$PROJECT_DIR/tasks"
 WORLD_LOG="$PROJECT_DIR/world/world.log"
 PID_DIR="/tmp/world-watch/pids"
 PROJECT_WORKTREES="$(dirname "$PROJECT_DIR")/.worktrees/$(basename "$PROJECT_DIR")"
 PROJECT_ARCHIVE="$PROJECT_WORKTREES/.archive"
 
 SPAWN_CMD="$PROJECT_DIR/world/commands/spawn.sh"
-LOG_CMD="$PROJECT_DIR/world/commands/log.sh"
+RECORD_CMD="$PROJECT_DIR/world/commands/record.sh"
 DAEMON_LOG="/tmp/world-watch/daemon.log"
 
 mkdir -p "$PID_DIR" "$TASKS_DIR" "$(dirname "$DAEMON_LOG")"
@@ -68,7 +68,7 @@ sync_to_log() {
     local latest=$(grep "\\[task: $effective_status\\] $id(" "$WORLD_LOG" 2>/dev/null | tail -1 || echo "")
 
     if [ -z "$latest" ]; then
-        "$LOG_CMD" task "$effective_status" "$id" "$title" "$wait" "$need"
+        "$RECORD_CMD" task "$effective_status" "$id" "$title" "$wait" "$need"
         log "[SYNC] $id → $effective_status"
     fi
 }
