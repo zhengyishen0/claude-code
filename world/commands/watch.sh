@@ -58,12 +58,6 @@ if [ "${1:-}" = "help" ] || [ "${1:-}" = "-h" ]; then
     exit 0
 fi
 
-# Ensure yq is installed
-if ! command -v yq >/dev/null 2>&1; then
-    echo "Error: yq not installed. Install with: brew install yq" >&2
-    exit 1
-fi
-
 # ============================================================
 # SYNC: MD → world.log
 # ============================================================

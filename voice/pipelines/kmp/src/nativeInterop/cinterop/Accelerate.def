@@ -1,5 +1,0 @@
-# Use custom minimal header to avoid SDK compatibility issues
-headers = vdsp_minimal.h
-
-compilerOpts = -I./src/nativeInterop/cinterop
-linkerOpts = -framework Accelerate

@@ -148,9 +148,6 @@ cmd_status() {
     done
 }
 
-# Ensure yq
-command -v yq >/dev/null || { echo "Error: yq required"; exit 1; }
-
 case "${1:-check}" in
     check)   cmd_check ;;
     process) cmd_process ;;

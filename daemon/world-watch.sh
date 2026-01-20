@@ -177,13 +177,6 @@ case "${1:-start}" in
         log "Log: $WORLD_LOG"
         log "Watching with fswatch..."
 
-        # Check fswatch is installed
-        if ! command -v fswatch >/dev/null 2>&1; then
-            log "Error: fswatch not installed. Install with: brew install fswatch"
-            echo "Error: fswatch not installed. Install with: brew install fswatch" >&2
-            exit 1
-        fi
-
         # Initial sync
         run_cycle
 

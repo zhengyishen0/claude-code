@@ -48,14 +48,6 @@ EXAMPLES:
 EOF
 }
 
-# Ensure yq is installed
-check_yq() {
-    if ! command -v yq >/dev/null 2>&1; then
-        echo "Error: yq not installed. Install with: brew install yq" >&2
-        exit 1
-    fi
-}
-
 # Verify a completed task
 do_verify() {
     local task_id="$1"
@@ -153,8 +145,6 @@ if [ $# -lt 1 ]; then
     show_help
     exit 0
 fi
-
-check_yq
 
 case "$1" in
     verify)

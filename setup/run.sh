@@ -25,8 +25,8 @@ USAGE:
     setup all             Install everything
     setup deps            Install brew dependencies (fswatch, yq)
     setup shell           Add env.sh to ~/.zshrc
-    setup git-hooks       Symlink hooks/git/* → .git/hooks/
-    setup claude-hooks    Symlink .claude/hooks → hooks/claude
+    setup git-hooks       Symlink config/hooks/git/* → .git/hooks/
+    setup claude-hooks    Symlink .claude/hooks → config/hooks/claude
     setup daemon          Install world-watch LaunchAgent
     setup uninstall       Remove all installations
 
@@ -50,7 +50,7 @@ check_deps() {
 }
 
 check_shell() {
-    grep -q "source.*claude-code/env.sh" ~/.zshrc 2>/dev/null
+    grep -q "source.*claude-code/config/env.sh" ~/.zshrc 2>/dev/null
 }
 
 check_git_hooks() {
@@ -59,8 +59,8 @@ check_git_hooks() {
 }
 
 check_claude_hooks() {
-    # Check if settings.json points to hooks/claude/
-    grep -q "hooks/claude/" "$PROJECT_DIR/.claude/settings.json" 2>/dev/null
+    # Check if settings.json points to config/hooks/claude/
+    grep -q "config/hooks/claude/" "$PROJECT_DIR/.claude/settings.json" 2>/dev/null
 }
 
 check_daemon() {
@@ -136,9 +136,9 @@ install_deps() {
 install_shell() {
     echo "Configuring shell..."
 
-    local source_line="source \"$PROJECT_DIR/env.sh\""
+    local source_line="source \"$PROJECT_DIR/config/env.sh\""
 
-    if grep -q "source.*claude-code/env.sh" ~/.zshrc 2>/dev/null; then
+    if grep -q "source.*claude-code/config/env.sh" ~/.zshrc 2>/dev/null; then
         ok "env.sh already in ~/.zshrc"
     else
         echo "" >> ~/.zshrc
@@ -155,7 +155,7 @@ install_git_hooks() {
     mkdir -p "$PROJECT_DIR/.git/hooks"
 
     for hook in post-commit post-merge; do
-        local src="$PROJECT_DIR/hooks/git/$hook"
+        local src="$PROJECT_DIR/config/hooks/git/$hook"
         local dst="$PROJECT_DIR/.git/hooks/$hook"
 
         if [ -e "$dst" ] && [ ! -L "$dst" ]; then

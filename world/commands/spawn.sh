@@ -38,12 +38,6 @@ fi
 
 task_id="$1"
 
-# Ensure yq is installed
-if ! command -v yq >/dev/null 2>&1; then
-    echo "Error: yq not installed. Install with: brew install yq" >&2
-    exit 1
-fi
-
 # Check task file exists
 task_md="$TASKS_DIR/$task_id.md"
 if [ ! -f "$task_md" ]; then

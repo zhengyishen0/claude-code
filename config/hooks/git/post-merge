@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# config/hooks/git/post-merge - Log merges to world.log
+# Install: setup git-hooks (symlinks to .git/hooks/)
+
+set -euo pipefail
+
+# Derive PROJECT_DIR from git root
+export PROJECT_DIR="$(git rev-parse --show-toplevel)"
+
+# Only run if record.sh exists (we're in claude-code repo)
+[ -f "$PROJECT_DIR/world/commands/record.sh" ] || exit 0
+
+# Get merge info
+COMMIT_HASH=$(git rev-parse --short HEAD)
+# Try to get the merged branch name
+MERGED_BRANCH=$(git reflog -1 | grep -oE "merge [^:]*" | sed 's/merge //' || echo "unknown")
+
+# Record to world.log
+"$PROJECT_DIR/world/commands/record.sh" "git:merge" "$COMMIT_HASH: merged $MERGED_BRANCH"

@@ -94,17 +94,6 @@ cmd_install() {
 
     echo "Installing $name daemon..."
 
-    # Auto-install common dependencies
-    if ! command -v fswatch >/dev/null 2>&1; then
-        echo "Installing fswatch..."
-        brew install fswatch
-    fi
-
-    if ! command -v yq >/dev/null 2>&1; then
-        echo "Installing yq..."
-        brew install yq
-    fi
-
     # Create directories
     mkdir -p "$LAUNCHAGENTS_DIR" "/tmp/${name}"
 

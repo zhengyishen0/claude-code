@@ -84,12 +84,6 @@ cmd_list() {
         return
     fi
 
-    # Check for yq
-    if ! command -v yq >/dev/null 2>&1; then
-        echo "Error: yq required. Install with: brew install yq" >&2
-        exit 1
-    fi
-
     printf "%-10s %-12s %-40s\n" "ID" "STATUS" "TITLE"
     printf "%-10s %-12s %-40s\n" "--------" "----------" "----------------------------------------"
 

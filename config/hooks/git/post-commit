@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# config/hooks/git/post-commit - Log commits to world.log
+# Install: setup git-hooks (symlinks to .git/hooks/)
+
+set -euo pipefail
+
+# Derive PROJECT_DIR from git root
+export PROJECT_DIR="$(git rev-parse --show-toplevel)"
+
+# Only run if record.sh exists (we're in claude-code repo)
+[ -f "$PROJECT_DIR/world/commands/record.sh" ] || exit 0
+
+# Get commit info
+COMMIT_HASH=$(git rev-parse --short HEAD)
+COMMIT_MSG=$(git log -1 --pretty=format:"%s")
+
+# Record to world.log
+"$PROJECT_DIR/world/commands/record.sh" "git:commit" "$COMMIT_HASH: $COMMIT_MSG"

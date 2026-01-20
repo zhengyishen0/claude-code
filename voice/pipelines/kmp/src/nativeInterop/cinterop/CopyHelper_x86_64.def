@@ -1,9 +1,0 @@
-package = copyhelper
-headers = copyhelper.h
-
-headerFilter = copyhelper.h
-
-compilerOpts = -I/Users/zhengyishen/Codes/claude-code/voice/pipelines/kmp/libs/copyhelper
-
-staticLibraries = libCopyHelper_x86_64.a
-libraryPaths = /Users/zhengyishen/Codes/claude-code/voice/pipelines/kmp/libs
