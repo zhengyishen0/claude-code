@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/commit-reminder.sh"
+            "command": "echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Stop fired\" >> /tmp/stop-test.log"
           }
         ]
       }
