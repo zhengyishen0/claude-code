@@ -12,7 +12,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../paths.sh"
 WORLD_LOG="$PROJECT_DIR/world/world.log"
-EVENT_CMD="$PROJECT_DIR/world/commands/event.sh"
 
 # Configuration
 DRY_RUN="${DRY_RUN:-false}"
@@ -48,14 +47,14 @@ WHAT IT DOES:
 EOF
 }
 
-log_event() {
+_log_event() {
     local identifier="$1"
     local message="$2"
 
     if [ "$DRY_RUN" = "true" ]; then
-        echo "[DRY-RUN] Would log: [event:system][$identifier] $message"
+        echo "[DRY-RUN] Would log: system:$identifier | $message"
     else
-        "$EVENT_CMD" system "$identifier" "$message"
+        "$PROJECT_DIR/world/run.sh" log "system:$identifier" "$message"
     fi
 }
 
@@ -128,7 +127,7 @@ start_agent() {
     else
         # In production: claude --resume $session_id &
         # For now, just log the action
-        log_event "level1-supervisor" "would start agent $session_id (not implemented)"
+        _log_event "level1-supervisor" "would start agent $session_id (not implemented)"
         echo "Started agent: $session_id (simulated)"
     fi
 }
@@ -141,7 +140,7 @@ kill_orphan() {
         echo "[DRY-RUN] Would kill orphan process: $pid"
     else
         # In production: kill $pid
-        log_event "level1-supervisor" "would kill orphan $pid (not implemented)"
+        _log_event "level1-supervisor" "would kill orphan $pid (not implemented)"
         echo "Killed orphan: $pid (simulated)"
     fi
 }

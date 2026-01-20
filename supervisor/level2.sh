@@ -13,8 +13,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../paths.sh"
 WORLD_LOG="$PROJECT_DIR/world/world.log"
-AGENT_CMD="$PROJECT_DIR/world/commands/agent.sh"
-EVENT_CMD="$PROJECT_DIR/world/commands/event.sh"
 
 # Configuration
 MAX_RETRIES="${MAX_RETRIES:-3}"
@@ -171,7 +169,7 @@ log_agent() {
     if [ "$DRY_RUN" = "true" ]; then
         echo "[DRY-RUN] Would log: [agent:$status][$session_id] $message"
     else
-        "$AGENT_CMD" "$status" "$session_id" "$message"
+        "$PROJECT_DIR/world/run.sh" log "agent:$status:$session_id" "$message"
     fi
 }
 
@@ -184,7 +182,7 @@ log_event() {
     if [ "$DRY_RUN" = "true" ]; then
         echo "[DRY-RUN] Would log: [event:$source][$identifier] $message"
     else
-        "$EVENT_CMD" "$source" "$identifier" "$message"
+        "$PROJECT_DIR/world/run.sh" log "$source:$identifier" "$message"
     fi
 }
 

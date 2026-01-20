@@ -6,28 +6,34 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMMANDS_DIR="$SCRIPT_DIR/commands"
+source "$SCRIPT_DIR/../paths.sh"
+
+# Log an event to world.log
+log_event() {
+    local type="$1"
+    local message="$2"
+    local entry="[$(date -u +%Y-%m-%dT%H:%M:%SZ)] [event] $type | $message"
+    echo "$entry" >> "$WORLD_LOG"
+    echo "$entry"
+}
 
 show_help() {
-    cat <<'EOF'
+    cat <<'HELP'
 world - Single source of truth for agent coordination
 
 USAGE:
-    world create <options>     Create event, task, or agent
-    world check [options]      Query the log
+    world create <id> <title>  Create a task
+    world log [type] [msg]     Log event (or show recent)
     world spawn <task-id>      Start a task agent
     world watch [interval]     Start the daemon
 
 CREATE:
-    world create --event <type> <content>
-    world create --task <id> <title> [--wait <cond>] [--need <criteria>]
-    world create --agent task <title> [--wait <cond>] [--need <criteria>]
-    world create --agent supervisor
+    world create fix-bug "Fix the login bug"
+    world create task-1 "Title" --wait "condition" --need "criteria"
 
-CHECK:
-    world check                    All entries
-    world check --task             Only tasks
-    world check --event            Only events
-    world check --task --status pending
+LOG:
+    world log                      Show last 20 entries
+    world log "system" "message"   Log an event
 
 SPAWN:
     world spawn <task-id>          Start task in worktree
@@ -36,18 +42,16 @@ WATCH:
     world watch                    Daemon (5s interval)
     world watch 10                 Daemon (10s interval)
 
-    The watch daemon:
-    - Syncs MD changes to log
-    - Spawns pending tasks
-    - Recovers crashed tasks
-    - Archives verified/canceled
+LOG FORMAT:
+    [timestamp] [event] <type> | <message>
+    [timestamp] [task: <status>] <id>(<title>) | file: ... | wait: ... | need: ...
 
-EXAMPLES:
-    world create --agent task "Fix login bug" --need "tests pass"
-    world spawn fix-bug
-    world check --task --status running
-    world watch
-EOF
+QUERY EXAMPLES (use grep):
+    grep "\[task:" world/world.log
+    grep "\[task: pending\]" world/world.log
+    grep "\[event\] git:" world/world.log
+    tail -20 world/world.log
+HELP
 }
 
 # Route to command
@@ -56,9 +60,18 @@ case "${1:-}" in
         shift
         "$COMMANDS_DIR/create.sh" "$@"
         ;;
-    check)
+    log)
         shift
-        "$COMMANDS_DIR/check.sh" "$@"
+        if [ $# -lt 2 ]; then
+            # No args or 1 arg: show recent entries
+            if [ -f "$WORLD_LOG" ]; then
+                tail -20 "$WORLD_LOG"
+            else
+                echo "No log entries yet"
+            fi
+        else
+            log_event "$1" "$2"
+        fi
         ;;
     spawn)
         shift

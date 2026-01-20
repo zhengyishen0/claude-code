@@ -7,7 +7,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../paths.sh"
 WORLD_LOG="$PROJECT_DIR/world/world.log"
-EVENT_CMD="$PROJECT_DIR/world/commands/event.sh"
 LEVEL1="$SCRIPT_DIR/level1.sh"
 LEVEL2="$SCRIPT_DIR/level2.sh"
 
@@ -52,14 +51,14 @@ SUPERVISOR ROLES:
 EOF
 }
 
-log_event() {
+_log_event() {
     local identifier="$1"
     local message="$2"
 
     if [ "$DRY_RUN" = "true" ]; then
-        echo "[DRY-RUN] Would log: [event:system][$identifier] $message"
+        echo "[DRY-RUN] Would log: system:$identifier | $message"
     else
-        "$EVENT_CMD" system "$identifier" "$message" >/dev/null
+        "$PROJECT_DIR/world/run.sh" log "system:$identifier" "$message"
     fi
 }
 
@@ -83,9 +82,9 @@ run_daemon() {
     echo "Press Ctrl+C to stop"
     echo ""
 
-    log_event "supervisor-daemon" "started with poll_interval=${POLL_INTERVAL}s"
+    _log_event "supervisor-daemon" "started with poll_interval=${POLL_INTERVAL}s"
 
-    trap 'echo ""; echo "Stopping daemon..."; log_event "supervisor-daemon" "stopped"; exit 0' INT TERM
+    trap 'echo ""; echo "Stopping daemon..."; _log_event "supervisor-daemon" "stopped"; exit 0' INT TERM
 
     while true; do
         echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Running supervisor cycle..."

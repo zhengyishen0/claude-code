@@ -141,38 +141,45 @@ Single source of truth for agent coordination
 
 Run `world` for full help.
 
-**Commands:** create, check, supervisor
+**Commands:** create, log, spawn, watch
 
-**Create Examples:**
+**Create** - Create task markdown files:
 ```bash
-# Events (facts)
-world create --event "git:commit" "fix: login bug"
-world create --event "system" --session abc123 "task started"
-
-# Tasks (to-dos with lifecycle)
-world create --task "login-fix" "pending" "now" "Fix login" --need "tests pass"
-world create --task "login-fix" "running"
-world create --task "login-fix" "done"
-
-# Agent status (shorthand)
-world create --agent start abc123 "Starting task"
-world create --agent finish abc123 "Task completed"
+world create fix-bug "Fix the login bug"
+world create auth-feature "Add auth" --need "tests pass"
 ```
 
-**Check Examples:**
+**Log** - Log events or view recent entries:
 ```bash
-world check                           # All entries
-world check --task --status pending   # Pending tasks
-world check --session abc123          # Filter by session
+world log                           # Show last 20 entries
+world log "system" "daemon started" # Log an event
+world log "git:commit" "fix: bug"   # Log with type
+```
+
+**Spawn/Watch** - Agent lifecycle:
+```bash
+world spawn fix-bug    # Start task agent in worktree
+world watch            # Daemon: sync, spawn, recover, archive
+```
+
+**Log Format** (grep-able plain text):
+```
+[timestamp] [event] <type> | <message>
+[timestamp] [task: <status>] <id>(<title>) | file: ... | wait: ... | need: ...
+```
+
+**Query Examples** (no special tool needed):
+```bash
+grep "\[task: pending\]" world/world.log   # Pending tasks
+grep "\[event\] git:" world/world.log      # Git events
+tail -20 world/world.log                   # Recent entries
 ```
 
 **Key Principles:**
-1. **Two commands** - `create` and `check` only
-2. **Two data types** - Events (facts) and Tasks (to-dos)
-3. **Plain text** - Human readable, grep-able with `rg`
-4. **Append-only** - Never delete, only add
-5. **Unified format** - `|` separators for parsing
-
+1. **Three commands** - `create`, `log`, `spawn` (+ `watch` daemon)
+2. **Plain text** - Human readable, grep-able
+3. **Append-only** - Never delete, only add
+4. **MD → Log → Agent** - Tasks flow from markdown to log to execution
 ### memory
 Cross-session knowledge sharing for Claude Code - search and consult previous sessions like a hive mind.
 
