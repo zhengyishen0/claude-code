@@ -8,9 +8,9 @@ source "$SCRIPT_DIR/../../paths.sh"
 
 # Check for uncommitted changes
 if git -C "$PROJECT_DIR" status --porcelain 2>/dev/null | grep -q .; then
-    echo ""
-    echo "📍 Checkpoint. Uncommitted changes detected. Commit if you've reached a milestone."
-    echo ""
+    echo "" >&2
+    echo "📍 Checkpoint. Uncommitted changes detected. Commit if you've reached a milestone." >&2
+    echo "" >&2
 fi
 
 exit 0
