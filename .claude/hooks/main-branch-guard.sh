@@ -1,7 +1,6 @@
 #!/bin/bash
 # Block Edit/Write operations on main branch
-# Allow: Read, merge operations
-# Block: Direct edits to main
+# Exit code 2 = block tool execution (exit 1 only shows warning)
 
 set -eo pipefail
 
@@ -18,10 +17,11 @@ fi
 
 # Block Edit and Write on main
 if [[ "$tool_name" == "Edit" || "$tool_name" == "Write" ]]; then
-    echo "BLOCKED: Cannot edit files on main branch." >&2
+    echo "BLOCKED: Cannot $tool_name on main branch." >&2
+    echo "" >&2
     echo "Create a worktree first:" >&2
-    echo "  git worktree add -b FEATURE ../claude-code-FEATURE" >&2
-    exit 1
+    echo "  git worktree add -b feature-name ../claude-code-feature-name" >&2
+    exit 2
 fi
 
 # For Bash, check if it's a direct commit (not merge)
@@ -34,9 +34,10 @@ if [[ "$tool_name" == "Bash" ]]; then
         if echo "$command" | grep -qE 'git\s+merge'; then
             exit 0
         fi
-        echo "BLOCKED: Cannot commit directly on main branch." >&2
+        echo "BLOCKED: Cannot commit on main branch." >&2
+        echo "" >&2
         echo "Create a worktree first, or use 'git merge' to merge a feature branch." >&2
-        exit 1
+        exit 2
     fi
 fi
 
