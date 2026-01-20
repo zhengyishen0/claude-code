@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-# claude-tools/world/supervisors/run.sh
+# supervisor/daemon.sh
 # Supervisor daemon - runs both Level 1 and Level 2
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORLD_DIR="$SCRIPT_DIR/.."
-WORLD_LOG="$WORLD_DIR/world.log"
-EVENT_CMD="$WORLD_DIR/commands/event.sh"
+source "$SCRIPT_DIR/../paths.sh"
+WORLD_LOG="$PROJECT_DIR/world/world.log"
 LEVEL1="$SCRIPT_DIR/level1.sh"
 LEVEL2="$SCRIPT_DIR/level2.sh"
 
@@ -52,16 +51,6 @@ SUPERVISOR ROLES:
 EOF
 }
 
-log_event() {
-    local identifier="$1"
-    local message="$2"
-
-    if [ "$DRY_RUN" = "true" ]; then
-        echo "[DRY-RUN] Would log: [event:system][$identifier] $message"
-    else
-        "$EVENT_CMD" system "$identifier" "$message" >/dev/null
-    fi
-}
 
 run_once() {
     echo "=== Running Supervisors ==="
@@ -83,9 +72,9 @@ run_daemon() {
     echo "Press Ctrl+C to stop"
     echo ""
 
-    log_event "supervisor-daemon" "started with poll_interval=${POLL_INTERVAL}s"
+    echo "[$(date -u +%H:%M:%S)] supervisor-daemon: started with poll_interval=${POLL_INTERVAL}s"
 
-    trap 'echo ""; echo "Stopping daemon..."; log_event "supervisor-daemon" "stopped"; exit 0' INT TERM
+    trap 'echo ""; echo "Stopping daemon..."; echo "[$(date -u +%H:%M:%S)] supervisor-daemon: stopped"; exit 0' INT TERM
 
     while true; do
         echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Running supervisor cycle..."

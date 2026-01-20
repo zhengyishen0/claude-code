@@ -12,7 +12,7 @@ source "$SCRIPT_DIR/../paths.sh"
 SUPERVISOR_SESSION="${SUPERVISOR_SESSION_ID:-$(uuidgen | tr '[:upper:]' '[:lower:]')}"
 
 show_help() {
-    cat <<'HELP'
+    cat <<'EOF'
 supervisor - L2 Supervisor: verify, cancel, retry tasks
 
 USAGE:
@@ -42,7 +42,7 @@ EXAMPLES:
     supervisor verify fix-bug
     supervisor cancel feature-x
     supervisor retry failed-task
-HELP
+EOF
 }
 
 # Ensure yq is installed

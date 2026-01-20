@@ -1,64 +1,46 @@
 #!/usr/bin/env bash
-# world/run.sh
-# World - single source of truth for agent coordination
+# world/run.sh - Single source of truth for agent coordination
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMMANDS_DIR="$SCRIPT_DIR/commands"
+source "$SCRIPT_DIR/../paths.sh"
 
 show_help() {
-    cat <<'EOF'
-world - Single source of truth for agent coordination
+    cat <<'HELP'
+world - Agent coordination
 
-USAGE:
-    world create <options>     Create event, task, or agent
-    world check [options]      Query the log
-    world spawn <task-id>      Start a task agent
-    world watch [interval]     Start the daemon
+COMMANDS:
+    world create <title>              Create task (auto-generates ID)
+    world log event <type> <msg>      Log an event
+    world log task <status> ...       Log task status
+    world spawn <task-id>             Start agent in worktree
+    world watch [interval]            Run daemon (sync/spawn/recover)
 
-CREATE:
-    world create --event <type> <content>
-    world create --task <id> <title> [--wait <cond>] [--need <criteria>]
-    world create --agent task <title> [--wait <cond>] [--need <criteria>]
-    world create --agent supervisor
-
-CHECK:
-    world check                    All entries
-    world check --task             Only tasks
-    world check --event            Only events
-    world check --task --status pending
-
-SPAWN:
-    world spawn <task-id>          Start task in worktree
-
-WATCH:
-    world watch                    Daemon (5s interval)
-    world watch 10                 Daemon (10s interval)
-
-    The watch daemon:
-    - Syncs MD changes to log
-    - Spawns pending tasks
-    - Recovers crashed tasks
-    - Archives verified/canceled
-
-EXAMPLES:
-    world create --agent task "Fix login bug" --need "tests pass"
-    world spawn fix-bug
-    world check --task --status running
-    world watch
-EOF
+LOG FORMAT:
+    [timestamp] [event: <type>] <message>
+    [timestamp] [task: <status>] <id>(<title>) | wait: <w> | need: <n>
+HELP
 }
 
-# Route to command
+show_entries() {
+    if [ -f "$WORLD_LOG" ]; then
+        tail -20 "$WORLD_LOG"
+        echo ""
+    fi
+    show_help
+}
+
+# Route
 case "${1:-}" in
     create)
         shift
         "$COMMANDS_DIR/create.sh" "$@"
         ;;
-    check)
+    log)
         shift
-        "$COMMANDS_DIR/check.sh" "$@"
+        "$COMMANDS_DIR/log.sh" "$@"
         ;;
     spawn)
         shift
@@ -68,12 +50,10 @@ case "${1:-}" in
         shift
         "$COMMANDS_DIR/watch.sh" "$@"
         ;;
-    help|-h|--help|"")
+    help|-h|--help)
         show_help
         ;;
     *)
-        echo "Unknown command: $1" >&2
-        echo "Run 'world help' for usage" >&2
-        exit 1
+        show_entries
         ;;
 esac

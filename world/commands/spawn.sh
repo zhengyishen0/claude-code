@@ -4,15 +4,12 @@
 
 set -euo pipefail
 
-# Source paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../paths.sh"
 
-# Ensure directories exist
-mkdir -p "$PID_DIR" "$PROJECT_WORKTREES"
 
 show_help() {
-    cat <<'HELP'
+    cat <<'EOF'
 spawn - Start a task agent in a dedicated worktree
 
 USAGE:
@@ -20,7 +17,7 @@ USAGE:
 
 DESCRIPTION:
     1. Reads task from tasks/<id>.md
-    2. Creates worktree at $PROJECT_WORKTREES/<task-id>
+    2. Creates worktree: ~/Codes/.worktrees/<project>/<task-id>
     3. Updates status to 'running', sets 'started' timestamp
     4. Starts claude with --session-id (preserves context)
     5. Saves PID for monitoring
@@ -28,7 +25,7 @@ DESCRIPTION:
 EXAMPLES:
     world spawn fix-bug
     world spawn feature-123
-HELP
+EOF
 }
 
 if [ $# -lt 1 ] || [ "${1:-}" = "help" ] || [ "${1:-}" = "-h" ]; then
@@ -70,6 +67,7 @@ if [ "$status" != "pending" ]; then
 fi
 
 # Check if already running
+mkdir -p "$PID_DIR"
 if [ -f "$PID_DIR/$task_id.pid" ]; then
     pid=$(cat "$PID_DIR/$task_id.pid")
     if kill -0 "$pid" 2>/dev/null; then
@@ -87,8 +85,11 @@ echo "Session: $session_id"
 [ "$need" != "-" ] && echo "Need: $need"
 echo ""
 
-# Worktree path from paths.sh
-worktree_path="$PROJECT_WORKTREES/$task_id"
+# Worktree setup - ~/Codes/.worktrees/<project>/<worktree>/
+project_name="$(basename "$PROJECT_DIR")"
+worktree_base="$(dirname "$PROJECT_DIR")/.worktrees/$project_name"
+worktree_path="$worktree_base/$task_id"
+mkdir -p "$worktree_base"
 
 if [ -d "$worktree_path" ]; then
     echo "Reusing existing worktree: $worktree_path"
@@ -106,25 +107,22 @@ timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 yq -i --front-matter=process '.status = "running"' "$task_md"
 yq -i --front-matter=process ".started = \"$timestamp\"" "$task_md"
 
-# Build prompt
-prompt="You are a task agent.
+# System prompt from markdown file
+prompt_file="$SCRIPT_DIR/../agent-prompt.md"
+if [ ! -f "$prompt_file" ]; then
+    echo "Error: Agent prompt file not found: $prompt_file" >&2
+    exit 1
+fi
+system_prompt=$(sed "s|{{TASK_FILE}}|$task_md|g" "$prompt_file")
 
-Your task file: $task_md
+# Task prompt (specific task to execute)
+task_prompt="Execute this task:
 
-Task: $title
+Title: $title
 Wait: $wait
 Need: $need
 
-WORKFLOW:
-1. Read the task markdown file
-2. If wait != \"-\", implement wait logic
-3. Execute the task
-4. Update markdown when done:
-   - status: done
-   - Add result summary
-
-Do NOT call world commands. Just edit the markdown file.
-The system will sync changes automatically."
+Start by reading the task file, then proceed with the work."
 
 echo "Starting claude..."
 echo "---"
@@ -135,8 +133,13 @@ export AGENT_SESSION_ID="$session_id"
 export TASK_FILE="$task_md"
 export CLAUDE_PROJECT_DIR="$worktree_path"
 
-# Start claude
-(cd "$worktree_path" && claude --print --session-id "$session_id" "$prompt") &
+# Start claude with appended system prompt
+(cd "$worktree_path" && claude \
+    --dangerously-skip-permissions \
+    --print \
+    --session-id "$session_id" \
+    --append-system-prompt "$system_prompt" \
+    "$task_prompt") &
 CLAUDE_PID=$!
 
 # Save PID

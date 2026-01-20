@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# claude-tools/world/supervisors/level1.sh
+# supervisor/level1.sh
 # Level 1 Supervisor: State Enforcer (Pure Code)
 #
 # Job: Ensure world.log state = actual system state
@@ -10,9 +10,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORLD_DIR="$SCRIPT_DIR/.."
-WORLD_LOG="$WORLD_DIR/world.log"
-EVENT_CMD="$WORLD_DIR/commands/event.sh"
+source "$SCRIPT_DIR/../paths.sh"
+WORLD_LOG="$PROJECT_DIR/world/world.log"
 
 # Configuration
 DRY_RUN="${DRY_RUN:-false}"
@@ -48,16 +47,6 @@ WHAT IT DOES:
 EOF
 }
 
-log_event() {
-    local identifier="$1"
-    local message="$2"
-
-    if [ "$DRY_RUN" = "true" ]; then
-        echo "[DRY-RUN] Would log: [event:system][$identifier] $message"
-    else
-        "$EVENT_CMD" system "$identifier" "$message"
-    fi
-}
 
 verbose() {
     if [ "$VERBOSE" = "true" ]; then
@@ -128,7 +117,7 @@ start_agent() {
     else
         # In production: claude --resume $session_id &
         # For now, just log the action
-        log_event "level1-supervisor" "would start agent $session_id (not implemented)"
+        echo "[$(date -u +%H:%M:%S)] level1-supervisor: would start agent $session_id (not implemented)"
         echo "Started agent: $session_id (simulated)"
     fi
 }
@@ -141,7 +130,7 @@ kill_orphan() {
         echo "[DRY-RUN] Would kill orphan process: $pid"
     else
         # In production: kill $pid
-        log_event "level1-supervisor" "would kill orphan $pid (not implemented)"
+        echo "[$(date -u +%H:%M:%S)] level1-supervisor: would kill orphan $pid (not implemented)"
         echo "Killed orphan: $pid (simulated)"
     fi
 }

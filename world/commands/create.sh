@@ -1,246 +1,80 @@
 #!/usr/bin/env bash
-# world/commands/create.sh
-# Create events, tasks, or auto-register agents
+# world/commands/create.sh - Create task markdown files
 
 set -euo pipefail
 
-# Source paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../../paths.sh"
 
-# Ensure directories exist
-mkdir -p "$TASKS_DIR"
-touch "$WORLD_LOG"
-
 show_help() {
     cat <<'HELP'
-create - Add entries to world log
+create - Create a task markdown file
 
 USAGE:
-    create --event <type> [--session <id>] <message>
-    create --task <id> <title> [--wait <condition>] [--need <requirement>]
-    create --agent task <title> [--wait <condition>] [--need <requirement>]
-    create --agent supervisor
+    world create <title> [--wait <cond>] [--need <criteria>]
 
-EVENT TYPES:
-    git:commit, git:push, git:merge    Git operations
-    system                              System events
-    user                                User actions
-    <custom>                            Any custom type
+ARGUMENTS:
+    <title>    Task title/description
 
-TASK CREATION:
-    --task <id> <title>                 Create task with explicit ID
-    --agent task <title>                Auto-generate task ID and session
+OPTIONS:
+    --wait <cond>      Wait condition (default: "-")
+    --need <criteria>  Success criteria (default: "-")
 
 EXAMPLES:
-    create --event "git:commit" "fix: login bug"
-    create --event "system" --session abc123 "task started"
-    create --task "login-fix" "Fix login validation"
-    create --agent task "Implement dark mode" --need "tests pass"
-    create --agent supervisor
+    world create "Fix the login bug"
+    world create "Add authentication" --need "tests pass"
+
+NOTE:
+    Task ID is auto-generated from session UUID (first 8 chars).
 HELP
 }
 
-# Generate UUIDs
-generate_task_id() {
-    uuidgen | tr '[:upper:]' '[:lower:]' | cut -d'-' -f1
-}
+mkdir -p "$TASKS_DIR"
 
-generate_session_id() {
-    uuidgen | tr '[:upper:]' '[:lower:]'
-}
+if [ $# -lt 1 ] || [ "$1" = "help" ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+    show_help
+    exit 0
+fi
 
-# Create task markdown file
-create_task_md() {
-    local task_id="$1"
-    local session_id="$2"
-    local title="$3"
-    local wait="${4:--}"
-    local need="${5:--}"
-    
-    local task_file="$TASKS_DIR/$task_id.md"
-    local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-    
-    cat > "$task_file" << TASKEOF
+title="$1"
+shift
+
+# Parse options
+wait="-"
+need="-"
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --wait) wait="$2"; shift 2 ;;
+        --need) need="$2"; shift 2 ;;
+        *) echo "Error: Unknown option '$1'" >&2; exit 1 ;;
+    esac
+done
+
+timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+session_id=$(uuidgen | tr '[:upper:]' '[:lower:]')
+task_id="${session_id:0:8}"
+
+task_file="$TASKS_DIR/$task_id.md"
+
+# Write MD only - watch.sh will sync to log
+cat > "$task_file" << TASK
 ---
 id: $task_id
 session_id: $session_id
 title: $title
 status: pending
+wait: "$wait"
+need: "$need"
 created: $timestamp
-wait: $wait
-need: $need
 ---
 
 # $title
 
-## Description
+## Progress
+- [ ] Started
 
-Task created at $timestamp
+TASK
 
-## Notes
-
-TASKEOF
-
-    echo "$task_file"
-}
-
-# Create event entry
-do_create_event() {
-    local event_type="$1"
-    local session_id="$2"
-    local message="$3"
-    
-    local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-    local entry="[$timestamp] [event] $event_type"
-    
-    if [ -n "$session_id" ]; then
-        entry="$entry | session: $session_id"
-    fi
-    
-    entry="$entry | $message"
-    
-    echo "$entry" >> "$WORLD_LOG"
-    echo "$entry"
-}
-
-# Create task entry
-do_create_task() {
-    local task_id="$1"
-    local title="$2"
-    local wait="$3"
-    local need="$4"
-    
-    local session_id=$(generate_session_id)
-    local task_file=$(create_task_md "$task_id" "$session_id" "$title" "$wait" "$need")
-    
-    local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-    local entry="[$timestamp] [task: pending] $task_id($title) | file: tasks/$task_id.md | wait: $wait | need: $need"
-    
-    echo "$entry" >> "$WORLD_LOG"
-    echo "Created task: $task_id"
-    echo "  File: $task_file"
-    echo "  Session: $session_id"
-}
-
-# Auto-create agent (task or supervisor)
-do_create_agent() {
-    local agent_type="$1"
-    shift
-    
-    case "$agent_type" in
-        task)
-            local title=""
-            local wait="-"
-            local need="-"
-            
-            # Parse remaining args
-            while [ $# -gt 0 ]; do
-                case "$1" in
-                    --wait) wait="$2"; shift 2 ;;
-                    --need) need="$2"; shift 2 ;;
-                    *) 
-                        if [ -z "$title" ]; then
-                            title="$1"
-                        fi
-                        shift
-                        ;;
-                esac
-            done
-            
-            if [ -z "$title" ]; then
-                echo "Error: --agent task requires <title>" >&2
-                exit 1
-            fi
-            
-            local task_id=$(generate_task_id)
-            local session_id=$(generate_session_id)
-            local task_file=$(create_task_md "$task_id" "$session_id" "$title" "$wait" "$need")
-            
-            local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-            local entry="[$timestamp] [task: pending] $task_id($title) | file: tasks/$task_id.md | wait: $wait | need: $need"
-            echo "$entry" >> "$WORLD_LOG"
-            
-            echo "Created task agent: $task_id"
-            echo "  Title: $title"
-            echo "  File: $task_file"
-            echo "  Session: $session_id"
-            ;;
-        supervisor)
-            local session_id=$(generate_session_id)
-            local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-            local entry="[$timestamp] [event] agent:supervisor:start:$session_id | Supervisor registered"
-            echo "$entry" >> "$WORLD_LOG"
-            
-            echo "Registered supervisor agent"
-            echo "  Session: $session_id"
-            echo ""
-            echo "Export this to use supervisor commands:"
-            echo "  export SUPERVISOR_SESSION_ID=$session_id"
-            ;;
-        *)
-            echo "Error: Unknown agent type: $agent_type" >&2
-            echo "Valid types: task, supervisor" >&2
-            exit 1
-            ;;
-    esac
-}
-
-# Parse arguments
-if [ $# -lt 1 ]; then
-    show_help
-    exit 0
-fi
-
-case "$1" in
-    --event)
-        shift
-        [ $# -lt 1 ] && { echo "Error: --event requires <type>" >&2; exit 1; }
-        event_type="$1"
-        shift
-        
-        session_id=""
-        if [ "${1:-}" = "--session" ]; then
-            shift
-            session_id="$1"
-            shift
-        fi
-        
-        message="${*:-}"
-        [ -z "$message" ] && { echo "Error: --event requires <message>" >&2; exit 1; }
-        
-        do_create_event "$event_type" "$session_id" "$message"
-        ;;
-    --task)
-        shift
-        [ $# -lt 2 ] && { echo "Error: --task requires <id> <title>" >&2; exit 1; }
-        task_id="$1"
-        title="$2"
-        shift 2
-        
-        wait="-"
-        need="-"
-        while [ $# -gt 0 ]; do
-            case "$1" in
-                --wait) wait="$2"; shift 2 ;;
-                --need) need="$2"; shift 2 ;;
-                *) shift ;;
-            esac
-        done
-        
-        do_create_task "$task_id" "$title" "$wait" "$need"
-        ;;
-    --agent)
-        shift
-        [ $# -lt 1 ] && { echo "Error: --agent requires <type>" >&2; exit 1; }
-        do_create_agent "$@"
-        ;;
-    help|-h|--help)
-        show_help
-        ;;
-    *)
-        echo "Unknown option: $1" >&2
-        echo "Run 'world create help' for usage" >&2
-        exit 1
-        ;;
-esac
+echo "Created: tasks/$task_id.md"
+echo "  title: $title"
+echo "  session: $session_id"
