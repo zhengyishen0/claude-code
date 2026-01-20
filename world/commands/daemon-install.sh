@@ -36,16 +36,15 @@ EOF
 cmd_install() {
     echo "Installing world watch daemon..."
 
-    # Check fswatch
+    # Auto-install dependencies
     if ! command -v fswatch >/dev/null 2>&1; then
-        echo "Error: fswatch not installed. Install with: brew install fswatch" >&2
-        exit 1
+        echo "Installing fswatch..."
+        brew install fswatch
     fi
 
-    # Check yq
     if ! command -v yq >/dev/null 2>&1; then
-        echo "Error: yq not installed. Install with: brew install yq" >&2
-        exit 1
+        echo "Installing yq..."
+        brew install yq
     fi
 
     # Create directories
