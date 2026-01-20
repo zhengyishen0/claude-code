@@ -4,8 +4,11 @@
 
 set -euo pipefail
 
-# Skip if PROJECT_DIR not set (not in our project context)
-[ -z "${PROJECT_DIR:-}" ] && exit 0
+# Derive PROJECT_DIR from git root
+PROJECT_DIR="$(git rev-parse --show-toplevel)"
+
+# Only run if record.sh exists (we're in claude-code repo)
+[ -f "$PROJECT_DIR/world/commands/record.sh" ] || exit 0
 
 # Get commit info
 COMMIT_HASH=$(git rev-parse --short HEAD)
