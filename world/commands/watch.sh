@@ -8,7 +8,7 @@ set -euo pipefail
 
 TASKS_DIR="$PROJECT_DIR/world/tasks"
 WORLD_LOG="$PROJECT_DIR/world/world.log"
-PID_DIR="/tmp/world/pids"
+PID_DIR="/tmp/world-watch/pids"
 PROJECT_WORKTREES="$(dirname "$PROJECT_DIR")/.worktrees/$(basename "$PROJECT_DIR")"
 PROJECT_ARCHIVE="$PROJECT_WORKTREES/.archive"
 PROJECT_NAME="$(basename "$PROJECT_DIR")"

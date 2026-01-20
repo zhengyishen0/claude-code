@@ -8,7 +8,7 @@ session_id=$(echo "$input" | jq -r '.session_id // empty')
 cwd=$(echo "$input" | jq -r '.cwd // empty')
 
 # Use env vars (set by spawn.sh) or defaults
-: "${PID_DIR:=/tmp/world/pids}"
+: "${PID_DIR:=/tmp/world-watch/pids}"
 
 # Only process if this is a task agent
 if [ "$AGENT_TYPE" != "task" ]; then
@@ -41,10 +41,6 @@ if [ "$current_status" = "running" ]; then
 fi
 
 # Clean up PID file
-if [ -n "${PID_DIR:-}" ]; then
-    rm -f "$PID_DIR/$task_id.pid" 2>/dev/null || true
-else
-    rm -f "/tmp/world/pids/$task_id.pid" 2>/dev/null || true
-fi
+rm -f "$PID_DIR/$task_id.pid" 2>/dev/null || true
 
 exit 0

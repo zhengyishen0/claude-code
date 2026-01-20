@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# world/commands/watch-daemon.sh
-# Event-driven daemon using fswatch - runs as LaunchAgent
+# daemon/world-watch.sh
+# Event-driven world task watcher - runs as LaunchAgent
 
 set -euo pipefail
 
@@ -8,13 +8,13 @@ set -euo pipefail
 
 TASKS_DIR="$PROJECT_DIR/world/tasks"
 WORLD_LOG="$PROJECT_DIR/world/world.log"
-PID_DIR="/tmp/world/pids"
+PID_DIR="/tmp/world-watch/pids"
 PROJECT_WORKTREES="$(dirname "$PROJECT_DIR")/.worktrees/$(basename "$PROJECT_DIR")"
 PROJECT_ARCHIVE="$PROJECT_WORKTREES/.archive"
 
 SPAWN_CMD="$PROJECT_DIR/world/commands/spawn.sh"
 LOG_CMD="$PROJECT_DIR/world/commands/log.sh"
-DAEMON_LOG="/tmp/world/daemon.log"
+DAEMON_LOG="/tmp/world-watch/daemon.log"
 
 mkdir -p "$PID_DIR" "$TASKS_DIR" "$(dirname "$DAEMON_LOG")"
 

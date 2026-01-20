@@ -18,18 +18,15 @@ COMMANDS:
     world log event <type> <msg>      Log an event
     world log task <status> ...       Log task status
     world spawn <task-id>             Start agent in worktree
-    world watch [interval]            Run polling daemon
-    world daemon <cmd>                Manage fswatch daemon (LaunchAgent)
-
-DAEMON COMMANDS:
-    world daemon install              Install and start LaunchAgent
-    world daemon uninstall            Stop and remove LaunchAgent
-    world daemon {start|stop|status}  Control the daemon
-    world daemon log                  Tail daemon log
+    world watch [interval]            Run polling daemon (foreground)
+    world daemon <cmd>                Shortcut for: daemon world-watch <cmd>
 
 LOG FORMAT:
     [timestamp] [event: <type>] <message>
     [timestamp] [task: <status>] <id>(<title>) | wait: <w> | need: <n>
+
+SEE ALSO:
+    daemon help                       Full daemon management
 HELP
 }
 
@@ -61,7 +58,7 @@ case "${1:-}" in
         ;;
     daemon)
         shift
-        "$COMMANDS_DIR/daemon-install.sh" "$@"
+        "$PROJECT_DIR/daemon/run.sh" world-watch "$@"
         ;;
     help|-h|--help)
         show_help

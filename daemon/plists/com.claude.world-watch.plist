@@ -3,26 +3,26 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.claude.world.watch</string>
-    
+    <string>com.claude.world-watch</string>
+
     <key>ProgramArguments</key>
     <array>
-        <string>__PROJECT_DIR__/world/commands/watch-daemon.sh</string>
+        <string>__PROJECT_DIR__/daemon/world-watch.sh</string>
         <string>start</string>
     </array>
-    
+
     <key>RunAtLoad</key>
     <true/>
-    
+
     <key>KeepAlive</key>
     <true/>
-    
+
     <key>StandardOutPath</key>
-    <string>/tmp/world/daemon.stdout.log</string>
-    
+    <string>/tmp/world-watch/daemon.stdout.log</string>
+
     <key>StandardErrorPath</key>
-    <string>/tmp/world/daemon.stderr.log</string>
-    
+    <string>/tmp/world-watch/daemon.stderr.log</string>
+
     <key>EnvironmentVariables</key>
     <dict>
         <key>PROJECT_DIR</key>
