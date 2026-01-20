@@ -47,6 +47,15 @@
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/main-branch-guard.sh"
           }
         ]
+      },
+      {
+        "matcher": "TodoWrite",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/todo-commit-reminder.sh"
+          }
+        ]
       }
     ]
   }
