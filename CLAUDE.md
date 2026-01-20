@@ -27,27 +27,45 @@ brew bundle install --upgrade  # Update all dependencies & lockfile
 **After EACH edit**:
 - Stage the change immediately: `git add <file>`
 
+**Worktree Structure**:
+```
+~/Codes/.worktrees/<project>/
+├── <active-worktrees>/     # e.g., feature-login, fix-bug
+└── .archive/
+    └── <archived-worktrees>/   # Completed task worktrees
+```
+
 **Creating a worktree**:
 ```bash
-git worktree add -b feature-name ../claude-code-feature-name
-# Use absolute paths to work in the worktree
+# Manual worktrees (human-driven)
+git worktree add -b feature-name ~/Codes/.worktrees/claude-code/feature-name
+
+# Task agent worktrees (auto-created by world spawn)
+# Location: ~/Codes/.worktrees/<project>/<task-id>/
 ```
 
 **Using the worktree**:
 Use absolute paths when working in worktrees:
 ```bash
 # Good: absolute paths
-/Users/you/Codes/claude-code-feature-name/src/file.js
+~/Codes/.worktrees/claude-code/feature-name/src/file.js
 
 # Avoid: cd and relative paths
-cd ../claude-code-feature-name && edit src/file.js
+cd ~/Codes/.worktrees/... && edit src/file.js
 ```
 
 **Cleanup after merge**:
 ```bash
 git merge feature-name
-git worktree remove ../claude-code-feature-name
+git worktree remove ~/Codes/.worktrees/claude-code/feature-name
 git branch -d feature-name
+```
+
+**Task Worktree Archival**:
+When tasks are verified/canceled, worktrees are archived (not deleted):
+```bash
+# Archived to: ~/Codes/.worktrees/<project>/.archive/<task-id>-<timestamp>/
+# Can be restored with: supervisor retry <task-id>
 ```
 
 **MANDATORY**: Every Claude session MUST create a dedicated worktree before making ANY changes, no matter how small. No exceptions for typos, docs, or single-line fixes.

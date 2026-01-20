@@ -6,8 +6,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_NAME="$(basename "$PROJECT_DIR")"
 TASKS_DIR="$PROJECT_DIR/tasks"
-ARCHIVE_DIR="$HOME/.claude-archive"
+
+# Worktree paths - ~/Codes/.worktrees/<project>/
+WORKTREE_BASE="$(dirname "$PROJECT_DIR")/.worktrees/$PROJECT_NAME"
+ARCHIVE_DIR="$WORKTREE_BASE/.archive"
 
 # Get supervisor session ID (generate if not set)
 SUPERVISOR_SESSION="${SUPERVISOR_SESSION_ID:-$(uuidgen | tr '[:upper:]' '[:lower:]')}"
@@ -32,6 +36,12 @@ DESCRIPTION:
     The world watch daemon detects these changes and:
     - Archives worktrees for verified/canceled
     - Re-spawns for retry
+
+WORKTREE STRUCTURE:
+    ~/Codes/.worktrees/<project>/
+    ├── <active-worktrees>/
+    └── .archive/
+        └── <archived-worktrees>/
 
 EXAMPLES:
     supervisor verify fix-bug
@@ -111,28 +121,26 @@ do_retry() {
         exit 1
     fi
 
-    local status=$(yq eval --front-matter=extract '.status' "$task_md" 2>/dev/null || echo "")
-    local review=$(yq eval --front-matter=extract '.review // ""' "$task_md" 2>/dev/null || echo "")
-
-    # Check if archived (has review field with verified/canceled)
-    local worktree_path="$(dirname "$PROJECT_DIR")/claude-code-task-$task_id"
+    # New worktree path structure
+    local worktree_path="$WORKTREE_BASE/$task_id"
     
     if [ ! -d "$worktree_path" ]; then
-        # Look for archived worktree
-        local archived=$(ls -d "$ARCHIVE_DIR"/task-$task_id-* 2>/dev/null | tail -1 || echo "")
+        # Look for archived worktree in new location
+        local archived=$(ls -d "$ARCHIVE_DIR"/$task_id-* 2>/dev/null | tail -1 || echo "")
         
         if [ -n "$archived" ] && [ -d "$archived" ]; then
             echo "Restoring from archive: $archived"
+            mkdir -p "$WORKTREE_BASE"
             mv "$archived" "$worktree_path"
             git -C "$PROJECT_DIR" worktree repair "$worktree_path" 2>/dev/null || true
         fi
     fi
 
-    # Reset status to pending and clear review
+    # Reset status to pending and set review
     yq -i --front-matter=process '.status = "pending"' "$task_md"
     yq -i --front-matter=process ".review = \"retry | $SUPERVISOR_SESSION\"" "$task_md"
     
-    # Clear completed timestamp
+    # Clear timestamps
     yq -i --front-matter=process 'del(.completed)' "$task_md" 2>/dev/null || true
     yq -i --front-matter=process 'del(.started)' "$task_md" 2>/dev/null || true
 

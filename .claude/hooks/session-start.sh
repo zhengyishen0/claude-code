@@ -29,10 +29,11 @@ if [ -d "$cwd/.git" ] || git -C "$cwd" rev-parse --git-dir >/dev/null 2>&1; then
   current_branch=$(git -C "$cwd" branch --show-current 2>/dev/null || echo "unknown")
 
   if [ "$current_branch" = "main" ]; then
+    project_name=$(basename "$cwd")
     echo ""
     echo "📍 Current branch: $current_branch"
     echo "⚠️  WARNING: On main branch! Create a worktree before making ANY changes:"
-    echo "   claude-tools worktree create <feature-name>"
+    echo "   git worktree add -b <feature-name> ~/Codes/.worktrees/$project_name/<feature-name>"
     echo ""
   fi
 fi

@@ -22,7 +22,7 @@ USAGE:
 
 DESCRIPTION:
     1. Reads task from tasks/<id>.md
-    2. Creates worktree: ../claude-code-task-<id>
+    2. Creates worktree: ~/Codes/.worktrees/<project>/<task-id>
     3. Updates status to 'running', sets 'started' timestamp
     4. Starts claude with --session-id (preserves context)
     5. Saves PID for monitoring
@@ -89,9 +89,11 @@ echo "Session: $session_id"
 [ "$need" != "-" ] && echo "Need: $need"
 echo ""
 
-# Worktree setup
-worktree_name="claude-code-task-$task_id"
-worktree_path="$(dirname "$PROJECT_DIR")/$worktree_name"
+# Worktree setup - ~/Codes/.worktrees/<project>/<worktree>/
+project_name="$(basename "$PROJECT_DIR")"
+worktree_base="$(dirname "$PROJECT_DIR")/.worktrees/$project_name"
+worktree_path="$worktree_base/$task_id"
+mkdir -p "$worktree_base"
 
 if [ -d "$worktree_path" ]; then
     echo "Reusing existing worktree: $worktree_path"

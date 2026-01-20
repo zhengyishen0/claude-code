@@ -6,14 +6,18 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+PROJECT_NAME="$(basename "$PROJECT_DIR")"
 WORLD_LOG="$SCRIPT_DIR/../world.log"
 TASKS_DIR="$PROJECT_DIR/tasks"
 SPAWN_CMD="$SCRIPT_DIR/spawn.sh"
 
-# PID and archive directories
+# Worktree and archive paths - ~/Codes/.worktrees/<project>/
+WORKTREE_BASE="$(dirname "$PROJECT_DIR")/.worktrees/$PROJECT_NAME"
+ARCHIVE_DIR="$WORKTREE_BASE/.archive"
+
+# PID directory
 PID_DIR="/tmp/world/pids"
-ARCHIVE_DIR="$HOME/.claude-archive"
-mkdir -p "$PID_DIR" "$ARCHIVE_DIR" "$TASKS_DIR"
+mkdir -p "$PID_DIR" "$WORKTREE_BASE" "$ARCHIVE_DIR" "$TASKS_DIR"
 
 # Interval between checks (seconds)
 INTERVAL="${1:-5}"
@@ -33,6 +37,12 @@ DESCRIPTION:
     4. ARCHIVE: verified/canceled → move worktree to archive
 
     Default interval: 5 seconds
+
+WORKTREE STRUCTURE:
+    ~/Codes/.worktrees/<project>/
+    ├── <active-worktrees>/
+    └── .archive/
+        └── <archived-worktrees>/
 
 EXAMPLES:
     world watch         # Run with 5s interval
@@ -178,20 +188,20 @@ archive_completed() {
             continue
         fi
 
-        # Check for worktree
-        local worktree_path="$(dirname "$PROJECT_DIR")/claude-code-task-$id"
+        # Check for worktree - new path structure
+        local worktree_path="$WORKTREE_BASE/$id"
         [ -d "$worktree_path" ] || continue
 
         echo "[ARCHIVE] Moving worktree: $id ($decision)"
 
-        # Archive
-        local archive_name="task-$id-$(date +%Y%m%d-%H%M%S)"
+        # Archive to .worktrees/<project>/.archive/
+        local archive_name="$id-$(date +%Y%m%d-%H%M%S)"
         mv "$worktree_path" "$ARCHIVE_DIR/$archive_name"
 
         # Prune git worktree reference
         git -C "$PROJECT_DIR" worktree prune 2>/dev/null || true
 
-        echo "[ARCHIVE] Archived to: ~/.claude-archive/$archive_name"
+        echo "[ARCHIVE] Archived to: .worktrees/$PROJECT_NAME/.archive/$archive_name"
     done
 }
 
@@ -202,6 +212,7 @@ echo "=== World Watch Daemon ==="
 echo "Interval: ${INTERVAL}s"
 echo "Tasks: $TASKS_DIR"
 echo "Log: $WORLD_LOG"
+echo "Worktrees: $WORKTREE_BASE"
 echo "Archive: $ARCHIVE_DIR"
 echo ""
 echo "Press Ctrl+C to stop"
