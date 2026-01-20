@@ -59,7 +59,8 @@ check_git_hooks() {
 }
 
 check_claude_hooks() {
-    [ -L "$PROJECT_DIR/.claude/hooks" ]
+    # Check if settings.json points to hooks/claude/
+    grep -q "hooks/claude/" "$PROJECT_DIR/.claude/settings.json" 2>/dev/null
 }
 
 check_daemon() {
@@ -168,20 +169,15 @@ install_git_hooks() {
 }
 
 install_claude_hooks() {
-    echo "Installing Claude hooks..."
+    echo "Checking Claude hooks configuration..."
 
-    local src="$PROJECT_DIR/hooks/claude"
-    local dst="$PROJECT_DIR/.claude/hooks"
-
-    # Backup existing hooks if not a symlink
-    if [ -d "$dst" ] && [ ! -L "$dst" ]; then
-        warn "Existing .claude/hooks found, backing up to .claude/hooks.backup"
-        mv "$dst" "$dst.backup"
+    # Claude hooks are configured via .claude/settings.json
+    # pointing to hooks/claude/ - no symlinks needed
+    if check_claude_hooks; then
+        ok "Claude hooks configured in settings.json"
+    else
+        warn "settings.json may need updating - hooks should point to hooks/claude/"
     fi
-
-    mkdir -p "$PROJECT_DIR/.claude"
-    ln -sf "$src" "$dst"
-    ok "Linked .claude/hooks → hooks/claude"
 }
 
 install_daemon() {
