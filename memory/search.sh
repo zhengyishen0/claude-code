@@ -192,5 +192,5 @@ else
   # Normal search output with footer tip
   echo "$OUTPUT"
   echo ""
-  echo "Tip: Refine your keywords until you see relevant sessions, then use --recall \"question\" to consult them."
+  echo "Tip: If snippets above answer your question, you're done. Otherwise use --recall \"question\" for deeper answers."
 fi

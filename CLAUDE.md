@@ -158,30 +158,29 @@ Run `memory` for full help.
 
 **Commands:** search
 
-**Workflow (must follow in order):**
-1. `memory search "keywords"` - Search to see what sessions exist
-2. Refine keywords until results show relevant sessions
-3. `memory search "keywords" --recall "question"` - Consult those sessions
+**Workflow:**
+1. `memory search "keywords"` - Search first
+2. If snippets answer your question, you're done
+3. If you need more detail: `memory search "refined keywords" --recall "question"`
 
 **Example:**
 ```bash
-# Step 1: Search
+# Broad search
 memory search "browser automation"
-# → Results too broad
 
-# Step 2: Refine
-memory search "browser click button"
-# → Better results
+# Refined search (if needed)
+memory search "browser click"
+# → If snippets answer your question, stop here!
 
-# Step 3: Recall
-memory search "browser click button" --recall "how to click by text?"
+# Only use --recall when snippets aren't enough
+memory search "browser click" --recall "how to click by text?"
 ```
 
 **Key Principles:**
-1. **Search → Refine → Recall** - Always refine keywords until results are relevant before using --recall
-2. **Simple by Default** - Just list keywords, sessions matching more rank higher
-3. **Smart Ranking** - Keyword hits → match count → recency (soft AND effect)
-4. **Cross-Project** - Sessions from any project can be searched and consulted
+1. **Search First** - Snippets often contain enough information
+2. **Recall is Optional** - Only use when snippets aren't sufficient
+3. **Refine Before Recall** - Good keywords = good recall results
+4. **Cross-Project** - Sessions from any project can be searched
 
 ### proxy
 Automatically enable HTTP/HTTPS proxy when VPN is connected - no manual toggling needed!

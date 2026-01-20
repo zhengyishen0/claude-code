@@ -8,14 +8,13 @@ Cross-session knowledge sharing for Claude Code - search and consult previous se
 # Step 1: Search to explore
 memory search "browser automation"
 
-# Step 2: Refine keywords if results aren't relevant
-memory search "browser click button"
+# Step 2: If snippets answer your question, you're done!
 
-# Step 3: When results look good, add --recall to get answers
+# Step 3: If you need deeper answers, use --recall
 memory search "browser click button" --recall "how to click a button by text?"
 ```
 
-**Important:** Always refine your search keywords until you see relevant sessions BEFORE using `--recall`. The same keywords that find sessions also select which sessions get consulted.
+**Key point:** Search snippets often contain enough information. Only use `--recall` when you need deeper context or synthesized answers from multiple sessions.
 
 ## Commands
 
@@ -89,28 +88,27 @@ claude-tools memory search "error|bug fix|solve|patch"
 
 **Phrase support:** Use underscore to join words: `reset_windows` matches "reset windows"
 
-#### Using --recall
+#### Using --recall (optional)
 
-**Workflow (must follow in order):**
+**When to use --recall:**
+- Search snippets don't contain enough detail
+- You need a synthesized answer from multiple sessions
+- You have a specific question that needs context
 
-1. **Search first** - See what sessions exist for your topic
-2. **Refine keywords** - Adjust until results show relevant sessions
-3. **Add --recall** - Same keywords, now consult those sessions
+**When NOT to use --recall:**
+- Search snippets already answer your question
+- You just need to know which sessions discussed a topic
 
 ```bash
-# Step 1: Search to see what's out there
-memory search "worktree"
-# → Too broad, shows unrelated sessions
+# Search first
+memory search "worktree create"
+# → If snippets show the command, you're done!
 
-# Step 2: Refine keywords
-memory search "worktree create branch"
-# → Better! Shows relevant sessions about creating worktrees
-
-# Step 3: Now add --recall to get answers
-memory search "worktree create branch" --recall "what is the command to create a worktree?"
+# Only use --recall if you need more detail
+memory search "worktree create" --recall "what are the cleanup steps after merge?"
 ```
 
-**Why this order matters:** The keywords select which sessions get recalled. Bad keywords = consulting wrong sessions = useless answers.
+**Important:** The same keywords select which sessions get recalled. Refine your search until results are relevant before adding --recall.
 
 **Output format (simple mode):**
 ```
@@ -134,13 +132,13 @@ Found matches in 10 sessions (strict mode)
 
 ## Key Principles
 
-1. **Search → Refine → Recall** - Always search first, refine keywords until results are relevant, then use --recall
-2. **Simple by Default** - Just list keywords, no special syntax needed
-3. **Smart Ranking** - Sessions matching more keywords rank higher (soft AND)
-4. **Backward Compatible** - Use pipes for strict AND/OR when needed
-5. **Incremental Indexing** - Full index on first run (~12s), incremental updates after (~0.5s)
-6. **Clean Output** - Filters noise (tool results, IDE events, system messages)
-7. **Cross-Project Recall** - Sessions from any project can be searched and consulted
+1. **Search First** - Always start with search, snippets may be enough
+2. **Recall is Optional** - Only use --recall when snippets aren't sufficient
+3. **Refine Before Recall** - Good keywords = good recall results
+4. **Simple by Default** - Just list keywords, no special syntax needed
+5. **Smart Ranking** - Sessions matching more keywords rank higher (soft AND)
+6. **Incremental Indexing** - Full index on first run (~12s), incremental updates after (~0.5s)
+7. **Cross-Project** - Sessions from any project can be searched and consulted
 
 ## When to Use Each Mode
 

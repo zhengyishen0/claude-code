@@ -19,17 +19,18 @@ USAGE
 
 WORKFLOW
   1. Search first to find relevant sessions
-  2. Refine keywords until results look good
-  3. Add --recall to consult those sessions directly
+  2. If snippets answer your question, you're done
+  3. If you need deeper answers, use --recall
 
 EXAMPLES
-  memory search "browser automation"
-  memory search "browser click" --recall "how to click a button?"
+  memory search "browser automation"              # broad search
+  memory search "browser click"                   # refined search
+  memory search "browser click" --recall "how?"   # recall after refining
 
 TIPS
+  - Search snippets may be enough - don't always use --recall
   - Use underscore for phrases: memory_tool matches "memory tool"
   - Keywords are OR'd together, ranked by match count
-  - Always refine search before using --recall
 
 EOF
 }
