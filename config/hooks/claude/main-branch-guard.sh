@@ -28,7 +28,7 @@ fi
 
 # --- Check 1: Warn if unstaged changes exist ---
 # Get unstaged files (modified + untracked)
-unstaged=$(git -C "$git_dir" status --porcelain 2>/dev/null | grep -E '^(\?\?| M|MM| D)' | awk '{print $2}' | head -5)
+unstaged=$(git -C "$git_dir" status --porcelain 2>/dev/null | grep -E '^(\?\?| M|MM| D)' | awk '{print $2}' | head -5 || true)
 if [[ -n "$unstaged" ]]; then
     count=$(git -C "$git_dir" status --porcelain 2>/dev/null | grep -cE '^(\?\?| M|MM| D)' || echo 0)
     echo "⚠️  Unstaged changes ($count files). Clean up before continuing:" >&2
