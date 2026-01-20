@@ -22,5 +22,10 @@ alias memory="$PROJECT_DIR/memory/run.sh"
 alias screenshot="$PROJECT_DIR/tools/screenshot/run.sh"
 alias proxy="$PROJECT_DIR/tools/proxy/run.sh"
 
-# Proxy auto-init
+# Claude CLI aliases
+alias claude-ps='pgrep -fl "^claude"'
+alias claude-kill='pkill -9 "^claude"'
+alias cc="COLUMNS=200 claude --dangerously-skip-permissions"
+
+# Proxy auto-init (provides proxy_on/proxy_off)
 [[ -f "$PROJECT_DIR/tools/proxy/init.sh" ]] && source "$PROJECT_DIR/tools/proxy/init.sh"
