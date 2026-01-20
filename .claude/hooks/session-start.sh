@@ -14,7 +14,7 @@ fi
 
 # 1. Provide agent-specific documentation based on AGENT_TYPE
 if [ "$AGENT_TYPE" = "task" ]; then
-  task_agent_doc="$CLAUDE_PROJECT_DIR/TASK_AGENT.md"
+  task_agent_doc="$CLAUDE_PROJECT_DIR/prompts/task_agent.md"
   if [ -f "$task_agent_doc" ]; then
     echo "# Task Agent Context"
     cat "$task_agent_doc"
