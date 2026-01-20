@@ -1,9 +1,9 @@
 #!/bin/bash
-# Proxy tool for Claude Code
-# For enable/disable, use: proxy_on / proxy_off (shell functions from init.sh)
+# proxy.sh - Proxy tool for Claude Code
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-CONFIG_FILE="$SCRIPT_DIR/config"
+CONFIG_FILE="$SCRIPT_DIR/proxy.conf"
 
 load_config() {
     if [ -f "$CONFIG_FILE" ]; then
@@ -21,14 +21,14 @@ proxy_check() {
 
     if command -v nc &> /dev/null; then
         if nc -z -w 1 "$PROXY_HOST" "$PROXY_PORT" 2>/dev/null; then
-            echo "✓ Proxy reachable at $proxy_url"
+            echo "Proxy reachable at $proxy_url"
             return 0
         else
-            echo "✗ Proxy not reachable at $proxy_url"
+            echo "Proxy not reachable at $proxy_url"
             return 1
         fi
     else
-        echo "✗ nc not found"
+        echo "nc not found"
         return 1
     fi
 }
@@ -47,11 +47,11 @@ proxy_status() {
 }
 
 proxy_config() {
-    case "$1" in
+    case "${1:-show}" in
         edit)
             ${EDITOR:-nano} "$CONFIG_FILE"
             ;;
-        show|"")
+        show)
             if [ -f "$CONFIG_FILE" ]; then
                 cat "$CONFIG_FILE"
             else
@@ -79,30 +79,23 @@ EOF
 
 show_help() {
     cat <<'EOF'
-Proxy Tool
-==========
+proxy - Proxy management tool
 
-Auto-enables proxy when VPN is connected.
+USAGE
+    proxy status        Show proxy status and environment
+    proxy check         Check if proxy is reachable
+    proxy config        Manage config (show|edit|create)
 
-COMMANDS:
-  check         Check if proxy is reachable
-  status        Show proxy status
-  config        Manage config (show|edit|create)
-  (no args)     Show this help
-
-MANUAL TOGGLE (shell functions from init.sh):
-  proxy_on      Enable proxy
-  proxy_off     Disable proxy
-
-SETUP:
-  Add to ~/.zshrc:
-    source "/path/to/tools/proxy/init.sh"
+NOTES
+    Proxy auto-enables on shell startup if reachable (via env.sh).
+    To manually toggle, open a new terminal or set env vars directly.
 EOF
 }
 
-case "$1" in
+case "${1:-}" in
     check)  proxy_check ;;
     status) proxy_status ;;
     config) shift; proxy_config "$@" ;;
+    -h|--help|help) show_help ;;
     *)      show_help ;;
 esac

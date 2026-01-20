@@ -18,6 +18,6 @@ Keep the tree clean:
 
 ## Tools
 
-`browser` `memory` `world` `worktree` `supervisor` `api` `screenshot` `proxy`
+`browser` `memory` `world` `worktree` `supervisor` `service` `screenshot` `proxy`
 
 Run any tool without arguments for help.
