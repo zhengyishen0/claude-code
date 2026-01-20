@@ -6,6 +6,12 @@ set -eo pipefail
 input=$(cat)
 cwd=$(echo "$input" | jq -r '.cwd')
 
+# Source paths if available
+PATHS_FILE="$cwd/paths.sh"
+if [ -f "$PATHS_FILE" ]; then
+    source "$PATHS_FILE"
+fi
+
 # 1. Provide agent-specific documentation based on AGENT_TYPE
 if [ "$AGENT_TYPE" = "task" ]; then
   task_agent_doc="$CLAUDE_PROJECT_DIR/TASK_AGENT.md"
@@ -33,7 +39,11 @@ if [ -d "$cwd/.git" ] || git -C "$cwd" rev-parse --git-dir >/dev/null 2>&1; then
     echo ""
     echo "📍 Current branch: $current_branch"
     echo "⚠️  WARNING: On main branch! Create a worktree before making ANY changes:"
-    echo "   git worktree add -b <feature-name> ~/Codes/.worktrees/$project_name/<feature-name>"
+    if [ -n "${PROJECT_WORKTREES:-}" ]; then
+      echo "   worktree create <feature-name>"
+    else
+      echo "   git worktree add -b <feature-name> \$PROJECT_WORKTREES/<feature-name>"
+    fi
     echo ""
   fi
 fi

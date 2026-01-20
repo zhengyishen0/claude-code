@@ -3,9 +3,11 @@
 # Simple mode: "word1 word2 word3" → OR-all, ranked by keyword hits
 set -e
 
+# Source paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../paths.sh"
 DATA_DIR="$SCRIPT_DIR/data"
-SESSION_DIR="$HOME/.claude/projects"
+SESSION_DIR="$CLAUDE_PROJECTS_DIR"
 INDEX_FILE="$DATA_DIR/memory-index.tsv"
 
 # Parse args

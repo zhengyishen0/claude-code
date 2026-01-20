@@ -4,14 +4,20 @@ Auto-enables proxy when VPN is connected.
 
 ## Setup
 
-Add to `~/.zshrc`:
+Source `shell-init.sh` in your `~/.zshrc` (includes proxy auto-init):
+
+```bash
+source ~/Codes/claude-code/shell-init.sh
+```
+
+Or manually add:
 
 ```bash
 # Proxy alias
-alias proxy="$CLAUDE_CODE_DIR/tools/proxy/run.sh"
+alias proxy="$PROJECT_DIR/tools/proxy/run.sh"
 
 # Auto-enable proxy on shell startup
-source "$CLAUDE_CODE_DIR/tools/proxy/init.sh"
+source "$PROJECT_DIR/tools/proxy/init.sh"
 ```
 
 ## Commands

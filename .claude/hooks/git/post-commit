@@ -1,13 +1,20 @@
 #!/bin/bash
-# .claude/hooks/git/post-commit
-# Log commits to world
+# Post-commit hook: Log commit to world
+set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Try to source paths.sh from project root
+if [ -f "$SCRIPT_DIR/../../../paths.sh" ]; then
+    source "$SCRIPT_DIR/../../../paths.sh"
+else
+    PROJECT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+fi
+
 WORLD_CMD="$PROJECT_DIR/world/run.sh"
 
 if [ -x "$WORLD_CMD" ]; then
-    commit_msg=$(git log -1 --format='%s')
-    commit_hash=$(git log -1 --format='%h')
-    "$WORLD_CMD" create --event "git:commit" "$commit_hash: $commit_msg" 2>/dev/null || true
+    COMMIT_MSG=$(git log -1 --pretty=%B | head -1)
+    COMMIT_HASH=$(git log -1 --pretty=%h)
+    "$WORLD_CMD" create --event "git:commit" "$COMMIT_HASH: $COMMIT_MSG" 2>/dev/null || true
 fi

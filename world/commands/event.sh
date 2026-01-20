@@ -1,65 +1,26 @@
 #!/usr/bin/env bash
-# claude-tools/world/commands/event.sh
-# Log an event to world.log
-
+# world/commands/event.sh
 set -euo pipefail
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORLD_LOG="$SCRIPT_DIR/../world.log"
+source "$SCRIPT_DIR/../../paths.sh"
 
 show_help() {
-    cat <<'EOF'
-event - Log an event to world.log
+    cat <<'HELP'
+event - Log an event (shorthand for create --event)
 
 USAGE:
-    event <source> <identifier> <output>
-
-ARGUMENTS:
-    source      Event source: chrome, bash, file, api, system, user
-    identifier  What specifically (URL, command, file path, etc.)
-    output      Free-form description of what happened
+    event <type> <message>
 
 EXAMPLES:
-    event chrome "airbnb.com/s/Paris" "clicked Search, 24 listings loaded"
-    event bash "git-status" "clean working directory"
-    event file "src/config.json" "modified"
-    event api "api.stripe.com/charges" "200 OK, charge_id=ch_123"
-    event system "abc123" "session started"
-    event user "abc123" "captcha solved: boats"
-
-FORMAT:
-    [timestamp][event:source][identifier] output
-EOF
+    world event "git:commit" "fix: bug"
+    world event "system" "started"
+HELP
 }
 
-# Check arguments
-if [ $# -lt 3 ]; then
-    show_help
-    exit 1
-fi
+[ $# -lt 2 ] && { show_help; exit 0; }
+[ "$1" = "help" ] || [ "$1" = "-h" ] && { show_help; exit 0; }
 
-source="$1"
-identifier="$2"
-shift 2
-output="$*"
-
-# Validate source
-valid_sources="chrome bash file api system user"
-if ! echo "$valid_sources" | grep -qw "$source"; then
-    echo "Invalid source: $source"
-    echo "Valid sources: $valid_sources"
-    exit 1
-fi
-
-# Ensure log exists
-touch "$WORLD_LOG"
-
-# Generate timestamp (ISO 8601 UTC)
 timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-# Write entry
-entry="[$timestamp][event:$source][$identifier] $output"
+entry="[$timestamp] [event] $1 | $2"
 echo "$entry" >> "$WORLD_LOG"
-
-# Echo back for confirmation
 echo "$entry"

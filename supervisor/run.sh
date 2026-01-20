@@ -4,20 +4,15 @@
 
 set -euo pipefail
 
+# Source paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-PROJECT_NAME="$(basename "$PROJECT_DIR")"
-TASKS_DIR="$PROJECT_DIR/tasks"
-
-# Worktree paths - ~/Codes/.worktrees/<project>/
-WORKTREE_BASE="$(dirname "$PROJECT_DIR")/.worktrees/$PROJECT_NAME"
-ARCHIVE_DIR="$WORKTREE_BASE/.archive"
+source "$SCRIPT_DIR/../paths.sh"
 
 # Get supervisor session ID (generate if not set)
 SUPERVISOR_SESSION="${SUPERVISOR_SESSION_ID:-$(uuidgen | tr '[:upper:]' '[:lower:]')}"
 
 show_help() {
-    cat <<'EOF'
+    cat <<'HELP'
 supervisor - L2 Supervisor: verify, cancel, retry tasks
 
 USAGE:
@@ -38,7 +33,7 @@ DESCRIPTION:
     - Re-spawns for retry
 
 WORKTREE STRUCTURE:
-    ~/Codes/.worktrees/<project>/
+    $PROJECT_WORKTREES/
     ├── <active-worktrees>/
     └── .archive/
         └── <archived-worktrees>/
@@ -47,7 +42,7 @@ EXAMPLES:
     supervisor verify fix-bug
     supervisor cancel feature-x
     supervisor retry failed-task
-EOF
+HELP
 }
 
 # Ensure yq is installed
@@ -94,7 +89,7 @@ do_cancel() {
     fi
 
     # Kill if running
-    local pid_file="/tmp/world/pids/$task_id.pid"
+    local pid_file="$PID_DIR/$task_id.pid"
     if [ -f "$pid_file" ]; then
         local pid=$(cat "$pid_file")
         if kill -0 "$pid" 2>/dev/null; then
@@ -121,16 +116,15 @@ do_retry() {
         exit 1
     fi
 
-    # New worktree path structure
-    local worktree_path="$WORKTREE_BASE/$task_id"
+    local worktree_path="$PROJECT_WORKTREES/$task_id"
     
     if [ ! -d "$worktree_path" ]; then
-        # Look for archived worktree in new location
-        local archived=$(ls -d "$ARCHIVE_DIR"/$task_id-* 2>/dev/null | tail -1 || echo "")
+        # Look for archived worktree
+        local archived=$(ls -d "$PROJECT_ARCHIVE"/$task_id-* 2>/dev/null | tail -1 || echo "")
         
         if [ -n "$archived" ] && [ -d "$archived" ]; then
             echo "Restoring from archive: $archived"
-            mkdir -p "$WORKTREE_BASE"
+            mkdir -p "$PROJECT_WORKTREES"
             mv "$archived" "$worktree_path"
             git -C "$PROJECT_DIR" worktree repair "$worktree_path" 2>/dev/null || true
         fi

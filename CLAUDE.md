@@ -27,44 +27,48 @@ brew bundle install --upgrade  # Update all dependencies & lockfile
 **After EACH edit**:
 - Stage the change immediately: `git add <file>`
 
-**Worktree Structure**:
+**Worktree Structure** (paths defined in `paths.sh`):
 ```
-~/Codes/.worktrees/<project>/
-├── <active-worktrees>/     # e.g., feature-login, fix-bug
-└── .archive/
-    └── <archived-worktrees>/   # Completed task worktrees
+$PROJECT_WORKTREES/           # $BASE_DIR/.worktrees/$PROJECT_NAME
+├── <active-worktrees>/       # e.g., feature-login, fix-bug
+└── .archive/                 # $PROJECT_ARCHIVE
+    └── <archived-worktrees>/
 ```
 
 **Creating a worktree**:
 ```bash
-# Manual worktrees (human-driven)
-git worktree add -b feature-name ~/Codes/.worktrees/claude-code/feature-name
+# Using worktree tool (recommended)
+worktree create feature-name
 
-# Task agent worktrees (auto-created by world spawn)
-# Location: ~/Codes/.worktrees/<project>/<task-id>/
+# Manual (if needed)
+git worktree add -b feature-name $PROJECT_WORKTREES/feature-name
 ```
 
 **Using the worktree**:
 Use absolute paths when working in worktrees:
 ```bash
 # Good: absolute paths
-~/Codes/.worktrees/claude-code/feature-name/src/file.js
+$PROJECT_WORKTREES/feature-name/src/file.js
 
 # Avoid: cd and relative paths
-cd ~/Codes/.worktrees/... && edit src/file.js
+cd $PROJECT_WORKTREES/... && edit src/file.js
 ```
 
 **Cleanup after merge**:
 ```bash
+# Using worktree tool (recommended) - does all 3 steps
+worktree cleanup feature-name
+
+# Manual (if needed)
 git merge feature-name
-git worktree remove ~/Codes/.worktrees/claude-code/feature-name
+git worktree remove $PROJECT_WORKTREES/feature-name
 git branch -d feature-name
 ```
 
 **Task Worktree Archival**:
 When tasks are verified/canceled, worktrees are archived (not deleted):
 ```bash
-# Archived to: ~/Codes/.worktrees/<project>/.archive/<task-id>-<timestamp>/
+# Archived to: $PROJECT_ARCHIVE/<task-id>-<timestamp>/
 # Can be restored with: supervisor retry <task-id>
 ```
 
