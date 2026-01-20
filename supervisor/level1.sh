@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# claude-tools/world/supervisors/level1.sh
+# supervisor/level1.sh
 # Level 1 Supervisor: State Enforcer (Pure Code)
 #
 # Job: Ensure world.log state = actual system state
@@ -10,9 +10,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORLD_DIR="$SCRIPT_DIR/.."
-WORLD_LOG="$WORLD_DIR/world.log"
-EVENT_CMD="$WORLD_DIR/commands/event.sh"
+source "$SCRIPT_DIR/../paths.sh"
+WORLD_LOG="$PROJECT_DIR/world/world.log"
+EVENT_CMD="$PROJECT_DIR/world/commands/event.sh"
 
 # Configuration
 DRY_RUN="${DRY_RUN:-false}"

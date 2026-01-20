@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# claude-tools/world/supervisors/run.sh
+# supervisor/daemon.sh
 # Supervisor daemon - runs both Level 1 and Level 2
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORLD_DIR="$SCRIPT_DIR/.."
-WORLD_LOG="$WORLD_DIR/world.log"
-EVENT_CMD="$WORLD_DIR/commands/event.sh"
+source "$SCRIPT_DIR/../paths.sh"
+WORLD_LOG="$PROJECT_DIR/world/world.log"
+EVENT_CMD="$PROJECT_DIR/world/commands/event.sh"
 LEVEL1="$SCRIPT_DIR/level1.sh"
 LEVEL2="$SCRIPT_DIR/level2.sh"
 

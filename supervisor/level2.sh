@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# claude-tools/world/supervisors/level2.sh
+# supervisor/level2.sh
 # Level 2 Supervisor: Intention Verifier (AI-powered)
 #
 # Job: Ensure every agent reaches verified or failed
@@ -11,10 +11,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORLD_DIR="$SCRIPT_DIR/.."
-WORLD_LOG="$WORLD_DIR/world.log"
-AGENT_CMD="$WORLD_DIR/commands/agent.sh"
-EVENT_CMD="$WORLD_DIR/commands/event.sh"
+source "$SCRIPT_DIR/../paths.sh"
+WORLD_LOG="$PROJECT_DIR/world/world.log"
+AGENT_CMD="$PROJECT_DIR/world/commands/agent.sh"
+EVENT_CMD="$PROJECT_DIR/world/commands/event.sh"
 
 # Configuration
 MAX_RETRIES="${MAX_RETRIES:-3}"

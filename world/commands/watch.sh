@@ -4,20 +4,27 @@
 
 set -euo pipefail
 
-# Source paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../../paths.sh"
+WORLD_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_DIR="$(cd "$WORLD_DIR/.." && pwd)"
+PROJECT_NAME="$(basename "$PROJECT_DIR")"
+WORLD_LOG="$WORLD_DIR/world.log"
+TASKS_DIR="$WORLD_DIR/tasks"
+SPAWN_CMD="$SCRIPT_DIR/spawn.sh"
 
-SPAWN_CMD="$(dirname "${BASH_SOURCE[0]}")/spawn.sh"
+# Worktree and archive paths - ~/Codes/.worktrees/<project>/
+WORKTREE_BASE="$(dirname "$PROJECT_DIR")/.worktrees/$PROJECT_NAME"
+ARCHIVE_DIR="$WORKTREE_BASE/.archive"
 
-# Ensure directories exist
-mkdir -p "$PID_DIR" "$PROJECT_WORKTREES" "$PROJECT_ARCHIVE" "$TASKS_DIR"
+# PID directory
+PID_DIR="/tmp/world/pids"
+mkdir -p "$PID_DIR" "$WORKTREE_BASE" "$ARCHIVE_DIR" "$TASKS_DIR"
 
 # Interval between checks (seconds)
 INTERVAL="${1:-5}"
 
 show_help() {
-    cat <<'HELP'
+    cat <<'EOF'
 watch - World daemon: observe and react
 
 USAGE:
@@ -33,7 +40,7 @@ DESCRIPTION:
     Default interval: 5 seconds
 
 WORKTREE STRUCTURE:
-    $PROJECT_WORKTREES/
+    ~/Codes/.worktrees/<project>/
     ├── <active-worktrees>/
     └── .archive/
         └── <archived-worktrees>/
@@ -41,7 +48,7 @@ WORKTREE STRUCTURE:
 EXAMPLES:
     world watch         # Run with 5s interval
     world watch 10      # Run with 10s interval
-HELP
+EOF
 }
 
 if [ "${1:-}" = "help" ] || [ "${1:-}" = "-h" ]; then
@@ -74,6 +81,7 @@ sync_to_log() {
     # Determine effective status (review overrides status)
     local effective_status="$status"
     if [ -n "$review" ]; then
+        # review format: "verified | supervisor-id" or "canceled | supervisor-id"
         effective_status=$(echo "$review" | cut -d'|' -f1 | tr -d ' ')
     fi
 
@@ -181,20 +189,20 @@ archive_completed() {
             continue
         fi
 
-        # Check for worktree
-        local worktree_path="$PROJECT_WORKTREES/$id"
+        # Check for worktree - new path structure
+        local worktree_path="$WORKTREE_BASE/$id"
         [ -d "$worktree_path" ] || continue
 
         echo "[ARCHIVE] Moving worktree: $id ($decision)"
 
-        # Archive
+        # Archive to .worktrees/<project>/.archive/
         local archive_name="$id-$(date +%Y%m%d-%H%M%S)"
-        mv "$worktree_path" "$PROJECT_ARCHIVE/$archive_name"
+        mv "$worktree_path" "$ARCHIVE_DIR/$archive_name"
 
         # Prune git worktree reference
         git -C "$PROJECT_DIR" worktree prune 2>/dev/null || true
 
-        echo "[ARCHIVE] Archived to: $PROJECT_ARCHIVE/$archive_name"
+        echo "[ARCHIVE] Archived to: .worktrees/$PROJECT_NAME/.archive/$archive_name"
     done
 }
 
@@ -205,8 +213,8 @@ echo "=== World Watch Daemon ==="
 echo "Interval: ${INTERVAL}s"
 echo "Tasks: $TASKS_DIR"
 echo "Log: $WORLD_LOG"
-echo "Worktrees: $PROJECT_WORKTREES"
-echo "Archive: $PROJECT_ARCHIVE"
+echo "Worktrees: $WORKTREE_BASE"
+echo "Archive: $ARCHIVE_DIR"
 echo ""
 echo "Press Ctrl+C to stop"
 echo ""

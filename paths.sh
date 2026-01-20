@@ -33,7 +33,7 @@ CLAUDE_DATA_DIR="${CLAUDE_DATA_DIR:-$HOME/.claude}"
 CLAUDE_PROJECTS_DIR="$CLAUDE_DATA_DIR/projects"
 
 # Project-specific
-TASKS_DIR="$PROJECT_DIR/tasks"
+TASKS_DIR="$PROJECT_DIR/world/tasks"
 WORLD_LOG="$PROJECT_DIR/world/world.log"
 
 # Runtime

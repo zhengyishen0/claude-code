@@ -4,15 +4,18 @@
 
 set -euo pipefail
 
-# Source paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../../paths.sh"
+WORLD_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_DIR="$(cd "$WORLD_DIR/.." && pwd)"
+WORLD_LOG="$WORLD_DIR/world.log"
+TASKS_DIR="$WORLD_DIR/tasks"
 
-# Ensure directories exist
-mkdir -p "$PID_DIR" "$PROJECT_WORKTREES"
+# PID management
+PID_DIR="/tmp/world/pids"
+mkdir -p "$PID_DIR"
 
 show_help() {
-    cat <<'HELP'
+    cat <<'EOF'
 spawn - Start a task agent in a dedicated worktree
 
 USAGE:
@@ -20,7 +23,7 @@ USAGE:
 
 DESCRIPTION:
     1. Reads task from tasks/<id>.md
-    2. Creates worktree at $PROJECT_WORKTREES/<task-id>
+    2. Creates worktree: ~/Codes/.worktrees/<project>/<task-id>
     3. Updates status to 'running', sets 'started' timestamp
     4. Starts claude with --session-id (preserves context)
     5. Saves PID for monitoring
@@ -28,7 +31,7 @@ DESCRIPTION:
 EXAMPLES:
     world spawn fix-bug
     world spawn feature-123
-HELP
+EOF
 }
 
 if [ $# -lt 1 ] || [ "${1:-}" = "help" ] || [ "${1:-}" = "-h" ]; then
@@ -87,8 +90,11 @@ echo "Session: $session_id"
 [ "$need" != "-" ] && echo "Need: $need"
 echo ""
 
-# Worktree path from paths.sh
-worktree_path="$PROJECT_WORKTREES/$task_id"
+# Worktree setup - ~/Codes/.worktrees/<project>/<worktree>/
+project_name="$(basename "$PROJECT_DIR")"
+worktree_base="$(dirname "$PROJECT_DIR")/.worktrees/$project_name"
+worktree_path="$worktree_base/$task_id"
+mkdir -p "$worktree_base"
 
 if [ -d "$worktree_path" ]; then
     echo "Reusing existing worktree: $worktree_path"
