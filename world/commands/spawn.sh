@@ -6,7 +6,7 @@ set -euo pipefail
 
 : "${PROJECT_DIR:?PROJECT_DIR not set - source env.sh}"
 
-TASKS_DIR="$PROJECT_DIR/tasks"
+TASKS_DIR="$PROJECT_DIR/task/data"
 PID_DIR="/tmp/world-watch/pids"
 PROJECT_WORKTREES="$(dirname "$PROJECT_DIR")/.worktrees/$(basename "$PROJECT_DIR")"
 
@@ -19,7 +19,7 @@ USAGE:
     spawn <task-id>
 
 DESCRIPTION:
-    1. Reads task from tasks/<id>.md
+    1. Reads task from task/data/<id>.md
     2. Creates worktree: ~/Codes/.worktrees/<project>/<task-id>
     3. Updates status to 'running', sets 'started' timestamp
     4. Starts claude with --session-id (preserves context)

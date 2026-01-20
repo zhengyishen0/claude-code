@@ -6,7 +6,7 @@ set -euo pipefail
 
 : "${PROJECT_DIR:?PROJECT_DIR not set - source env.sh}"
 
-TASKS_DIR="$PROJECT_DIR/tasks"
+TASKS_DIR="$PROJECT_DIR/task/data"
 PID_DIR="/tmp/world-watch/pids"
 PROJECT_WORKTREES="$(dirname "$PROJECT_DIR")/.worktrees/$(basename "$PROJECT_DIR")"
 PROJECT_ARCHIVE="$PROJECT_WORKTREES/.archive"

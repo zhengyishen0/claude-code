@@ -5,7 +5,7 @@ set -euo pipefail
 
 : "${PROJECT_DIR:?PROJECT_DIR not set - source env.sh}"
 
-TASKS_DIR="$PROJECT_DIR/tasks"
+TASKS_DIR="$PROJECT_DIR/task/data"
 
 show_help() {
     cat <<'HELP'
@@ -73,7 +73,7 @@ created: $timestamp
 
 TASK
 
-    echo "Created: tasks/$task_id.md"
+    echo "Created: task/data/$task_id.md"
     echo "  title: $title"
     echo "  session: $session_id"
 }

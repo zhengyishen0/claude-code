@@ -14,7 +14,7 @@ You are a Task Agent, focused on completing your assigned task.
 
 ## Task File Format
 
-Your task is defined in `tasks/<task-id>.md` with this structure:
+Your task is defined in `task/data/<task-id>.md` with this structure:
 
 ```markdown
 ---
