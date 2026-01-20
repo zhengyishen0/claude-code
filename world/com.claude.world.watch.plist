@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.claude.world.watch</string>
+    
+    <key>ProgramArguments</key>
+    <array>
+        <string>__PROJECT_DIR__/world/commands/watch-daemon.sh</string>
+        <string>start</string>
+    </array>
+    
+    <key>RunAtLoad</key>
+    <true/>
+    
+    <key>KeepAlive</key>
+    <true/>
+    
+    <key>StandardOutPath</key>
+    <string>/tmp/world/daemon.stdout.log</string>
+    
+    <key>StandardErrorPath</key>
+    <string>/tmp/world/daemon.stderr.log</string>
+    
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PROJECT_DIR</key>
+        <string>__PROJECT_DIR__</string>
+        <key>TASKS_DIR</key>
+        <string>__PROJECT_DIR__/world/tasks</string>
+        <key>WORLD_LOG</key>
+        <string>__PROJECT_DIR__/world/world.log</string>
+        <key>PID_DIR</key>
+        <string>/tmp/world/pids</string>
+        <key>PROJECT_WORKTREES</key>
+        <string>__WORKTREES_DIR__</string>
+        <key>PROJECT_ARCHIVE</key>
+        <string>__WORKTREES_DIR__/.archive</string>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+</dict>
+</plist>

@@ -10,8 +10,12 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../paths.sh"
-WORLD_LOG="$PROJECT_DIR/world/world.log"
+PROJECT_DIR_DEFAULT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Use env vars from shell-init.sh, fallback to script-relative paths
+: "${PROJECT_DIR:=$PROJECT_DIR_DEFAULT}"
+: "${WORLD_LOG:=$PROJECT_DIR/world/world.log}"
+WORLD_DIR="$PROJECT_DIR/world"
 
 # Configuration
 DRY_RUN="${DRY_RUN:-false}"

@@ -5,7 +5,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMMANDS_DIR="$SCRIPT_DIR/commands"
-source "$SCRIPT_DIR/../paths.sh"
+
+# Use env vars from shell-init.sh, fallback to defaults
+: "${WORLD_LOG:=$SCRIPT_DIR/world.log}"
+: "${TASKS_DIR:=$SCRIPT_DIR/tasks}"
 
 show_help() {
     cat <<'HELP'
@@ -16,7 +19,14 @@ COMMANDS:
     world log event <type> <msg>      Log an event
     world log task <status> ...       Log task status
     world spawn <task-id>             Start agent in worktree
-    world watch [interval]            Run daemon (sync/spawn/recover)
+    world watch [interval]            Run polling daemon
+    world daemon <cmd>                Manage fswatch daemon (LaunchAgent)
+
+DAEMON COMMANDS:
+    world daemon install              Install and start LaunchAgent
+    world daemon uninstall            Stop and remove LaunchAgent
+    world daemon {start|stop|status}  Control the daemon
+    world daemon log                  Tail daemon log
 
 LOG FORMAT:
     [timestamp] [event: <type>] <message>
@@ -49,6 +59,10 @@ case "${1:-}" in
     watch)
         shift
         "$COMMANDS_DIR/watch.sh" "$@"
+        ;;
+    daemon)
+        shift
+        "$COMMANDS_DIR/daemon-install.sh" "$@"
         ;;
     help|-h|--help)
         show_help

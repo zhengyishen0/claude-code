@@ -7,13 +7,8 @@ input=$(cat)
 session_id=$(echo "$input" | jq -r '.session_id // empty')
 cwd=$(echo "$input" | jq -r '.cwd // empty')
 
-# Source paths if available
-if [ -n "$cwd" ]; then
-    PATHS_FILE="$cwd/paths.sh"
-    if [ -f "$PATHS_FILE" ]; then
-        source "$PATHS_FILE"
-    fi
-fi
+# Use env vars (set by shell-init.sh) or defaults
+: "${PID_DIR:=/tmp/world/pids}"
 
 # Only process if this is a task agent
 if [ "$AGENT_TYPE" != "task" ]; then
