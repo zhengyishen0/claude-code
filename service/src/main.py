@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-api - Universal API tool for AI agents
+service - Universal service client for AI agents
 
 Usage:
-    api                     Show help
-    api --list              List available services
-    api google ...          Google APIs (Gmail, Calendar, Drive, etc.)
-    api aws ...             AWS APIs (coming soon)
-    api stripe ...          Stripe APIs (coming soon)
+    service                     Show help
+    service --list              List available services
+    service google ...          Google APIs (Gmail, Calendar, Drive, etc.)
+    service aws ...             AWS APIs (coming soon)
+    service stripe ...          Stripe APIs (coming soon)
 """
 
 import click
@@ -17,14 +17,14 @@ import sys
 @click.option('--list', 'list_services', is_flag=True, help='List available services')
 @click.pass_context
 def cli(ctx, list_services):
-    """Universal API tool for AI agents
+    """Universal service client for AI agents
 
     \b
     Examples:
-        api --list
-        api google auth
-        api google gmail users.messages.list userId=me
-        api google calendar events.list calendarId=primary
+        service --list
+        service google auth
+        service google gmail users.messages.list userId=me
+        service google calendar events.list calendarId=primary
     """
     if list_services:
         click.echo("Available services:")
