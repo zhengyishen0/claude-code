@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo \"[$(date '+%Y-%m-%d %H:%M:%S')] Stop fired\" >> /tmp/stop-test.log"
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/stop-test.sh"
           }
         ]
       }
@@ -39,7 +39,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo \"[$(date '+%Y-%m-%d %H:%M:%S')] SubagentStop fired\" >> /tmp/subagent-stop-test.log"
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/stop-test.sh"
           }
         ]
       }
