@@ -274,16 +274,26 @@ check_running_tasks() {
             echo "  [FAILED] Task failed (reported by agent)"
             crashed=$((crashed + 1))
         else
-            # Process ended without reporting - assume crash
+            # Process ended without reporting - crash recovery: RE-SPAWN
             echo "  [CRASH] Process ended without reporting status"
             if [ "$DRY_RUN" = "true" ]; then
-                echo "  [DRY-RUN] Would mark task as failed"
+                echo "  [DRY-RUN] Would reset to pending and re-spawn"
             else
                 if [ -f "$task_md" ] && command -v yq >/dev/null 2>&1; then
-                    yq -i '.status = "failed"' "$task_md"
-                    yq -i ".failed = \"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\"" "$task_md"
-                    yq -i '.result = "Process crashed without reporting status"' "$task_md"
-                    echo "  [UPDATED] Marked as failed in $task_md"
+                    # Reset to pending (keeps same session_id for context resumption)
+                    yq -i --front-matter=process '.status = "pending"' "$task_md"
+                    echo "  [RESET] Status reset to pending"
+
+                    # Clean up PID first
+                    rm -f "$pid_file"
+                    rm -f "$PID_DIR/$task_id.session"
+
+                    # Re-spawn with same session_id (agent resumes with full context)
+                    echo "  [RE-SPAWN] Re-spawning task: $task_id"
+                    "$SPAWN_TASK" "$task_id" &
+                    sleep 1
+                    crashed=$((crashed + 1))
+                    continue  # Skip cleanup - new PID file was just created
                 else
                     echo "  [WARNING] Could not update task file (yq not installed or file missing)"
                 fi
@@ -291,7 +301,7 @@ check_running_tasks() {
             crashed=$((crashed + 1))
         fi
 
-        # Clean up PID file
+        # Clean up PID file (only for done/failed, not re-spawned)
         if [ "$DRY_RUN" = "true" ]; then
             echo "  [DRY-RUN] Would remove PID file"
         else
