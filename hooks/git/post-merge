@@ -5,7 +5,7 @@
 set -euo pipefail
 
 # Derive PROJECT_DIR from git root
-PROJECT_DIR="$(git rev-parse --show-toplevel)"
+export PROJECT_DIR="$(git rev-parse --show-toplevel)"
 
 # Only run if record.sh exists (we're in claude-code repo)
 [ -f "$PROJECT_DIR/world/commands/record.sh" ] || exit 0
