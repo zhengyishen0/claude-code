@@ -10,7 +10,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../paths.sh"
+PROJECT_DIR_DEFAULT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Use env vars from shell-init.sh, fallback to script-relative paths
+: "${PROJECT_DIR:=$PROJECT_DIR_DEFAULT}"
+: "${TASKS_DIR:=$PROJECT_DIR/world/tasks}"
 
 MAX_RETRIES="${MAX_RETRIES:-3}"
 DRY_RUN="${DRY_RUN:-false}"

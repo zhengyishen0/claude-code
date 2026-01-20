@@ -4,7 +4,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../../paths.sh"
+
+# Use env vars from shell-init.sh, fallback to script-relative paths
+: "${WORLD_LOG:=$SCRIPT_DIR/../world.log}"
 
 show_help() {
     cat <<'HELP'

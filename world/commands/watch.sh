@@ -5,7 +5,16 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../../paths.sh"
+PROJECT_DIR_DEFAULT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Use env vars from shell-init.sh, fallback to script-relative paths
+: "${PROJECT_DIR:=$PROJECT_DIR_DEFAULT}"
+: "${TASKS_DIR:=$PROJECT_DIR/world/tasks}"
+: "${WORLD_LOG:=$PROJECT_DIR/world/world.log}"
+: "${PID_DIR:=/tmp/world/pids}"
+: "${PROJECT_WORKTREES:=$(dirname "$PROJECT_DIR")/.worktrees/$(basename "$PROJECT_DIR")}"
+: "${PROJECT_ARCHIVE:=$PROJECT_WORKTREES/.archive}"
+: "${PROJECT_NAME:=$(basename "$PROJECT_DIR")}"
 
 SPAWN_CMD="$SCRIPT_DIR/spawn.sh"
 LOG_CMD="$SCRIPT_DIR/log.sh"

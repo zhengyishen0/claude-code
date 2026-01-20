@@ -2,9 +2,13 @@
 # worktree/run.sh - Manage git worktrees
 set -euo pipefail
 
-# Source paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../paths.sh"
+PROJECT_DIR_DEFAULT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+# Use env vars from shell-init.sh, fallback to script-relative paths
+: "${PROJECT_DIR:=$PROJECT_DIR_DEFAULT}"
+: "${PROJECT_WORKTREES:=$(dirname "$PROJECT_DIR")/.worktrees/$(basename "$PROJECT_DIR")}"
+: "${PROJECT_ARCHIVE:=$PROJECT_WORKTREES/.archive}"
 
 show_help() {
     cat <<'HELP'

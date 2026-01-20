@@ -5,7 +5,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/../../paths.sh"
+PROJECT_DIR_DEFAULT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Use env vars from shell-init.sh, fallback to script-relative paths
+: "${PROJECT_DIR:=$PROJECT_DIR_DEFAULT}"
+: "${TASKS_DIR:=$PROJECT_DIR/world/tasks}"
+: "${PID_DIR:=/tmp/world/pids}"
+: "${PROJECT_WORKTREES:=$(dirname "$PROJECT_DIR")/.worktrees/$(basename "$PROJECT_DIR")}"
 
 
 show_help() {
@@ -85,11 +91,9 @@ echo "Session: $session_id"
 [ "$need" != "-" ] && echo "Need: $need"
 echo ""
 
-# Worktree setup - ~/Codes/.worktrees/<project>/<worktree>/
-project_name="$(basename "$PROJECT_DIR")"
-worktree_base="$(dirname "$PROJECT_DIR")/.worktrees/$project_name"
-worktree_path="$worktree_base/$task_id"
-mkdir -p "$worktree_base"
+# Worktree setup
+worktree_path="$PROJECT_WORKTREES/$task_id"
+mkdir -p "$PROJECT_WORKTREES"
 
 if [ -d "$worktree_path" ]; then
     echo "Reusing existing worktree: $worktree_path"

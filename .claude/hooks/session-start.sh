@@ -6,11 +6,8 @@ set -eo pipefail
 input=$(cat)
 cwd=$(echo "$input" | jq -r '.cwd')
 
-# Source paths if available
-PATHS_FILE="$cwd/paths.sh"
-if [ -f "$PATHS_FILE" ]; then
-    source "$PATHS_FILE"
-fi
+# Use env vars (set by shell-init.sh) or fallback to cwd-based paths
+: "${CLAUDE_PROJECT_DIR:=$cwd}"
 
 # 1. Provide agent-specific documentation based on AGENT_TYPE
 if [ "$AGENT_TYPE" = "task" ]; then
