@@ -35,7 +35,7 @@ if [[ -n "$unstaged" ]]; then
     echo "$unstaged" | sed 's/^/   /' >&2
     [[ $count -gt 5 ]] && echo "   ... and $((count - 5)) more" >&2
     echo "" >&2
-    echo "Options: git add | git checkout | mv to tmp/ | rm (if not needed)" >&2
+    echo "Consider: git add | git checkout | mv to tmp/ | rm (if not needed)" >&2
     echo "" >&2
 fi
 
