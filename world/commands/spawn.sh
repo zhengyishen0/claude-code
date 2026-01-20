@@ -139,7 +139,7 @@ export TASK_FILE="$task_md"
 export CLAUDE_PROJECT_DIR="$worktree_path"
 
 # Start claude
-claude --print --session-id "$session_id" --cwd "$worktree_path" "$prompt" &
+(cd "$worktree_path" && claude --print --session-id "$session_id" "$prompt") &
 CLAUDE_PID=$!
 
 # Save PID
