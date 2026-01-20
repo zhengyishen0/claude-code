@@ -1,5 +1,5 @@
 #!/bin/bash
-# SessionStart hook: Agent-type specific context + Git branch warning + World logging
+# SessionStart hook: Agent-type specific context + World logging
 set -eo pipefail
 
 # Read hook input
@@ -27,24 +27,6 @@ if [ -n "$AGENT_SESSION_ID" ] && [ -n "$AGENT_DESCRIPTION" ]; then
   world_cmd="$CLAUDE_PROJECT_DIR/world/run.sh"
   if [ -x "$world_cmd" ]; then
     "$world_cmd" create --agent start "$AGENT_SESSION_ID" "$AGENT_DESCRIPTION" 2>/dev/null || true
-  fi
-fi
-
-# 3. Check git branch and warn if on main
-if [ -d "$cwd/.git" ] || git -C "$cwd" rev-parse --git-dir >/dev/null 2>&1; then
-  current_branch=$(git -C "$cwd" branch --show-current 2>/dev/null || echo "unknown")
-
-  if [ "$current_branch" = "main" ]; then
-    project_name=$(basename "$cwd")
-    echo ""
-    echo "📍 Current branch: $current_branch"
-    echo "⚠️  WARNING: On main branch! Create a worktree before making ANY changes:"
-    if [ -n "${PROJECT_WORKTREES:-}" ]; then
-      echo "   worktree create <feature-name>"
-    else
-      echo "   git worktree add -b <feature-name> \$PROJECT_WORKTREES/<feature-name>"
-    fi
-    echo ""
   fi
 fi
 
