@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # world/run.sh
-# World log tool - single source of truth for agent coordination
-# New interface: read/write with unified format
+# World - single source of truth for agent coordination
 
 set -euo pipefail
 
@@ -13,62 +12,41 @@ show_help() {
 world - Single source of truth for agent coordination
 
 USAGE:
-    world create <options>             Create event or task
-    world check [options]              Check/read entries
+    world create <options>     Create event, task, or agent
+    world check [options]      Query the log
+    world spawn <task-id>      Start a task agent
+    world watch [interval]     Start the daemon
 
-NOTE: Supervisor is now a separate tool. Run 'supervisor' directly.
+CREATE:
+    world create --event <type> <content>
+    world create --task <id> <title> [--wait <cond>] [--need <criteria>]
+    world create --agent task <title> [--wait <cond>] [--need <criteria>]
+    world create --agent supervisor
 
-CREATE COMMANDS:
+CHECK:
+    world check                    All entries
+    world check --task             Only tasks
+    world check --event            Only events
+    world check --task --status pending
 
-  Events (facts, one-time):
-    world create --event <type> [--session <id>] <content>
+SPAWN:
+    world spawn <task-id>          Start task in worktree
 
-  Tasks (to-dos with lifecycle):
-    world create --task <id> <status> <trigger> <description> [--need <criteria>]
+WATCH:
+    world watch                    Daemon (5s interval)
+    world watch 10                 Daemon (10s interval)
 
-  Agent (shorthand for event):
-    world create --agent <status> <session-id> <content>
-
-CHECK COMMANDS:
-
-    world check                        All entries
-    world check --event                Only events
-    world check --task                 Only tasks
-    world check --event --type <type>  Filter by event type
-    world check --task --status <s>    Filter by task status
-    world check --session <id>         Filter by session
-    world check --since <date>         Filter by time
+    The watch daemon:
+    - Syncs MD changes to log
+    - Spawns pending tasks
+    - Recovers crashed tasks
+    - Archives verified/canceled
 
 EXAMPLES:
-
-  # Create events
-  world create --event "git:commit" --session abc123 "fix: token refresh"
-  world create --event "system" "supervisor started"
-
-  # Create tasks
-  world create --task "login-fix" "pending" "now" "修复登录bug" --need "测试通过"
-  world create --task "login-fix" "running"
-  world create --task "login-fix" "done"
-
-  # Create agent status (shorthand)
-  world create --agent start abc123 "开始执行任务"
-  world create --agent finish abc123 "任务完成"
-
-  # Check/read
-  world check --task --status pending
-  world check --event --type "git:commit"
-  world check --session abc123
-
-DATA FORMAT:
-
-  Event:  [timestamp] [event] <type> | <content>
-  Task:   [timestamp] [task] <id> | <status> | <trigger> | <description> | need: <criteria>
-
-TASK STATUSES:
-  pending, running, done, failed
-
-EVENT TYPES:
-  git:commit, git:push, system, user, task:<id>, browser, file, api
+    world create --agent task "Fix login bug" --need "tests pass"
+    world spawn fix-bug
+    world check --task --status running
+    world watch
 EOF
 }
 
@@ -82,12 +60,20 @@ case "${1:-}" in
         shift
         "$COMMANDS_DIR/check.sh" "$@"
         ;;
+    spawn)
+        shift
+        "$COMMANDS_DIR/spawn.sh" "$@"
+        ;;
+    watch)
+        shift
+        "$COMMANDS_DIR/watch.sh" "$@"
+        ;;
     help|-h|--help|"")
         show_help
         ;;
     *)
-        echo "Unknown command: $1"
-        echo "Run 'world help' for usage"
+        echo "Unknown command: $1" >&2
+        echo "Run 'world help' for usage" >&2
         exit 1
         ;;
 esac

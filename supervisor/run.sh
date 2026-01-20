@@ -1,219 +1,175 @@
 #!/usr/bin/env bash
 # supervisor/run.sh
-# Supervisor system - orchestrate task agents
+# L2 Supervisor - verify, cancel, retry tasks
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SPAWN_TASK="$SCRIPT_DIR/spawn_task.sh"
-LEVEL1="$SCRIPT_DIR/level1.sh"
-MD_WATCHER="$SCRIPT_DIR/md_watcher.sh"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+TASKS_DIR="$PROJECT_DIR/tasks"
+ARCHIVE_DIR="$HOME/.claude-archive"
+
+# Get supervisor session ID (generate if not set)
+SUPERVISOR_SESSION="${SUPERVISOR_SESSION_ID:-$(uuidgen | tr '[:upper:]' '[:lower:]')}"
 
 show_help() {
     cat <<'EOF'
-supervisor - Orchestrate task agents
+supervisor - L2 Supervisor: verify, cancel, retry tasks
 
 USAGE:
-    supervisor                   Show this help
-    supervisor spawn <task-id>   Manually spawn a task agent
-    supervisor verify <task-id>  Verify completed task (marks as verified)
-    supervisor cancel <task-id>  Cancel task (marks as canceled)
-    supervisor level1 [command]  Run Level 1 supervisor
-    supervisor check             Check processes and cleanup
-    supervisor once              Run all supervisor levels once
-    supervisor daemon [interval] Run continuously (default: 30s)
+    supervisor verify <task-id>    Mark task as verified
+    supervisor cancel <task-id>    Cancel task
+    supervisor retry <task-id>     Retry task (restore from archive if needed)
 
-COMMANDS:
-    spawn <task-id>
-        Create a worktree and start claude for the specified task.
-        The task must exist in tasks/<id>.md with status 'pending'.
+DESCRIPTION:
+    L2 supervisor provides approval actions for completed tasks.
+    These commands update the 'review' field in task markdown:
+    
+        review: verified | <supervisor-session>
+        review: canceled | <supervisor-session>
+        review: retry | <supervisor-session>
 
-    verify <task-id>
-        Mark a completed task as verified. This allows the supervisor
-        to clean up the worktree.
-
-    cancel <task-id>
-        Cancel a task. This marks the task as canceled and allows
-        the supervisor to clean up the worktree.
-
-    level1 [run|list|check]
-        Level 1: State enforcement
-        - 'run' (default): Check pending tasks and spawn those ready
-        - 'list': Show pending tasks without spawning
-        - 'check': Check running processes and cleanup
-
-    check
-        Shortcut for 'level1 check':
-        - Detect crashed processes (PID exists but process gone)
-        - Sync status to world.log (mark crashed as failed)
-        - Cleanup worktrees for done/failed tasks
-
-    once
-        Run all supervisor levels once:
-        - Level 1: Trigger pending tasks with met conditions
-
-    daemon [interval]
-        Run supervisor continuously in a loop.
-        Default interval: 30 seconds.
-        Each iteration runs: check + once
-
-OPTIONS (via environment):
-    DRY_RUN=true    Show what would be done without doing it
+    The world watch daemon detects these changes and:
+    - Archives worktrees for verified/canceled
+    - Re-spawns for retry
 
 EXAMPLES:
-    supervisor                      # Show help
-    supervisor spawn login-fix      # Spawn task 'login-fix'
-    supervisor level1               # Run level1 (trigger pending)
-    supervisor level1 list          # List pending tasks
-    supervisor check                # Check processes and cleanup
-    supervisor once                 # Run all levels once
-    DRY_RUN=true supervisor once    # Dry run all levels
-    supervisor daemon               # Run continuously (30s interval)
-    supervisor daemon 10            # Run continuously (10s interval)
-
-WORKFLOW:
-    1. Create a task:
-       world create --task my-task pending now "Fix the bug" --need "tests pass"
-
-    2. Spawn the task (manual):
-       supervisor spawn my-task
-
-    3. Or let the supervisor trigger it:
-       supervisor once
-
-ARCHITECTURE:
-    supervisor/
-    ├── run.sh          # This file - main entry point
-    ├── spawn_task.sh   # Create worktree + start claude
-    └── level1.sh       # Trigger pending tasks
-
-    Each spawned task runs in its own worktree:
-    ../claude-code-task-<id>/
+    supervisor verify fix-bug
+    supervisor cancel feature-x
+    supervisor retry failed-task
 EOF
 }
 
-run_once() {
-    echo "=== Running Supervisor (once) ==="
-    echo ""
-
-    echo ">>> Checking processes and cleanup"
-    "$LEVEL1" check
-    echo ""
-
-    echo ">>> Level 1: Trigger Pending Tasks"
-    DRY_RUN="${DRY_RUN:-false}" "$LEVEL1" run
-    echo ""
-
-    echo "=== Done ==="
+# Ensure yq is installed
+check_yq() {
+    if ! command -v yq >/dev/null 2>&1; then
+        echo "Error: yq not installed. Install with: brew install yq" >&2
+        exit 1
+    fi
 }
 
-run_daemon() {
-    local interval="${1:-30}"
-    echo "=== Supervisor Daemon ==="
-    echo "Interval: ${interval}s"
-    echo "Press Ctrl+C to stop"
-    echo ""
+# Verify a completed task
+do_verify() {
+    local task_id="$1"
+    local task_md="$TASKS_DIR/$task_id.md"
 
-    # Start md_watcher in background
-    echo "Starting MD watcher..."
-    "$MD_WATCHER" &
-    local watcher_pid=$!
-    echo "MD watcher started (PID: $watcher_pid)"
-    echo ""
+    if [ ! -f "$task_md" ]; then
+        echo "Error: Task not found: $task_md" >&2
+        exit 1
+    fi
 
-    # Setup trap to kill watcher on exit
-    trap 'echo ""; echo "Stopping..."; kill $watcher_pid 2>/dev/null; echo "Daemon stopped."; exit 0' INT TERM
+    local status=$(yq eval --front-matter=extract '.status' "$task_md" 2>/dev/null || echo "")
 
-    while true; do
-        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Running supervisor..."
-        run_once
-        echo ""
-        echo "Sleeping ${interval}s..."
-        sleep "$interval"
-    done
+    if [ "$status" != "done" ]; then
+        echo "Error: Task '$task_id' is not done (status: $status)" >&2
+        echo "Only completed tasks can be verified." >&2
+        exit 1
+    fi
+
+    # Set review field
+    yq -i --front-matter=process ".review = \"verified | $SUPERVISOR_SESSION\"" "$task_md"
+
+    echo "✓ Task verified: $task_id"
+    echo "  review: verified | $SUPERVISOR_SESSION"
 }
 
-# No args = help
+# Cancel a task
+do_cancel() {
+    local task_id="$1"
+    local task_md="$TASKS_DIR/$task_id.md"
+
+    if [ ! -f "$task_md" ]; then
+        echo "Error: Task not found: $task_md" >&2
+        exit 1
+    fi
+
+    # Kill if running
+    local pid_file="/tmp/world/pids/$task_id.pid"
+    if [ -f "$pid_file" ]; then
+        local pid=$(cat "$pid_file")
+        if kill -0 "$pid" 2>/dev/null; then
+            echo "Killing running process (PID: $pid)..."
+            kill "$pid" 2>/dev/null || true
+        fi
+        rm -f "$pid_file"
+    fi
+
+    # Set review field
+    yq -i --front-matter=process ".review = \"canceled | $SUPERVISOR_SESSION\"" "$task_md"
+
+    echo "✓ Task canceled: $task_id"
+    echo "  review: canceled | $SUPERVISOR_SESSION"
+}
+
+# Retry a task
+do_retry() {
+    local task_id="$1"
+    local task_md="$TASKS_DIR/$task_id.md"
+
+    if [ ! -f "$task_md" ]; then
+        echo "Error: Task not found: $task_md" >&2
+        exit 1
+    fi
+
+    local status=$(yq eval --front-matter=extract '.status' "$task_md" 2>/dev/null || echo "")
+    local review=$(yq eval --front-matter=extract '.review // ""' "$task_md" 2>/dev/null || echo "")
+
+    # Check if archived (has review field with verified/canceled)
+    local worktree_path="$(dirname "$PROJECT_DIR")/claude-code-task-$task_id"
+    
+    if [ ! -d "$worktree_path" ]; then
+        # Look for archived worktree
+        local archived=$(ls -d "$ARCHIVE_DIR"/task-$task_id-* 2>/dev/null | tail -1 || echo "")
+        
+        if [ -n "$archived" ] && [ -d "$archived" ]; then
+            echo "Restoring from archive: $archived"
+            mv "$archived" "$worktree_path"
+            git -C "$PROJECT_DIR" worktree repair "$worktree_path" 2>/dev/null || true
+        fi
+    fi
+
+    # Reset status to pending and clear review
+    yq -i --front-matter=process '.status = "pending"' "$task_md"
+    yq -i --front-matter=process ".review = \"retry | $SUPERVISOR_SESSION\"" "$task_md"
+    
+    # Clear completed timestamp
+    yq -i --front-matter=process 'del(.completed)' "$task_md" 2>/dev/null || true
+    yq -i --front-matter=process 'del(.started)' "$task_md" 2>/dev/null || true
+
+    echo "✓ Task queued for retry: $task_id"
+    echo "  review: retry | $SUPERVISOR_SESSION"
+    echo "  status: pending"
+    echo ""
+    echo "The watch daemon will spawn this task."
+}
+
+# Parse arguments
 if [ $# -lt 1 ]; then
     show_help
     exit 0
 fi
 
-# Router
+check_yq
+
 case "$1" in
-    spawn)
-        shift
-        if [ $# -lt 1 ]; then
-            echo "Error: spawn requires <task-id>"
-            echo "Usage: supervisor spawn <task-id>"
-            exit 1
-        fi
-        "$SPAWN_TASK" "$@"
-        ;;
     verify)
-        shift
-        if [ $# -lt 1 ]; then
-            echo "Error: verify requires <task-id>"
-            echo "Usage: supervisor verify <task-id>"
-            exit 1
-        fi
-        task_id="$1"
-        task_file="$SCRIPT_DIR/../tasks/$task_id.md"
-        if [ ! -f "$task_file" ]; then
-            echo "Error: Task file not found: $task_file"
-            exit 1
-        fi
-        # Ensure yq is installed
-        if ! command -v yq >/dev/null 2>&1; then
-            echo "Error: yq not installed. Install with: brew install yq"
-            exit 1
-        fi
-        yq -i --front-matter=process '.status = "verified"' "$task_file"
-        yq -i --front-matter=process ".verified = \"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\"" "$task_file"
-        echo "✓ Task verified: $task_id"
+        [ $# -lt 2 ] && { echo "Error: verify requires <task-id>" >&2; exit 1; }
+        do_verify "$2"
         ;;
     cancel)
-        shift
-        if [ $# -lt 1 ]; then
-            echo "Error: cancel requires <task-id>"
-            echo "Usage: supervisor cancel <task-id>"
-            exit 1
-        fi
-        task_id="$1"
-        task_file="$SCRIPT_DIR/../tasks/$task_id.md"
-        if [ ! -f "$task_file" ]; then
-            echo "Error: Task file not found: $task_file"
-            exit 1
-        fi
-        # Ensure yq is installed
-        if ! command -v yq >/dev/null 2>&1; then
-            echo "Error: yq not installed. Install with: brew install yq"
-            exit 1
-        fi
-        yq -i --front-matter=process '.status = "canceled"' "$task_file"
-        yq -i --front-matter=process ".canceled = \"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\"" "$task_file"
-        echo "✓ Task canceled: $task_id"
+        [ $# -lt 2 ] && { echo "Error: cancel requires <task-id>" >&2; exit 1; }
+        do_cancel "$2"
         ;;
-    level1)
-        shift
-        "$LEVEL1" "${@:-run}"
-        ;;
-    check)
-        "$LEVEL1" check
-        ;;
-    once)
-        run_once
-        ;;
-    daemon)
-        shift
-        run_daemon "${1:-30}"
+    retry)
+        [ $# -lt 2 ] && { echo "Error: retry requires <task-id>" >&2; exit 1; }
+        do_retry "$2"
         ;;
     help|-h|--help)
         show_help
         ;;
     *)
-        echo "Unknown command: $1"
-        echo "Run 'supervisor help' for usage"
+        echo "Unknown command: $1" >&2
+        echo "Run 'supervisor help' for usage" >&2
         exit 1
         ;;
 esac
