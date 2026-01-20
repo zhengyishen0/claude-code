@@ -11,6 +11,7 @@ if git -C "$PROJECT_DIR" status --porcelain 2>/dev/null | grep -q .; then
     echo "" >&2
     echo "📍 Checkpoint. Uncommitted changes detected. Commit if you've reached a milestone." >&2
     echo "" >&2
+    exit 1  # Warning - show message but don't block
 fi
 
 exit 0
