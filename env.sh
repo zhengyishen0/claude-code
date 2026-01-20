@@ -21,8 +21,11 @@ alias browser="$PROJECT_DIR/browser/run.sh"
 alias browser-js="node $PROJECT_DIR/browser/cli.js"
 alias memory="$PROJECT_DIR/memory/run.sh"
 alias screenshot="python3 $PROJECT_DIR/tools/screenshot.py"
-alias proxy="$PROJECT_DIR/tools/proxy.sh"
 alias service="$PROJECT_DIR/service/run.sh"
+
+# Proxy (defined as variable for reuse in auto-init below)
+_PROXY="$PROJECT_DIR/tools/proxy.sh"
+alias proxy="$_PROXY"
 
 # ============================================================
 # Claude CLI aliases
@@ -42,4 +45,4 @@ world-daemon() {
 # ============================================================
 # Auto-init: Enable proxy if reachable
 # ============================================================
-eval "$($PROJECT_DIR/tools/proxy.sh init 2>/dev/null)"
+eval "$($_PROXY init 2>/dev/null)"
