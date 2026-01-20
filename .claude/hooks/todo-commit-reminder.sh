@@ -16,9 +16,9 @@ completed=$(echo "$todos" | jq '[.[] | select(.status == "completed")] | length'
 
 # Only remind if there are todos and all are completed
 if [ "$total" -gt 0 ] && [ "$total" -eq "$completed" ]; then
-    echo "" >&2
-    echo "✅ All todos completed. Consider: git add && git commit" >&2
-    echo "" >&2
+    echo ""
+    echo "✅ All todos completed. Consider: git add && git commit"
+    echo ""
 fi
 
 exit 0
