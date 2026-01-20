@@ -11,9 +11,9 @@ worktree cleanup feature-name    # Merge, remove worktree, delete branch
 ```
 
 Keep the tree clean:
+- Put test/temp files in `tmp/` (gitignored)
 - Stage changes promptly: `git add <file>`
 - Revert unwanted changes: `git checkout <file>`
-- Remove test/temp files: `rm <file>`
 - Commit when a logical unit of work is complete
 
 ## Tools
