@@ -21,6 +21,7 @@ alias browser-js="node $PROJECT_DIR/browser/cli.js"
 alias memory="$PROJECT_DIR/memory/run.sh"
 alias screenshot="$PROJECT_DIR/tools/screenshot/run.sh"
 alias proxy="$PROJECT_DIR/tools/proxy/run.sh"
+alias api="$PROJECT_DIR/tools/api/run.sh"
 
 # Claude CLI aliases
 alias claude-ps='pgrep -fl "^claude"'
