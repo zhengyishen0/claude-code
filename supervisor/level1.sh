@@ -47,16 +47,6 @@ WHAT IT DOES:
 EOF
 }
 
-_log_event() {
-    local identifier="$1"
-    local message="$2"
-
-    if [ "$DRY_RUN" = "true" ]; then
-        echo "[DRY-RUN] Would log: system:$identifier | $message"
-    else
-        "$PROJECT_DIR/world/run.sh" log "system:$identifier" "$message"
-    fi
-}
 
 verbose() {
     if [ "$VERBOSE" = "true" ]; then
@@ -127,7 +117,7 @@ start_agent() {
     else
         # In production: claude --resume $session_id &
         # For now, just log the action
-        _log_event "level1-supervisor" "would start agent $session_id (not implemented)"
+        echo "[$(date -u +%H:%M:%S)] level1-supervisor: would start agent $session_id (not implemented)"
         echo "Started agent: $session_id (simulated)"
     fi
 }
@@ -140,7 +130,7 @@ kill_orphan() {
         echo "[DRY-RUN] Would kill orphan process: $pid"
     else
         # In production: kill $pid
-        _log_event "level1-supervisor" "would kill orphan $pid (not implemented)"
+        echo "[$(date -u +%H:%M:%S)] level1-supervisor: would kill orphan $pid (not implemented)"
         echo "Killed orphan: $pid (simulated)"
     fi
 }

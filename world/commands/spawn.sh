@@ -5,14 +5,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORLD_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-PROJECT_DIR="$(cd "$WORLD_DIR/.." && pwd)"
-WORLD_LOG="$WORLD_DIR/world.log"
-TASKS_DIR="$WORLD_DIR/tasks"
+source "$SCRIPT_DIR/../../paths.sh"
 
-# PID management
-PID_DIR="/tmp/world/pids"
-mkdir -p "$PID_DIR"
 
 show_help() {
     cat <<'EOF'
@@ -73,6 +67,7 @@ if [ "$status" != "pending" ]; then
 fi
 
 # Check if already running
+mkdir -p "$PID_DIR"
 if [ -f "$PID_DIR/$task_id.pid" ]; then
     pid=$(cat "$PID_DIR/$task_id.pid")
     if kill -0 "$pid" 2>/dev/null; then
@@ -112,25 +107,22 @@ timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 yq -i --front-matter=process '.status = "running"' "$task_md"
 yq -i --front-matter=process ".started = \"$timestamp\"" "$task_md"
 
-# Build prompt
-prompt="You are a task agent.
+# System prompt from markdown file
+prompt_file="$SCRIPT_DIR/../agent-prompt.md"
+if [ ! -f "$prompt_file" ]; then
+    echo "Error: Agent prompt file not found: $prompt_file" >&2
+    exit 1
+fi
+system_prompt=$(sed "s|{{TASK_FILE}}|$task_md|g" "$prompt_file")
 
-Your task file: $task_md
+# Task prompt (specific task to execute)
+task_prompt="Execute this task:
 
-Task: $title
+Title: $title
 Wait: $wait
 Need: $need
 
-WORKFLOW:
-1. Read the task markdown file
-2. If wait != \"-\", implement wait logic
-3. Execute the task
-4. Update markdown when done:
-   - status: done
-   - Add result summary
-
-Do NOT call world commands. Just edit the markdown file.
-The system will sync changes automatically."
+Start by reading the task file, then proceed with the work."
 
 echo "Starting claude..."
 echo "---"
@@ -141,8 +133,13 @@ export AGENT_SESSION_ID="$session_id"
 export TASK_FILE="$task_md"
 export CLAUDE_PROJECT_DIR="$worktree_path"
 
-# Start claude
-(cd "$worktree_path" && claude --print --session-id "$session_id" "$prompt") &
+# Start claude with appended system prompt
+(cd "$worktree_path" && claude \
+    --dangerously-skip-permissions \
+    --print \
+    --session-id "$session_id" \
+    --append-system-prompt "$system_prompt" \
+    "$task_prompt") &
 CLAUDE_PID=$!
 
 # Save PID

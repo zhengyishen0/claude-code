@@ -51,16 +51,6 @@ SUPERVISOR ROLES:
 EOF
 }
 
-_log_event() {
-    local identifier="$1"
-    local message="$2"
-
-    if [ "$DRY_RUN" = "true" ]; then
-        echo "[DRY-RUN] Would log: system:$identifier | $message"
-    else
-        "$PROJECT_DIR/world/run.sh" log "system:$identifier" "$message"
-    fi
-}
 
 run_once() {
     echo "=== Running Supervisors ==="
@@ -82,9 +72,9 @@ run_daemon() {
     echo "Press Ctrl+C to stop"
     echo ""
 
-    _log_event "supervisor-daemon" "started with poll_interval=${POLL_INTERVAL}s"
+    echo "[$(date -u +%H:%M:%S)] supervisor-daemon: started with poll_interval=${POLL_INTERVAL}s"
 
-    trap 'echo ""; echo "Stopping daemon..."; _log_event "supervisor-daemon" "stopped"; exit 0' INT TERM
+    trap 'echo ""; echo "Stopping daemon..."; echo "[$(date -u +%H:%M:%S)] supervisor-daemon: stopped"; exit 0' INT TERM
 
     while true; do
         echo "[$(date -u +"%Y-%m-%dT%H:%M:%SZ")] Running supervisor cycle..."

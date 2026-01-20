@@ -5,19 +5,15 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-WORLD_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-PROJECT_DIR="$(cd "$WORLD_DIR/.." && pwd)"
-PROJECT_NAME="$(basename "$PROJECT_DIR")"
-WORLD_LOG="$WORLD_DIR/world.log"
-TASKS_DIR="$WORLD_DIR/tasks"
+source "$SCRIPT_DIR/../../paths.sh"
+
 SPAWN_CMD="$SCRIPT_DIR/spawn.sh"
+LOG_CMD="$SCRIPT_DIR/log.sh"
 
-# Worktree and archive paths - ~/Codes/.worktrees/<project>/
-WORKTREE_BASE="$(dirname "$PROJECT_DIR")/.worktrees/$PROJECT_NAME"
-ARCHIVE_DIR="$WORKTREE_BASE/.archive"
+# Worktree paths
+WORKTREE_BASE="$PROJECT_WORKTREES"
+ARCHIVE_DIR="$PROJECT_ARCHIVE"
 
-# PID directory
-PID_DIR="/tmp/world/pids"
 mkdir -p "$PID_DIR" "$WORKTREE_BASE" "$ARCHIVE_DIR" "$TASKS_DIR"
 
 # Interval between checks (seconds)
@@ -40,10 +36,10 @@ DESCRIPTION:
     Default interval: 5 seconds
 
 WORKTREE STRUCTURE:
-    ~/Codes/.worktrees/<project>/
-    ├── <active-worktrees>/
+    $BASE_DIR/.worktrees/<project>/
+    ├── <task-id>/           # Active worktrees
     └── .archive/
-        └── <archived-worktrees>/
+        └── <task-id>-<ts>/  # Archived worktrees
 
 EXAMPLES:
     world watch         # Run with 5s interval
@@ -89,9 +85,7 @@ sync_to_log() {
     local latest=$(grep "\\[task: $effective_status\\] $id(" "$WORLD_LOG" 2>/dev/null | tail -1 || echo "")
 
     if [ -z "$latest" ]; then
-        local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-        local entry="[$timestamp] [task: $effective_status] $id($title) | file: tasks/$id.md | wait: $wait | need: $need"
-        echo "$entry" >> "$WORLD_LOG"
+        "$LOG_CMD" task "$effective_status" "$id" "$title" "$wait" "$need"
         echo "[SYNC] $id → $effective_status"
     fi
 }
@@ -213,8 +207,8 @@ echo "=== World Watch Daemon ==="
 echo "Interval: ${INTERVAL}s"
 echo "Tasks: $TASKS_DIR"
 echo "Log: $WORLD_LOG"
-echo "Worktrees: $WORKTREE_BASE"
-echo "Archive: $ARCHIVE_DIR"
+echo "Worktrees: $PROJECT_WORKTREES"
+echo "Archive: $PROJECT_ARCHIVE"
 echo ""
 echo "Press Ctrl+C to stop"
 echo ""

@@ -1,389 +1,159 @@
 #!/usr/bin/env bash
 # supervisor/level2.sh
-# Level 2 Supervisor: Intention Verifier (AI-powered)
+# Level 2 Supervisor: Intention Verifier
 #
-# Job: Ensure every agent reaches verified or failed
-# - Verify finish outputs against success criteria
-# - Retry with guidance if not verified
-# - Escalate to user if max retries reached
-# - Handle user input to continue failed agents
+# Job: Verify completed tasks against success criteria
+# - Find tasks with status: done
+# - Verify output against 'need' criteria
+# - Update status to verified/retry/failed
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../paths.sh"
-WORLD_LOG="$PROJECT_DIR/world/world.log"
 
-# Configuration
 MAX_RETRIES="${MAX_RETRIES:-3}"
-STALE_THRESHOLD="${STALE_THRESHOLD:-3600}"  # seconds (1 hour)
 DRY_RUN="${DRY_RUN:-false}"
-VERBOSE="${VERBOSE:-false}"
 
 show_help() {
-    cat <<'EOF'
+    cat <<'HELP'
 level2 - Intention Verifier Supervisor
 
 USAGE:
     level2.sh [command]
 
 COMMANDS:
-    check       Check for agents needing attention (default)
-    process     Process pending verifications and retries
-    status      Show verification status of all agents
+    check       Show tasks needing verification
+    process     Verify and update task statuses
+    status      Show all task statuses
 
 OPTIONS (via environment):
-    MAX_RETRIES=3       Maximum retry attempts before failing
-    STALE_THRESHOLD=3600  Seconds before active agent is considered stale
-    DRY_RUN=true        Show what would be done without doing it
-
-EXAMPLES:
-    level2.sh check              # Check what needs attention
-    level2.sh process            # Process all pending items
-    DRY_RUN=true level2.sh process   # Show what would be processed
-
-WHAT IT DOES:
-    1. Finds agents with status=finish (pending verification)
-    2. Verifies output against success criteria (| need: ...)
-    3. Logs [agent:verified] if success, [agent:retry] if not
-    4. Finds agents with status=failed + [event:user] input
-    5. Logs [agent:retry] to continue failed agents
-    6. Escalates to user if max retries reached
-EOF
+    MAX_RETRIES=3       Maximum retry attempts
+    DRY_RUN=true        Show without executing
+HELP
 }
 
-verbose() {
-    if [ "$VERBOSE" = "true" ]; then
-        echo "$@"
+# Update task MD status
+update_task_status() {
+    local task_file="$1"
+    local new_status="$2"
+    
+    if [ "$DRY_RUN" = "true" ]; then
+        echo "[DRY-RUN] Would update $task_file → status: $new_status"
+    else
+        yq -i --front-matter=process ".status = \"$new_status\"" "$task_file"
+        echo "Updated: $(basename "$task_file") → $new_status"
     fi
 }
 
-# Get the start entry for a session (contains success criteria)
-get_start_entry() {
-    local session_id="$1"
-    grep "\[agent:start\]\[$session_id\]" "$WORLD_LOG" | tail -1 || echo ""
-}
-
-# Extract success criteria from start entry
-get_success_criteria() {
-    local start_entry="$1"
-    # Extract text after "| need:"
-    echo "$start_entry" | sed -E 's/.*\| need: ?//' || echo ""
-}
-
-# Get the last status for a session
-get_last_status() {
-    local session_id="$1"
-    local last_entry
-    last_entry=$(grep "\[agent:.*\]\[$session_id\]" "$WORLD_LOG" | tail -1 || echo "")
-
-    if [ -n "$last_entry" ]; then
-        echo "$last_entry" | sed -E 's/.*\[agent:([^]]+)\].*/\1/'
-    fi
-}
-
-# Get the output from finish entry
-get_finish_output() {
-    local session_id="$1"
-    local finish_entry
-    finish_entry=$(grep "\[agent:finish\]\[$session_id\]" "$WORLD_LOG" | tail -1 || echo "")
-
-    if [ -n "$finish_entry" ]; then
-        # Extract output (everything after the session-id bracket)
-        echo "$finish_entry" | sed -E 's/.*\[agent:finish\]\[[^]]+\] ?//'
-    fi
-}
-
-# Count retry attempts for a session
+# Count retries for a task
 count_retries() {
-    local session_id="$1"
-    local count
-    count=$(grep -c "\[agent:retry\]\[$session_id\]" "$WORLD_LOG" 2>/dev/null || echo "0")
-    echo "$count" | tr -d '[:space:]'
+    local task_file="$1"
+    yq eval --front-matter=extract '.retries // 0' "$task_file" 2>/dev/null || echo "0"
 }
 
-# Check if there's user input after a failed status
-get_user_input_after_failed() {
-    local session_id="$1"
-
-    # Find line number of last failed entry
-    local failed_line
-    failed_line=$(grep -n "\[agent:failed\]\[$session_id\]" "$WORLD_LOG" | tail -1 | cut -d: -f1 || echo "0")
-
-    if [ "$failed_line" = "0" ]; then
-        return
+# Increment retry count
+increment_retries() {
+    local task_file="$1"
+    local current=$(count_retries "$task_file")
+    local new=$((current + 1))
+    
+    if [ "$DRY_RUN" != "true" ]; then
+        yq -i --front-matter=process ".retries = $new" "$task_file"
     fi
-
-    # Find user event for this session after the failed line
-    local user_event
-    user_event=$(tail -n "+$failed_line" "$WORLD_LOG" | grep "\[event:user\]\[$session_id\]" | head -1 || echo "")
-
-    if [ -n "$user_event" ]; then
-        # Extract user input (everything after the identifier)
-        echo "$user_event" | sed -E 's/.*\[event:user\]\[[^]]+\] ?//'
-    fi
+    echo "$new"
 }
 
-# Verify output against criteria (simple keyword matching for now)
-# In production, this could use AI for smarter verification
+# Simple keyword matching for verification
 verify_output() {
-    local output="$1"
-    local criteria="$2"
-
-    # Simple verification: check if key terms from criteria appear in output
-    # This is a basic implementation - could be enhanced with AI
-
-    # Extract key terms (words > 3 chars, not common words)
-    local key_terms
-    key_terms=$(echo "$criteria" | tr ' ' '\n' | grep -E '^.{4,}$' | grep -viE '^(with|that|this|from|have|been|will|would|should|could|need|must)$' || echo "")
-
-    if [ -z "$key_terms" ]; then
-        # No key terms to match, be lenient
-        return 0
-    fi
-
-    local matches=0
+    local task_file="$1"
+    local need=$(yq eval --front-matter=extract '.need // "-"' "$task_file" 2>/dev/null)
+    
+    [ "$need" = "-" ] && return 0  # No criteria = auto-pass
+    
+    # Check if task body contains key terms from need
+    local body=$(sed -n '/^---$/,/^---$/!p' "$task_file")
+    local match_count=0
     local total=0
-
-    for term in $key_terms; do
-        ((total++)) || true
-        if echo "$output" | grep -qi "$term"; then
-            ((matches++)) || true
-        fi
+    
+    for word in $need; do
+        [ ${#word} -lt 4 ] && continue
+        total=$((total + 1))
+        echo "$body" | grep -qi "$word" && match_count=$((match_count + 1))
     done
-
-    # Require at least 50% of key terms to match
-    if [ "$total" -gt 0 ] && [ "$matches" -ge $((total / 2)) ]; then
-        return 0  # Verified
-    else
-        return 1  # Not verified
-    fi
-}
-
-# Log agent status
-log_agent() {
-    local status="$1"
-    local session_id="$2"
-    local message="$3"
-
-    if [ "$DRY_RUN" = "true" ]; then
-        echo "[DRY-RUN] Would log: [agent:$status][$session_id] $message"
-    else
-        "$PROJECT_DIR/world/run.sh" log "agent:$status:$session_id" "$message"
-    fi
-}
-
-# Log event
-log_event() {
-    local source="$1"
-    local identifier="$2"
-    local message="$3"
-
-    if [ "$DRY_RUN" = "true" ]; then
-        echo "[DRY-RUN] Would log: [event:$source][$identifier] $message"
-    else
-        "$PROJECT_DIR/world/run.sh" log "$source:$identifier" "$message"
-    fi
-}
-
-# Get all unique session IDs
-get_all_sessions() {
-    if [ ! -f "$WORLD_LOG" ]; then
-        return
-    fi
-
-    grep -oE '\[agent:[^]]+\]\[[^]]+\]' "$WORLD_LOG" 2>/dev/null | \
-        sed -E 's/\[agent:[^]]+\]\[([^]]+)\]/\1/' | \
-        sort -u || echo ""
+    
+    [ "$total" -eq 0 ] && return 0
+    [ "$match_count" -ge $((total / 2)) ] && return 0
+    return 1
 }
 
 cmd_check() {
-    echo "=== Level 2 Verification Check ==="
-
-    if [ ! -f "$WORLD_LOG" ]; then
-        echo "No world.log found"
-        return
-    fi
-
-    local sessions
-    sessions=$(get_all_sessions)
-
-    if [ -z "$sessions" ]; then
-        echo "No agents found"
-        return
-    fi
-
-    local pending_verification=0
-    local awaiting_user=0
-    local ready_to_retry=0
-
-    echo ""
-    echo "Agents needing attention:"
-
-    for sid in $sessions; do
-        local status
-        status=$(get_last_status "$sid")
-
-        case "$status" in
-            finish)
-                echo "  [$sid] status=finish - pending verification"
-                ((pending_verification++)) || true
-                ;;
-            failed)
-                local user_input
-                user_input=$(get_user_input_after_failed "$sid")
-                if [ -n "$user_input" ]; then
-                    echo "  [$sid] status=failed + user input - ready to retry"
-                    ((ready_to_retry++)) || true
-                else
-                    echo "  [$sid] status=failed - awaiting user input"
-                    ((awaiting_user++)) || true
-                fi
-                ;;
-        esac
+    echo "=== Tasks Needing Verification ==="
+    
+    for task_file in "$TASKS_DIR"/*.md; do
+        [ -e "$task_file" ] || continue
+        
+        local status=$(yq eval --front-matter=extract '.status' "$task_file" 2>/dev/null)
+        local id=$(yq eval --front-matter=extract '.id' "$task_file" 2>/dev/null)
+        
+        [ "$status" = "done" ] && echo "  $id (done → needs verification)"
     done
-
-    echo ""
-    echo "Summary:"
-    echo "  Pending verification: $pending_verification"
-    echo "  Ready to retry (user input received): $ready_to_retry"
-    echo "  Awaiting user input: $awaiting_user"
 }
 
 cmd_process() {
-    echo "=== Level 2 Processing ==="
-
-    if [ ! -f "$WORLD_LOG" ]; then
-        echo "No world.log found"
-        return
-    fi
-
-    local sessions
-    sessions=$(get_all_sessions)
-
-    if [ -z "$sessions" ]; then
-        echo "No agents to process"
-        return
-    fi
-
-    local processed=0
-
-    for sid in $sessions; do
-        local status
-        status=$(get_last_status "$sid")
-
-        case "$status" in
-            finish)
-                echo ""
-                echo "Processing [$sid] (status=finish)..."
-
-                # Get success criteria and output
-                local start_entry
-                start_entry=$(get_start_entry "$sid")
-                local criteria
-                criteria=$(get_success_criteria "$start_entry")
-                local output
-                output=$(get_finish_output "$sid")
-
-                echo "  Criteria: $criteria"
-                echo "  Output: $output"
-
-                if [ -z "$criteria" ]; then
-                    echo "  No criteria found, auto-verifying"
-                    log_agent "verified" "$sid" "no criteria specified, auto-verified"
-                    ((processed++)) || true
-                elif verify_output "$output" "$criteria"; then
-                    echo "  ✓ Verified - output meets criteria"
-                    log_agent "verified" "$sid" "success criteria met"
-                    ((processed++)) || true
-                else
-                    local retries
-                    retries=$(count_retries "$sid")
-                    echo "  ✗ Not verified (retries: $retries/$MAX_RETRIES)"
-
-                    if [ "$retries" -ge "$MAX_RETRIES" ]; then
-                        echo "  Max retries reached, failing agent"
-                        log_agent "failed" "$sid" "max retries reached, criteria not met | need: manual review"
-                        log_event "system" "$sid" "escalated to user - max retries reached"
-                    else
-                        echo "  Scheduling retry"
-                        log_agent "retry" "$sid" "output does not match criteria: $criteria"
-                    fi
-                    ((processed++)) || true
-                fi
-                ;;
-
-            failed)
-                local user_input
-                user_input=$(get_user_input_after_failed "$sid")
-
-                if [ -n "$user_input" ]; then
-                    echo ""
-                    echo "Processing [$sid] (status=failed + user input)..."
-                    echo "  User input: $user_input"
-                    echo "  Scheduling retry with user input"
-                    log_agent "retry" "$sid" "user provided: $user_input"
-                    ((processed++)) || true
-                fi
-                ;;
-        esac
+    echo "=== Processing Tasks ==="
+    
+    for task_file in "$TASKS_DIR"/*.md; do
+        [ -e "$task_file" ] || continue
+        
+        local status=$(yq eval --front-matter=extract '.status' "$task_file" 2>/dev/null)
+        local id=$(yq eval --front-matter=extract '.id' "$task_file" 2>/dev/null)
+        
+        [ "$status" != "done" ] && continue
+        
+        echo ""
+        echo "Processing: $id"
+        
+        if verify_output "$task_file"; then
+            echo "  ✓ Verified"
+            update_task_status "$task_file" "verified"
+        else
+            local retries=$(increment_retries "$task_file")
+            if [ "$retries" -ge "$MAX_RETRIES" ]; then
+                echo "  ✗ Failed (max retries: $retries)"
+                update_task_status "$task_file" "failed"
+            else
+                echo "  → Retry ($retries/$MAX_RETRIES)"
+                update_task_status "$task_file" "pending"
+            fi
+        fi
     done
-
-    echo ""
-    echo "Processed: $processed agents"
 }
 
 cmd_status() {
-    echo "=== Agent Verification Status ==="
-
-    if [ ! -f "$WORLD_LOG" ]; then
-        echo "No world.log found"
-        return
-    fi
-
-    local sessions
-    sessions=$(get_all_sessions)
-
-    if [ -z "$sessions" ]; then
-        echo "No agents found"
-        return
-    fi
-
-    echo ""
-    printf "%-15s %-12s %-8s %s\n" "SESSION-ID" "STATUS" "RETRIES" "CRITERIA"
-    printf "%-15s %-12s %-8s %s\n" "----------" "------" "-------" "--------"
-
-    for sid in $sessions; do
-        local status retries criteria
-        status=$(get_last_status "$sid")
-        retries=$(count_retries "$sid")
-
-        local start_entry
-        start_entry=$(get_start_entry "$sid")
-        criteria=$(get_success_criteria "$start_entry")
-        criteria="${criteria:0:40}"  # Truncate
-
-        printf "%-15s %-12s %-8s %s\n" "$sid" "$status" "$retries" "$criteria"
+    echo "=== Task Statuses ==="
+    printf "%-15s %-12s %-8s %s\n" "ID" "STATUS" "RETRIES" "NEED"
+    printf "%-15s %-12s %-8s %s\n" "---" "------" "-------" "----"
+    
+    for task_file in "$TASKS_DIR"/*.md; do
+        [ -e "$task_file" ] || continue
+        
+        local id=$(yq eval --front-matter=extract '.id' "$task_file" 2>/dev/null)
+        local status=$(yq eval --front-matter=extract '.status' "$task_file" 2>/dev/null)
+        local retries=$(yq eval --front-matter=extract '.retries // 0' "$task_file" 2>/dev/null)
+        local need=$(yq eval --front-matter=extract '.need // "-"' "$task_file" 2>/dev/null)
+        
+        printf "%-15s %-12s %-8s %s\n" "$id" "$status" "$retries" "${need:0:30}"
     done
 }
 
-# Router
+# Ensure yq
+command -v yq >/dev/null || { echo "Error: yq required"; exit 1; }
+
 case "${1:-check}" in
-    check)
-        cmd_check
-        ;;
-    process)
-        cmd_process
-        ;;
-    status)
-        cmd_status
-        ;;
-    help|-h|--help)
-        show_help
-        ;;
-    *)
-        echo "Unknown command: $1"
-        echo "Run 'level2.sh help' for usage"
-        exit 1
-        ;;
+    check)   cmd_check ;;
+    process) cmd_process ;;
+    status)  cmd_status ;;
+    help|-h) show_help ;;
+    *)       echo "Unknown: $1"; exit 1 ;;
 esac
