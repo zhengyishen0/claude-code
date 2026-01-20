@@ -33,6 +33,16 @@ proxy_check() {
     fi
 }
 
+# Output export commands if proxy is reachable (for eval in env.sh)
+proxy_init() {
+    load_config
+    if command -v nc &>/dev/null && nc -z -w 1 "$PROXY_HOST" "$PROXY_PORT" 2>/dev/null; then
+        echo "export http_proxy=\"http://${PROXY_HOST}:${PROXY_PORT}\""
+        echo "export https_proxy=\"http://${PROXY_HOST}:${PROXY_PORT}\""
+        echo "export ANTHROPIC_BASE_URL=\"$ANTHROPIC_PROXY\""
+    fi
+}
+
 proxy_status() {
     load_config
 
@@ -93,6 +103,7 @@ EOF
 }
 
 case "${1:-}" in
+    init)   proxy_init ;;
     check)  proxy_check ;;
     status) proxy_status ;;
     config) shift; proxy_config "$@" ;;

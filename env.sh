@@ -14,7 +14,7 @@ export CLAUDE_DIR="${CLAUDE_DIR:-$HOME/.claude}"
 alias task="$PROJECT_DIR/task/run.sh"
 alias world="$PROJECT_DIR/world/run.sh"
 alias supervisor="$PROJECT_DIR/supervisor/run.sh"
-alias worktree="$PROJECT_DIR/worktree/run.sh"
+alias worktree="$PROJECT_DIR/tools/worktree.sh"
 alias daemon="$PROJECT_DIR/daemon/run.sh"
 alias setup="$PROJECT_DIR/setup/run.sh"
 alias browser="$PROJECT_DIR/browser/run.sh"
@@ -42,8 +42,4 @@ world-daemon() {
 # ============================================================
 # Auto-init: Enable proxy if reachable
 # ============================================================
-if command -v nc &>/dev/null && nc -z -w 1 127.0.0.1 33210 &>/dev/null; then
-    export http_proxy="http://127.0.0.1:33210"
-    export https_proxy="http://127.0.0.1:33210"
-    export ANTHROPIC_BASE_URL="https://claude-proxy.zhengyishen1.workers.dev"
-fi
+eval "$($PROJECT_DIR/tools/proxy.sh init 2>/dev/null)"

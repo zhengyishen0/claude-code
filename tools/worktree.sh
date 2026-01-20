@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# worktree/run.sh - Manage git worktrees
+# worktree.sh - Manage git worktrees
 set -euo pipefail
 
 : "${PROJECT_DIR:?PROJECT_DIR not set - source env.sh}"
