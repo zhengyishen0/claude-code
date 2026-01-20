@@ -156,25 +156,32 @@ Cross-session knowledge sharing for Claude Code - search and consult previous se
 
 Run `memory` for full help.
 
-**Commands:** search, recall
+**Commands:** search
 
-**Search Syntax (two modes, auto-detected by presence of pipes):**
+**Workflow (must follow in order):**
+1. `memory search "keywords"` - Search to see what sessions exist
+2. Refine keywords until results show relevant sessions
+3. `memory search "keywords" --recall "question"` - Consult those sessions
 
-- **Simple mode** (recommended): `"browser automation workflow"` → OR all keywords, rank by hits
-- **Strict mode** (advanced): `"browser|chrome automation"` → (browser OR chrome) AND automation
+**Example:**
+```bash
+# Step 1: Search
+memory search "browser automation"
+# → Results too broad
 
-**When to use each:**
-- Simple: Exploratory searches, finding related topics - just list keywords
-- Strict: Need specific term combinations - use pipes for AND/OR logic
+# Step 2: Refine
+memory search "browser click button"
+# → Better results
+
+# Step 3: Recall
+memory search "browser click button" --recall "how to click by text?"
+```
 
 **Key Principles:**
-1. **Simple by Default** - Just list keywords, sessions matching more rank higher
-2. **Smart Ranking** - Keyword hits → match count → recency (soft AND effect)
-3. **Backward Compatible** - Pipes trigger strict AND/OR mode for power users
-4. **Incremental Indexing** - Full index on first run (~12s), incremental updates after (~0.5s)
-5. **Clean Output** - Filters noise (tool results, IDE events, system messages)
-6. **Fresh Fork by Default** - Each recall creates a fresh fork; use `--resume` for follow-ups
-7. **Cross-Project Recall** - Sessions from any project can be recalled
+1. **Search → Refine → Recall** - Always refine keywords until results are relevant before using --recall
+2. **Simple by Default** - Just list keywords, sessions matching more rank higher
+3. **Smart Ranking** - Keyword hits → match count → recency (soft AND effect)
+4. **Cross-Project** - Sessions from any project can be searched and consulted
 
 ### proxy
 Automatically enable HTTP/HTTPS proxy when VPN is connected - no manual toggling needed!

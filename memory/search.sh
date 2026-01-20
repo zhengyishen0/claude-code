@@ -14,6 +14,7 @@ SESSIONS=10
 MESSAGES=5
 CONTEXT=300
 QUERY=""
+RECALL_QUESTION=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -29,6 +30,10 @@ while [[ $# -gt 0 ]]; do
       CONTEXT="$2"
       shift 2
       ;;
+    --recall)
+      RECALL_QUESTION="$2"
+      shift 2
+      ;;
     -*)
       echo "Error: Unknown flag '$1'" >&2
       exit 1
@@ -42,11 +47,12 @@ done
 
 # Validation
 if [ -z "$QUERY" ]; then
-  echo "Usage: memory search \"<keywords>\"" >&2
+  echo "Usage: memory search \"<keywords>\" [--recall \"question\"]" >&2
   echo "" >&2
-  echo "Examples:" >&2
-  echo "  memory search \"browser automation\"" >&2
-  echo "  memory search \"error debug\"" >&2
+  echo "Workflow:" >&2
+  echo "  1. Search first:  memory search \"browser automation\"" >&2
+  echo "  2. Refine keywords until you see relevant sessions" >&2
+  echo "  3. Then recall:   memory search \"browser automation\" --recall \"how to click?\"" >&2
   exit 1
 fi
 
@@ -164,5 +170,27 @@ if [ -z "$RESULTS" ]; then
   exit 0
 fi
 
-# Format and output results
-echo "$RESULTS" | python3 "$SCRIPT_DIR/format-results.py" "$SESSIONS" "$MESSAGES" "$CONTEXT" "$QUERY" "simple"
+# Format results and capture session IDs from stderr
+TEMP_IDS=$(mktemp)
+OUTPUT=$(echo "$RESULTS" | python3 "$SCRIPT_DIR/format-results.py" "$SESSIONS" "$MESSAGES" "$CONTEXT" "$QUERY" "simple" 2>"$TEMP_IDS")
+SESSION_IDS=$(cat "$TEMP_IDS")
+rm -f "$TEMP_IDS"
+
+# If --recall, run parallel recall on matching sessions
+if [ -n "$RECALL_QUESTION" ]; then
+  if [ -z "$SESSION_IDS" ]; then
+    echo "No sessions to recall."
+    exit 0
+  fi
+
+  # Convert comma-separated IDs to array
+  IFS=',' read -ra ID_ARRAY <<< "$SESSION_IDS"
+
+  # Call recall.sh with session IDs and question
+  "$SCRIPT_DIR/recall.sh" "${ID_ARRAY[@]}" "$RECALL_QUESTION"
+else
+  # Normal search output with footer tip
+  echo "$OUTPUT"
+  echo ""
+  echo "Tip: Refine your keywords until you see relevant sessions, then use --recall \"question\" to consult them."
+fi

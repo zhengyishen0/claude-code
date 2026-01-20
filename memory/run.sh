@@ -15,21 +15,21 @@ memory - Cross-session knowledge sharing for Claude Code
 
 USAGE
   memory search "<keywords>"
-  memory recall <session-id> [<session-id>...] "<question>"
+  memory search "<keywords>" --recall "<question>"
 
-COMMANDS
-  search    Find sessions by keywords (ranked by match count)
-  recall    Ask session(s) a question (uses haiku, parallel)
+WORKFLOW
+  1. Search first to find relevant sessions
+  2. Refine keywords until results look good
+  3. Add --recall to consult those sessions directly
 
 EXAMPLES
   memory search "browser automation"
-  memory recall abc123 "how was the bug fixed?"
-  memory recall abc123 def456 "what was discussed?"
+  memory search "browser click" --recall "how to click a button?"
 
 TIPS
   - Use underscore for phrases: memory_tool matches "memory tool"
   - Keywords are OR'd together, ranked by match count
-  - Session IDs can be partial (first 7 chars)
+  - Always refine search before using --recall
 
 EOF
 }
@@ -38,10 +38,6 @@ case "${1:-}" in
   search)
     shift
     "$SCRIPT_DIR/search.sh" "$@"
-    ;;
-  recall)
-    shift
-    "$SCRIPT_DIR/recall.sh" "$@"
     ;;
   ""|--help|-h)
     show_help

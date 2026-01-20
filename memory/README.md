@@ -2,6 +2,21 @@
 
 Cross-session knowledge sharing for Claude Code - search and consult previous sessions like a hive mind.
 
+## Quick Start
+
+```bash
+# Step 1: Search to explore
+memory search "browser automation"
+
+# Step 2: Refine keywords if results aren't relevant
+memory search "browser click button"
+
+# Step 3: When results look good, add --recall to get answers
+memory search "browser click button" --recall "how to click a button by text?"
+```
+
+**Important:** Always refine your search keywords until you see relevant sessions BEFORE using `--recall`. The same keywords that find sessions also select which sessions get consulted.
+
 ## Commands
 
 ### search
@@ -65,14 +80,37 @@ claude-tools memory search "JWT|OAuth implementation"
 claude-tools memory search "error|bug fix|solve|patch"
 ```
 
-#### Common Flags
+#### Flags
 
 - `--sessions N` - Number of sessions to return (default: 10)
 - `--messages N` - Messages per session to show (default: 5)
 - `--context N` - Characters of context per snippet (default: 300)
-- `--recall "question"` - Ask matching sessions a question (parallel)
+- `--recall "question"` - After finding sessions, ask them your question directly (parallel)
 
 **Phrase support:** Use underscore to join words: `reset_windows` matches "reset windows"
+
+#### Using --recall
+
+**Workflow (must follow in order):**
+
+1. **Search first** - See what sessions exist for your topic
+2. **Refine keywords** - Adjust until results show relevant sessions
+3. **Add --recall** - Same keywords, now consult those sessions
+
+```bash
+# Step 1: Search to see what's out there
+memory search "worktree"
+# → Too broad, shows unrelated sessions
+
+# Step 2: Refine keywords
+memory search "worktree create branch"
+# → Better! Shows relevant sessions about creating worktrees
+
+# Step 3: Now add --recall to get answers
+memory search "worktree create branch" --recall "what is the command to create a worktree?"
+```
+
+**Why this order matters:** The keywords select which sessions get recalled. Bad keywords = consulting wrong sessions = useless answers.
 
 **Output format (simple mode):**
 ```
@@ -94,39 +132,15 @@ Found matches in 10 sessions (searched 3 keywords)
 Found matches in 10 sessions (strict mode)
 ```
 
-### recall
-
-Consult a session by forking it and asking a question.
-
-**Syntax:**
-```bash
-claude-tools memory recall [--resume] "<session-id>:<question>" [...]
-```
-
-**Flags:**
-- `--resume`, `-r` - Reuse existing fork for follow-up questions
-
-**Examples:**
-```bash
-# Single query (fresh fork by default)
-claude-tools memory recall "abc-123:How did you handle errors?"
-
-# Follow-up question (reuse existing fork)
-claude-tools memory recall --resume "abc-123:What about edge cases?"
-
-# Multiple queries (parallel, all fresh forks)
-claude-tools memory recall "session1:question1" "session2:question2"
-```
-
 ## Key Principles
 
-1. **Simple by Default** - Just list keywords, no special syntax needed
-2. **Smart Ranking** - Sessions matching more keywords rank higher (soft AND)
-3. **Backward Compatible** - Use pipes for strict AND/OR when needed
-4. **Incremental Indexing** - Full index on first run (~12s), incremental updates after (~0.5s)
-5. **Clean Output** - Filters noise (tool results, IDE events, system messages)
-6. **Fresh Fork by Default** - Each recall creates a fresh fork; use `--resume` for follow-ups
-7. **Cross-Project Recall** - Sessions from any project can be recalled
+1. **Search → Refine → Recall** - Always search first, refine keywords until results are relevant, then use --recall
+2. **Simple by Default** - Just list keywords, no special syntax needed
+3. **Smart Ranking** - Sessions matching more keywords rank higher (soft AND)
+4. **Backward Compatible** - Use pipes for strict AND/OR when needed
+5. **Incremental Indexing** - Full index on first run (~12s), incremental updates after (~0.5s)
+6. **Clean Output** - Filters noise (tool results, IDE events, system messages)
+7. **Cross-Project Recall** - Sessions from any project can be searched and consulted
 
 ## When to Use Each Mode
 
@@ -161,5 +175,5 @@ cat index.tsv | rg -i '(chrome|browser)' | rg -i '(automation|workflow)'
 
 - **ripgrep** (rg) - Fast text search
 - **jq** - JSON processing
-- **pandas** - Python data processing
+- **Python 3** - For result formatting (no external dependencies)
 - **Claude Code CLI** - For recall/fork functionality

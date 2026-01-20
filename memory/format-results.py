@@ -171,6 +171,10 @@ def main():
     else:
         print(f"\nFound matches in {total_sessions} sessions (strict mode)")
 
+    # Output session IDs to stderr for --recall integration
+    session_ids = [s['session_id'] for s in session_stats]
+    print(','.join(session_ids), file=sys.stderr)
+
 
 if __name__ == '__main__':
     main()
