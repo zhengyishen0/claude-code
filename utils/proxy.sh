@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-CONFIG_FILE="$SCRIPT_DIR/../config/proxy.conf"
+CONFIG_FILE="$SCRIPT_DIR/proxy.conf"
 
 load_config() {
     if [ -f "$CONFIG_FILE" ]; then

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # env.sh - Source this in ~/.zshrc:
-#   source ~/Codes/claude-code/config/env.sh
+#   source ~/Codes/claude-code/env.sh
 
 # ============================================================
 # Core paths (only these two - scripts derive the rest)
@@ -16,7 +16,7 @@ alias world="$PROJECT_DIR/world/run.sh"
 alias supervisor="$PROJECT_DIR/supervisor/run.sh"
 alias worktree="$PROJECT_DIR/utils/worktree.sh"
 alias daemon="$PROJECT_DIR/daemon/run.sh"
-alias setup="$PROJECT_DIR/setup/run.sh"
+alias setup="$PROJECT_DIR/setup"
 alias browser="node $PROJECT_DIR/browser/cli.js"
 alias memory="$PROJECT_DIR/memory/run.sh"
 alias screenshot="python3 $PROJECT_DIR/utils/screenshot.py"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# config/hooks/git/post-merge - Log merges to world.log
+# hooks/git/post-merge - Log merges to world.log
 # Install: setup git-hooks (symlinks to .git/hooks/)
 
 set -euo pipefail

@@ -1,5 +1,5 @@
 #!/bin/bash
-# config/hooks/claude/git/install-hooks.sh
+# hooks/claude/git/install-hooks.sh
 # Install git hooks to .git/hooks/
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
