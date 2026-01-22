@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # hooks/git/post-commit - Log commits to world.log
-# Install: setup git-hooks (symlinks to .git/hooks/)
+# Works in both main repo and worktrees via core.hooksPath
 
 set -euo pipefail
 
-# Derive PROJECT_DIR from git root
-export PROJECT_DIR="$(git rev-parse --show-toplevel)"
+# Derive PROJECT_DIR from git common dir (works in worktrees)
+GIT_COMMON_DIR="$(git rev-parse --git-common-dir)"
+export PROJECT_DIR="$(dirname "$GIT_COMMON_DIR")"
 
 # Only run if record.sh exists (we're in claude-code repo)
 [ -f "$PROJECT_DIR/world/commands/record.sh" ] || exit 0
