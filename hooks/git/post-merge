@@ -13,8 +13,9 @@ export PROJECT_DIR="$(dirname "$GIT_COMMON_DIR")"
 
 # Get merge info
 COMMIT_HASH=$(git rev-parse --short HEAD)
+BRANCH=$(git branch --show-current)
 # Try to get the merged branch name
 MERGED_BRANCH=$(git reflog -1 | grep -oE "merge [^:]*" | sed 's/merge //' || echo "unknown")
 
-# Record to world.log
-"$PROJECT_DIR/world/commands/record.sh" "git:merge" "$COMMIT_HASH: merged $MERGED_BRANCH"
+# Record to world.log (include current branch for visibility, like commits)
+"$PROJECT_DIR/world/commands/record.sh" "git:merge" "[$BRANCH] $COMMIT_HASH: merged $MERGED_BRANCH"
