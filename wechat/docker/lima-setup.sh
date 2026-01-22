@@ -145,21 +145,21 @@ setup_binder() {
 
 # Start Redroid container
 start_redroid() {
-  local running=$(limactl shell "$VM_NAME" -- docker ps --format '{{.Names}}' 2>/dev/null | grep -c "^redroid$" || echo "0")
+  local running=$(limactl shell "$VM_NAME" -- sudo docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^redroid$" && echo "1" || echo "0")
 
-  if [ "$running" -gt 0 ]; then
+  if [ "$running" = "1" ]; then
     log "Redroid already running"
     return 0
   fi
 
-  local exists=$(limactl shell "$VM_NAME" -- docker ps -a --format '{{.Names}}' 2>/dev/null | grep -c "^redroid$" || echo "0")
+  local exists=$(limactl shell "$VM_NAME" -- sudo docker ps -a --format '{{.Names}}' 2>/dev/null | grep -q "^redroid$" && echo "1" || echo "0")
 
-  if [ "$exists" -gt 0 ]; then
+  if [ "$exists" = "1" ]; then
     log "Starting existing Redroid container..."
-    limactl shell "$VM_NAME" -- docker start redroid
+    limactl shell "$VM_NAME" -- sudo docker start redroid
   else
     log "Creating Redroid container..."
-    limactl shell "$VM_NAME" -- docker run -d \
+    limactl shell "$VM_NAME" -- sudo docker run -d \
       --name redroid \
       --privileged \
       -v /dev/binderfs:/dev/binderfs \
@@ -226,7 +226,7 @@ open_wechat() {
 # Stop Redroid
 stop_redroid() {
   log "Stopping Redroid..."
-  limactl shell "$VM_NAME" -- docker stop redroid 2>/dev/null || true
+  limactl shell "$VM_NAME" -- sudo docker stop redroid 2>/dev/null || true
 }
 
 # Stop VM
@@ -252,7 +252,7 @@ status() {
 
   echo ""
   echo "=== Redroid ==="
-  limactl shell "$VM_NAME" -- docker ps --filter name=redroid 2>/dev/null || echo "Not running"
+  limactl shell "$VM_NAME" -- sudo docker ps --filter name=redroid 2>/dev/null || echo "Not running"
 
   echo ""
   echo "=== ADB ==="
