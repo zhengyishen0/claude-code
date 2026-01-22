@@ -7,7 +7,7 @@ DATA_DIR="$SCRIPT_DIR/data"
 DECRYPTED_DB="$DATA_DIR/wechat.db"
 CONFIG_FILE="$DATA_DIR/config.env"
 
-LIMIT=100  # Get more for grouping
+LIMIT=20
 
 # Parse arguments
 QUERY=""
@@ -32,7 +32,7 @@ if [ -z "$QUERY" ]; then
   echo "Usage: wechat search \"<query>\" [--limit N]" >&2
   echo "" >&2
   echo "Examples:" >&2
-  echo "  wechat search \"meeting\"" >&2
+  echo "  wechat search \"meeting tomorrow\"  # fuzzy: matches either word" >&2
   echo "  wechat search \"from:张三\"" >&2
   echo "  wechat search \"type:image\"" >&2
   exit 1
@@ -57,11 +57,9 @@ fi
 
 # Build SQL based on query syntax
 if [[ "$QUERY" =~ ^from:(.+)$ ]]; then
-  # from:name filter
   TALKER="${BASH_REMATCH[1]}"
   SQL="SELECT timestamp, talker, content FROM message_fts WHERE talker LIKE '%$TALKER%' ORDER BY timestamp DESC LIMIT $LIMIT"
 elif [[ "$QUERY" =~ ^type:(.+)$ ]]; then
-  # type:xxx filter
   TYPE="${BASH_REMATCH[1]}"
   case "$TYPE" in
     image|图片) TYPE_NUM=3 ;;
@@ -72,28 +70,16 @@ elif [[ "$QUERY" =~ ^type:(.+)$ ]]; then
   esac
   SQL="SELECT timestamp, talker, content FROM message_fts WHERE type = $TYPE_NUM ORDER BY timestamp DESC LIMIT $LIMIT"
 else
-  # Fuzzy search: split into words, OR match, rank by hit count
+  # Fuzzy search: split into words, OR match, order by recency
   read -ra WORDS <<< "$QUERY"
-
-  # Build WHERE and RANK clauses
   WHERE_CLAUSE=""
-  RANK_CLAUSE=""
   for word in "${WORDS[@]}"; do
     escaped=$(echo "$word" | sed "s/'/''/g")
     [ -n "$WHERE_CLAUSE" ] && WHERE_CLAUSE="$WHERE_CLAUSE OR "
     WHERE_CLAUSE="${WHERE_CLAUSE}(content LIKE '%$escaped%' OR talker LIKE '%$escaped%')"
-    [ -n "$RANK_CLAUSE" ] && RANK_CLAUSE="$RANK_CLAUSE + "
-    RANK_CLAUSE="${RANK_CLAUSE}(CASE WHEN content LIKE '%$escaped%' THEN 1 ELSE 0 END)"
   done
-
-  SQL="SELECT timestamp, talker, content FROM message_fts WHERE $WHERE_CLAUSE ORDER BY ($RANK_CLAUSE) DESC, timestamp DESC LIMIT $LIMIT"
+  SQL="SELECT timestamp, talker, content FROM message_fts WHERE $WHERE_CLAUSE ORDER BY timestamp DESC LIMIT $LIMIT"
 fi
 
-# Execute search
-if [[ "$QUERY" =~ ^(from:|type:) ]]; then
-  # Simple output for filters
-  sqlite3 -header -column "$DECRYPTED_DB" ".width 19 12 50" "$SQL"
-else
-  # Grouped output for fuzzy search (replace newlines in content)
-  sqlite3 "$DECRYPTED_DB" "SELECT timestamp || '|' || talker || '|' || replace(content, char(10), ' ') FROM ($SQL)" | python3 "$SCRIPT_DIR/format-results.py" "$QUERY"
-fi
+# Execute and format
+sqlite3 -header -column "$DECRYPTED_DB" ".width 19 15 50" "$SQL"
