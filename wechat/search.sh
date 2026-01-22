@@ -7,7 +7,7 @@ DATA_DIR="$SCRIPT_DIR/data"
 DECRYPTED_DB="$DATA_DIR/wechat.db"
 CONFIG_FILE="$DATA_DIR/config.env"
 
-LIMIT=20
+LIMIT=100  # Get more for grouping
 
 # Parse arguments
 QUERY=""
@@ -89,5 +89,11 @@ else
   SQL="SELECT timestamp, talker, content FROM message_fts WHERE $WHERE_CLAUSE ORDER BY ($RANK_CLAUSE) DESC, timestamp DESC LIMIT $LIMIT"
 fi
 
-# Execute and format
-sqlite3 -header -column "$DECRYPTED_DB" ".width 19 12 50" "$SQL"
+# Execute search
+if [[ "$QUERY" =~ ^(from:|type:) ]]; then
+  # Simple output for filters
+  sqlite3 -header -column "$DECRYPTED_DB" ".width 19 12 50" "$SQL"
+else
+  # Grouped output for fuzzy search (replace newlines in content)
+  sqlite3 "$DECRYPTED_DB" "SELECT timestamp || '|' || talker || '|' || replace(content, char(10), ' ') FROM ($SQL)" | python3 "$SCRIPT_DIR/format-results.py" "$QUERY"
+fi
