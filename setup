@@ -25,7 +25,7 @@ USAGE:
     setup all             Install everything
     setup deps            Install brew dependencies (fswatch, yq)
     setup shell           Add env.sh to ~/.zshrc
-    setup git-hooks       Symlink hooks/git/* → .git/hooks/
+    setup git-hooks       Set core.hooksPath (works in worktrees)
     setup claude-hooks    Symlink .claude/hooks → hooks/claude
     setup daemon          Install world-watch LaunchAgent
     setup uninstall       Remove all installations
@@ -54,8 +54,9 @@ check_shell() {
 }
 
 check_git_hooks() {
-    [ -L "$PROJECT_DIR/.git/hooks/post-commit" ] && \
-    [ -L "$PROJECT_DIR/.git/hooks/post-merge" ]
+    local hooks_path
+    hooks_path=$(git -C "$PROJECT_DIR" config --get core.hooksPath 2>/dev/null || echo "")
+    [ "$hooks_path" = "hooks/git" ]
 }
 
 check_claude_hooks() {
@@ -152,20 +153,10 @@ install_shell() {
 install_git_hooks() {
     echo "Installing git hooks..."
 
-    mkdir -p "$PROJECT_DIR/.git/hooks"
-
-    for hook in post-commit post-merge; do
-        local src="$PROJECT_DIR/hooks/git/$hook"
-        local dst="$PROJECT_DIR/.git/hooks/$hook"
-
-        if [ -e "$dst" ] && [ ! -L "$dst" ]; then
-            warn "Existing $hook hook found, backing up to $hook.backup"
-            mv "$dst" "$dst.backup"
-        fi
-
-        ln -sf "$src" "$dst"
-        ok "Linked $hook"
-    done
+    # Use core.hooksPath so hooks work in all worktrees
+    git -C "$PROJECT_DIR" config core.hooksPath hooks/git
+    ok "Set core.hooksPath = hooks/git"
+    ok "Git hooks will work in main repo and all worktrees"
 }
 
 install_claude_hooks() {
@@ -217,8 +208,8 @@ uninstall_all() {
 
     # Remove git hooks
     echo "Removing git hooks..."
-    rm -f "$PROJECT_DIR/.git/hooks/post-commit" "$PROJECT_DIR/.git/hooks/post-merge"
-    ok "Removed git hooks"
+    git -C "$PROJECT_DIR" config --unset core.hooksPath 2>/dev/null || true
+    ok "Removed core.hooksPath"
 
     # Remove claude hooks symlink
     if [ -L "$PROJECT_DIR/.claude/hooks" ]; then
