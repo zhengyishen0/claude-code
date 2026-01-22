@@ -29,24 +29,24 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [ -z "$QUERY" ]; then
-  echo "Usage: wechat search \"<query>\" [--limit N]" >&2
+  echo "Usage: wechat \"<query>\" [--limit N]" >&2
   echo "" >&2
   echo "Examples:" >&2
-  echo "  wechat search \"meeting tomorrow\"  # fuzzy: matches either word" >&2
-  echo "  wechat search \"from:张三\"" >&2
-  echo "  wechat search \"type:image\"" >&2
+  echo "  wechat \"meeting tomorrow\"  # fuzzy: matches either word" >&2
+  echo "  wechat \"from:张三\"" >&2
+  echo "  wechat \"type:image\"" >&2
   exit 1
 fi
 
-# Auto-init if needed
-if [ ! -f "$DECRYPTED_DB" ]; then
-  echo "Database not found. Running init..." >&2
-  [ -f "$CONFIG_FILE" ] && source "$CONFIG_FILE"
-  if [ -z "${WECHAT_KEY:-}" ]; then
-    echo "Error: No key. Run: wechat init <key>" >&2
-    exit 1
-  fi
+# Load config
+[ -f "$CONFIG_FILE" ] && source "$CONFIG_FILE"
+
+# Auto-init if no key or no database
+if [ -z "${WECHAT_KEY:-}" ] || [ ! -f "$DECRYPTED_DB" ]; then
+  echo "First run - setting up..." >&2
   "$SCRIPT_DIR/init.sh"
+  # Reload config after init
+  source "$CONFIG_FILE"
 fi
 
 # Check FTS index

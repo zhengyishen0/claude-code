@@ -9,44 +9,35 @@ show_help() {
 wechat - Search WeChat chat history from Android emulator
 
 USAGE
-  wechat init [key]        Sync database from emulator and build index
-  wechat search "<query>"  Search messages (auto-init if needed)
+  wechat "<query>"          Search messages (auto-setup on first run)
+  wechat sync               Refresh database from emulator
 
 EXAMPLES
-  wechat init 73b69e9              # init with decryption key
-  wechat search "meeting tomorrow"
-  wechat search "from:张三"
-  wechat search "type:image"
+  wechat "meeting tomorrow"   # fuzzy: matches either word
+  wechat "from:张三"          # filter by sender
+  wechat "type:image"         # filter by type (image/voice/video/file)
 
-SEARCH SYNTAX
-  "keyword"       Full-text search
-  from:name       Filter by sender name
-  type:image      Filter by type (image/voice/video/file)
+FIRST RUN
+  On first search, wechat will:
+  1. Check dependencies (adb, sqlcipher, frida)
+  2. Extract encryption key via Frida (opens WeChat automatically)
+  3. Pull and decrypt database
+  4. Build search index
 
-NOTES
-  - Requires Android emulator with WeChat running
-  - Uses adb to pull encrypted database
-  - Decrypts with sqlcipher (cipher_compatibility=1)
-  - First search auto-runs init if database not found
+  Just make sure your emulator is running with WeChat logged in.
 
 EOF
 }
 
 case "${1:-}" in
-  init)
-    shift
-    "$SCRIPT_DIR/init.sh" "$@"
+  sync)
+    "$SCRIPT_DIR/init.sh"
     ;;
-  search)
-    shift
-    "$SCRIPT_DIR/search.sh" "$@"
-    ;;
-  ""|--help|-h)
+  --help|-h|"")
     show_help
     ;;
   *)
-    echo "Unknown command: $1" >&2
-    echo "Run 'wechat' for help" >&2
-    exit 1
+    # Treat any other argument as a search query
+    "$SCRIPT_DIR/search.sh" "$@"
     ;;
 esac

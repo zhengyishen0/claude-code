@@ -1,5 +1,5 @@
 #!/bin/bash
-# Initialize WeChat database - pull from emulator and decrypt
+# Initialize WeChat database - auto-extract key, pull, decrypt, index
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,28 +20,61 @@ check_deps() {
   local missing=""
   command -v adb >/dev/null || missing="$missing adb"
   command -v sqlcipher >/dev/null || missing="$missing sqlcipher"
+  command -v frida >/dev/null || missing="$missing frida"
 
   if [ -n "$missing" ]; then
     echo "Missing:$missing" >&2
     echo "Install: brew install android-platform-tools sqlcipher" >&2
+    echo "         pip install frida-tools" >&2
     exit 1
   fi
+}
+
+# Check emulator connection
+check_emulator() {
+  if ! adb devices 2>/dev/null | grep -q "device$"; then
+    echo "Error: No Android device/emulator connected" >&2
+    echo "Start your emulator and try again" >&2
+    exit 1
+  fi
+}
+
+# Extract encryption key via Frida
+extract_key() {
+  echo "Extracting encryption key..." >&2
+  echo "Please open WeChat on the emulator and wait..." >&2
+
+  local output
+  output=$(timeout 30 frida -U -f com.tencent.mm -l "$SCRIPT_DIR/extract-key.js" --no-pause 2>&1 || true)
+
+  local key=$(echo "$output" | grep "^WECHAT_KEY=" | head -1 | cut -d= -f2)
+  local db_path=$(echo "$output" | grep "^WECHAT_DB_PATH=" | head -1 | cut -d= -f2)
+
+  if [ -z "$key" ]; then
+    echo "Error: Could not extract key" >&2
+    echo "Make sure WeChat opens and accesses a chat" >&2
+    exit 1
+  fi
+
+  export WECHAT_KEY="$key"
+  echo "WECHAT_KEY='$key'" > "$CONFIG_FILE"
+
+  if [ -n "$db_path" ]; then
+    export WECHAT_DB_FULL_PATH="$db_path"
+    echo "WECHAT_DB_FULL_PATH='$db_path'" >> "$CONFIG_FILE"
+  fi
+
+  echo "Key extracted and saved" >&2
 }
 
 # Find WeChat database on emulator
 find_wechat_db() {
   echo "Finding WeChat database..." >&2
 
-  if ! adb devices 2>/dev/null | grep -q "device$"; then
-    echo "Error: No Android device/emulator connected" >&2
-    exit 1
-  fi
-
-  # Find user's uin directory (MD5 hash)
   local uin_dir=$(adb shell "ls -1 $WECHAT_DB_PATH 2>/dev/null | grep -v '^$' | head -1" 2>/dev/null | tr -d '\r\n')
 
   if [ -z "$uin_dir" ]; then
-    echo "Error: WeChat data not found. Is WeChat installed?" >&2
+    echo "Error: WeChat data not found. Is WeChat installed and logged in?" >&2
     exit 1
   fi
 
@@ -68,15 +101,6 @@ pull_database() {
 
 # Decrypt database
 decrypt_database() {
-  if [ -z "${WECHAT_KEY:-}" ]; then
-    echo "Error: WECHAT_KEY not set" >&2
-    echo "Run: wechat init <key>" >&2
-    echo "" >&2
-    echo "To find key, use Frida:" >&2
-    echo "  frida -U -f com.tencent.mm -l find_key.js" >&2
-    exit 1
-  fi
-
   echo "Decrypting..." >&2
   rm -f "$DECRYPTED_DB"
 
@@ -89,7 +113,8 @@ DETACH DATABASE plaintext;
 EOF
 
   if [ ! -f "$DECRYPTED_DB" ]; then
-    echo "Error: Decryption failed" >&2
+    echo "Error: Decryption failed. Key may be wrong." >&2
+    echo "Delete $CONFIG_FILE and try again" >&2
     exit 1
   fi
 
@@ -103,11 +128,7 @@ build_search_index() {
   sqlite3 "$DECRYPTED_DB" << 'EOF'
 DROP TABLE IF EXISTS message_fts;
 CREATE VIRTUAL TABLE message_fts USING fts5(
-  msgId,
-  talker,
-  content,
-  timestamp,
-  type,
+  msgId, talker, content, timestamp, type,
   tokenize='unicode61'
 );
 
@@ -147,14 +168,14 @@ EOF
 # Main
 main() {
   check_deps
+  check_emulator
 
-  # Save key if provided
-  if [ -n "${1:-}" ]; then
-    export WECHAT_KEY="$1"
-    echo "WECHAT_KEY='$1'" > "$CONFIG_FILE"
-    echo "Key saved" >&2
+  # Extract key if not saved
+  if [ -z "${WECHAT_KEY:-}" ]; then
+    extract_key
   fi
 
+  # Find database path
   local db_path
   if [ -n "${WECHAT_DB_FULL_PATH:-}" ]; then
     db_path="$WECHAT_DB_FULL_PATH"
@@ -167,7 +188,7 @@ main() {
   decrypt_database
   build_search_index
 
-  echo "Done. Run: wechat search \"query\"" >&2
+  echo "Done." >&2
 }
 
 main "$@"
