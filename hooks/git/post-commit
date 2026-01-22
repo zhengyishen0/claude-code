@@ -14,6 +14,7 @@ export PROJECT_DIR="$(dirname "$GIT_COMMON_DIR")"
 # Get commit info
 COMMIT_HASH=$(git rev-parse --short HEAD)
 COMMIT_MSG=$(git log -1 --pretty=format:"%s")
+BRANCH=$(git branch --show-current)
 
-# Record to world.log
-"$PROJECT_DIR/world/commands/record.sh" "git:commit" "$COMMIT_HASH: $COMMIT_MSG"
+# Record to world.log (include branch for visibility)
+"$PROJECT_DIR/world/commands/record.sh" "git:commit" "[$BRANCH] $COMMIT_HASH: $COMMIT_MSG"

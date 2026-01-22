@@ -153,9 +153,9 @@ install_shell() {
 install_git_hooks() {
     echo "Installing git hooks..."
 
-    # Use core.hooksPath so hooks work in all worktrees
-    git -C "$PROJECT_DIR" config core.hooksPath hooks/git
-    ok "Set core.hooksPath = hooks/git"
+    # Use absolute path so all worktrees share the same hooks
+    git -C "$PROJECT_DIR" config core.hooksPath "$PROJECT_DIR/hooks/git"
+    ok "Set core.hooksPath = $PROJECT_DIR/hooks/git"
     ok "Git hooks will work in main repo and all worktrees"
 }
 
