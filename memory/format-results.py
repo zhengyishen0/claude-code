@@ -93,17 +93,21 @@ def main():
 
     # Read TSV from stdin and group by session
     # Columns: session_id, timestamp, type, text, project_path
-    sessions = defaultdict(list)
+    # Use dict to deduplicate by (timestamp, type, text) - fixes duplicate counting from incremental updates
+    sessions = defaultdict(dict)
     for line in sys.stdin:
         parts = line.rstrip('\n').split('\t', 4)  # Max split 4 times
         if len(parts) == 5:
             session_id, timestamp, msg_type, text, project_path = parts
-            sessions[session_id].append({
-                'timestamp': timestamp,
-                'type': msg_type,
-                'text': text,
-                'project_path': project_path
-            })
+            # Deduplicate using (timestamp, type, text) as key
+            key = (timestamp, msg_type, text)
+            if key not in sessions[session_id]:
+                sessions[session_id][key] = {
+                    'timestamp': timestamp,
+                    'type': msg_type,
+                    'text': text,
+                    'project_path': project_path
+                }
 
     if not sessions:
         print("No matches found.")
@@ -111,7 +115,14 @@ def main():
 
     # Calculate stats for each session
     session_stats = []
-    for session_id, msgs in sessions.items():
+    for session_id, msgs_dict in sessions.items():
+        # Convert dict values to list (deduplication was done during parsing)
+        msgs = list(msgs_dict.values())
+
+        # Calculate keyword hits for each message (for sorting)
+        for msg in msgs:
+            msg['keyword_hits'] = count_keyword_hits(msg['text'], keywords)
+
         all_text = ' '.join(m['text'] for m in msgs)
         hits = count_keyword_hits(all_text, keywords) if mode == 'simple' else 0
         max_ts = max(m['timestamp'] for m in msgs)
@@ -155,8 +166,9 @@ def main():
         else:
             print(f"{project} | {session_id} | {matches} matches | {timestamp}")
 
-        # Get messages for this session
-        for msg in s['messages'][:messages_limit]:
+        # Get messages with most keyword hits (not just first N)
+        sorted_msgs = sorted(s['messages'], key=lambda m: m['keyword_hits'], reverse=True)
+        for msg in sorted_msgs[:messages_limit]:
             role = "[user]" if msg['type'] == 'user' else "[asst]"
             text = extract_snippet(msg['text'], keywords, context)
             print(f"{role} {text}")
