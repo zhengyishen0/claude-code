@@ -72,9 +72,21 @@ elif [[ "$QUERY" =~ ^type:(.+)$ ]]; then
   esac
   SQL="SELECT timestamp, talker, content FROM message_fts WHERE type = $TYPE_NUM ORDER BY timestamp DESC LIMIT $LIMIT"
 else
-  # Content search (LIKE works better for Chinese than FTS5)
-  ESCAPED=$(echo "$QUERY" | sed "s/'/''/g")
-  SQL="SELECT timestamp, talker, content FROM message_fts WHERE content LIKE '%$ESCAPED%' OR talker LIKE '%$ESCAPED%' ORDER BY timestamp DESC LIMIT $LIMIT"
+  # Fuzzy search: split into words, OR match, rank by hit count
+  read -ra WORDS <<< "$QUERY"
+
+  # Build WHERE and RANK clauses
+  WHERE_CLAUSE=""
+  RANK_CLAUSE=""
+  for word in "${WORDS[@]}"; do
+    escaped=$(echo "$word" | sed "s/'/''/g")
+    [ -n "$WHERE_CLAUSE" ] && WHERE_CLAUSE="$WHERE_CLAUSE OR "
+    WHERE_CLAUSE="${WHERE_CLAUSE}(content LIKE '%$escaped%' OR talker LIKE '%$escaped%')"
+    [ -n "$RANK_CLAUSE" ] && RANK_CLAUSE="$RANK_CLAUSE + "
+    RANK_CLAUSE="${RANK_CLAUSE}(CASE WHEN content LIKE '%$escaped%' THEN 1 ELSE 0 END)"
+  done
+
+  SQL="SELECT timestamp, talker, content FROM message_fts WHERE $WHERE_CLAUSE ORDER BY ($RANK_CLAUSE) DESC, timestamp DESC LIMIT $LIMIT"
 fi
 
 # Execute and format
