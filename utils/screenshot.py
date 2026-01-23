@@ -88,6 +88,10 @@ def get_windows():
             if not seen_pids[pid]:
                 continue
 
+        # Only include on-screen windows (others can't be captured)
+        if not window.get('kCGWindowIsOnscreen', False):
+            continue
+
         # Filter out tiny windows (helper windows, 1x1 placeholders)
         width = bounds.get('Width', 0)
         height = bounds.get('Height', 0)
@@ -99,7 +103,6 @@ def get_windows():
             'app': owner,
             'title': title,
             'bounds': bounds,
-            'on_screen': window.get('kCGWindowIsOnscreen', False)
         })
 
     return result
@@ -179,16 +182,13 @@ def convert_to_jpeg(png_path, jpeg_path, max_width=1500, quality=80):
 def show_list():
     """Show list of available windows with usage hint."""
     windows = get_windows()
-
-    # Sort: on-screen windows first, then by app name
-    windows.sort(key=lambda w: (not w.get('on_screen', False), w['app']))
+    windows.sort(key=lambda w: w['app'])
 
     for w in windows:
         bounds = w.get('bounds', {})
         size = f"{int(bounds.get('Width', 0))}x{int(bounds.get('Height', 0))}"
-        marker = ' [other space]' if not w.get('on_screen') else ''
         title_part = f" - {w['title']}" if w['title'] else ''
-        print(f"[{w['id']}] {w['app']}{title_part} ({size}){marker}")
+        print(f"[{w['id']}] {w['app']}{title_part} ({size})")
 
     print()
     print("Usage: screenshot <app-name|window-id> [output-path]")
