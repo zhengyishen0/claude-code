@@ -178,7 +178,21 @@ def main():
         session_stats = [s for s in session_stats if s['matches'] >= 5]
         session_stats.sort(key=lambda x: (x['matches'], x['timestamp']), reverse=True)
 
-    session_stats = session_stats[:sessions_limit]
+    # Auto-cutoff: 70% cumulative score, min=3, max=8
+    if session_stats:
+        total_score = sum(s['weighted_score'] for s in session_stats)
+        cumsum = 0
+        cutoff_idx = 0
+        for i, s in enumerate(session_stats):
+            cumsum += s['weighted_score']
+            cutoff_idx = i + 1
+            if cumsum >= total_score * 0.7:
+                break
+        # Apply min/max bounds
+        cutoff_idx = max(3, min(8, cutoff_idx))
+        session_stats = session_stats[:cutoff_idx]
+    else:
+        session_stats = session_stats[:sessions_limit]
 
     total_sessions = len(session_stats)
     total_keywords = len(keywords)
