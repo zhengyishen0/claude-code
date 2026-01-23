@@ -172,11 +172,10 @@ def main():
         matches = s['matches']
         date = s['timestamp'][:10]  # YYYY-MM-DD
 
-        # Format header with inline stats
+        # Format: [session_id] keyword[count]... (matches | date | path)
         kw_counts = s['keyword_counts']
-        kw_parts = [f"{kw}[{kw_counts[kw]}]" for kw in keywords if kw in kw_counts]
-        kw_stats = f"[{hits}/{total_keywords} keywords | {matches} matches]: " + ' '.join(kw_parts)
-        print(f"{project} | {short_id} | {date} | {kw_stats}")
+        kw_parts = ' '.join(f"{kw}[{kw_counts[kw]}]" for kw in keywords if kw in kw_counts)
+        print(f"[{short_id}] {kw_parts} ({matches} matches | {date} | {project})")
 
         # Get messages with most keyword hits (not just first N)
         sorted_msgs = sorted(s['messages'], key=lambda m: m['keyword_hits'], reverse=True)
