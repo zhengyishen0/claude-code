@@ -1,62 +1,143 @@
 #!/bin/bash
-# WeChat tool - Manage Android tablet emulator with WeChat
+# WeChat Search - Search your WeChat messages locally
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WECHAT_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Source state checking library
+source "$WECHAT_DIR/lib/state.sh"
 
 show_help() {
-  cat << 'EOF'
-wechat - WeChat on Android tablet emulator
+    cat << 'EOF'
+wechat - Search your WeChat messages
 
 USAGE
-  wechat start              Start AVD emulator (resumes from snapshot)
-  wechat stop               Save snapshot and stop AVD
-  wechat status             Show AVD status
-  wechat snapshot           Save current state as snapshot
+  wechat search <query>         Search messages
+  wechat search --sync <query>  Sync latest messages first, then search
+  wechat sync                   Sync database from emulator
 
-  wechat search "<query>"   Search messages
-  wechat sync               Pull latest database from device
-  wechat init               First-time setup (extract key, decrypt DB)
+EXAMPLES
+  wechat search "meeting tomorrow"
+  wechat search "from:张三"
+  wechat search --sync "项目"
 
-  wechat view               Open browser viewer (for headless mode)
+DEVELOPER COMMANDS
+  wechat dev setup              Install emulator and download snapshot
+  wechat dev onboard            Run login flow manually
+  wechat dev start|stop|status  Control emulator
+  wechat dev snapshot           Manage snapshots
 
-SEARCH EXAMPLES
-  wechat search "meeting"       # fuzzy search
-  wechat search "from:张三"     # filter by sender
-  wechat search "type:image"    # filter by type
-
-FIRST TIME SETUP
-  1. wechat start             # Start emulator
-  2. Log into WeChat (scan QR)
-  3. wechat snapshot          # Save logged-in state
-  4. wechat init              # Extract key and sync database
-  5. wechat search "test"     # Search messages
-
+Note: First-time setup and login are automatic when you run any command.
 EOF
 }
 
-case "${1:-}" in
-  start|stop|status|snapshot|kill)
-    "$SCRIPT_DIR/avd" "$1"
-    ;;
-  search)
-    shift
-    "$SCRIPT_DIR/search" "$@"
-    ;;
-  sync)
+# Main entry point
+main() {
+    local cmd="${1:-}"
+
+    case "$cmd" in
+        search)
+            shift
+            do_search "$@"
+            ;;
+        sync)
+            do_sync
+            ;;
+        dev)
+            shift
+            "$SCRIPT_DIR/dev" "$@"
+            ;;
+        --help|-h|help)
+            show_help
+            ;;
+        "")
+            # No args - show help but also check state
+            local state=$(get_state)
+            if [[ "$state" != "ready" ]]; then
+                echo "Welcome to WeChat Search!"
+                echo ""
+                ensure_ready || exit 1
+                echo ""
+                echo "Setup complete! You can now search:"
+                echo "  wechat search \"your query\""
+            else
+                show_help
+            fi
+            ;;
+        *)
+            echo "Unknown command: $cmd"
+            echo "Run 'wechat --help' for usage."
+            exit 1
+            ;;
+    esac
+}
+
+do_search() {
+    local sync_first=false
+    local query=""
+
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --sync|-s)
+                sync_first=true
+                shift
+                ;;
+            *)
+                query="$*"
+                break
+                ;;
+        esac
+    done
+
+    if [[ -z "$query" ]]; then
+        echo "Usage: wechat search <query>"
+        echo "       wechat search --sync <query>"
+        exit 1
+    fi
+
+    # Ensure everything is set up
+    ensure_ready || exit 1
+
+    # Sync if requested
+    if [[ "$sync_first" == true ]]; then
+        echo "Syncing latest messages..."
+        do_sync_internal
+        echo ""
+    fi
+
+    # Run search
+    "$SCRIPT_DIR/search" "$query"
+
+    # Show sync age footer
+    echo ""
+    echo -e "\033[0;90m(Last synced: $(get_sync_age). Use --sync for latest.)\033[0m"
+}
+
+do_sync() {
+    # Ensure setup and onboard complete
+    ensure_ready || exit 1
+    do_sync_internal
+}
+
+do_sync_internal() {
+    # Start emulator if not running
+    if ! check_emulator_running; then
+        echo "Starting emulator..."
+        "$SCRIPT_DIR/avd" start
+    fi
+
+    # Wait for WeChat to sync (give it some time)
+    echo "Waiting for WeChat to sync messages..."
+    sleep 5
+
+    # Sync database
     "$SCRIPT_DIR/sync"
-    ;;
-  init)
-    "$SCRIPT_DIR/init"
-    ;;
-  view)
-    "$SCRIPT_DIR/view" start
-    ;;
-  --help|-h|"")
-    show_help
-    ;;
-  *)
-    # Treat any other argument as a search query
-    "$SCRIPT_DIR/search" "$@"
-    ;;
-esac
+
+    # Stop emulator to save resources
+    echo "Stopping emulator..."
+    "$SCRIPT_DIR/avd" stop
+}
+
+main "$@"
