@@ -14,9 +14,9 @@ NLP_INDEX_FILE="$DATA_DIR/memory-index-nlp.tsv"
 
 # Parse args
 # Debug options (not shown in help): --sessions, --messages, --context
-SESSIONS=10
+SESSIONS=5
 MESSAGES=5
-CONTEXT=300
+CONTEXT=500
 QUERY=""
 RECALL_QUESTION=""
 
