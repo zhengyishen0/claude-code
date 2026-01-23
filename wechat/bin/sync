@@ -12,13 +12,9 @@ usage() {
     echo ""
     echo "Syncs WeChat database from Android device to local data/ folder"
     echo ""
-    echo "Devices:"
-    echo "  emulator-5554   AVD (default)"
-    echo "  localhost:5556  Redroid"
-    echo ""
     echo "Example:"
-    echo "  $0                    # Sync from AVD"
-    echo "  $0 localhost:5556     # Sync from Redroid"
+    echo "  $0                    # Sync from AVD (default)"
+    echo "  $0 <device>           # Sync from specific device"
     exit 1
 }
 

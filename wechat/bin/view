@@ -4,23 +4,19 @@ set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PORT=${VIEW_PORT:-8080}
-DEVICE=${VIEW_DEVICE:-"localhost:5556"}  # Default to Redroid
+DEVICE=${VIEW_DEVICE:-"emulator-5554"}  # Default to AVD
 
 usage() {
     echo "Usage: $0 <command> [device]"
     echo ""
     echo "Commands:"
-    echo "  start [device]  Start web viewer (default: localhost:5556)"
+    echo "  start [device]  Start web viewer (default: emulator-5554)"
     echo "  stop            Stop web viewer"
     echo "  status          Show viewer status"
     echo ""
-    echo "Devices:"
-    echo "  localhost:5556  Redroid (Lima)"
-    echo "  emulator-5554   AVD"
-    echo ""
     echo "Example:"
-    echo "  $0 start                    # View Redroid"
-    echo "  $0 start emulator-5554      # View AVD"
+    echo "  $0 start                    # View AVD"
+    echo "  $0 start <device>           # View specific device"
     exit 1
 }
 
