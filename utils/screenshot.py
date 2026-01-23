@@ -17,24 +17,6 @@ except ImportError:
     sys.exit(1)
 
 
-HELP_TEXT = """screenshot - Background window capture for macOS
-
-USAGE
-    screenshot                              List available windows
-    screenshot <app-name|window-id> [path]  Capture a window
-
-ARGUMENTS
-    app-name      Application name (case-insensitive partial match)
-    window-id     Numeric window ID from the list
-    path          Output path (default: ./tmp/screenshot-TIMESTAMP.jpg)
-
-EXAMPLES
-    screenshot                    # List windows
-    screenshot Chrome             # Capture Chrome window
-    screenshot 12345 out.png      # Capture by ID
-"""
-
-
 def pid_exists(pid):
     """Check if a process with given PID exists."""
     try:
@@ -195,11 +177,6 @@ def main():
     # No args: show window list
     if len(sys.argv) < 2:
         show_list()
-        sys.exit(0)
-
-    # Help
-    if sys.argv[1] in ['-h', '--help', 'help']:
-        print(HELP_TEXT)
         sys.exit(0)
 
     # Parse arguments
