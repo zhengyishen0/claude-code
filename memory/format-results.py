@@ -193,16 +193,47 @@ def main():
         kw_parts = ' '.join(f"{kw}[{kw_counts[kw]}]" for kw in keywords if kw in kw_counts)
         print(f"[{short_id}] {kw_parts} ({matches} matches | {date} | {project})")
 
-        sorted_msgs = sorted(s['messages'], key=lambda m: m['keyword_hits'], reverse=True)
-        for msg in sorted_msgs[:messages_limit]:
+        # Sort by timestamp to establish conversation order
+        all_msgs_ordered = sorted(s['messages'], key=lambda m: m['timestamp'])
+        msg_to_idx = {id(m): i for i, m in enumerate(all_msgs_ordered)}
+
+        # Find high-hit messages and include their replies (Q&A pairs)
+        sorted_by_hits = sorted(s['messages'], key=lambda m: m['keyword_hits'], reverse=True)
+        shown_indices = set()
+        pairs_shown = 0
+
+        for msg in sorted_by_hits:
+            if pairs_shown >= messages_limit:
+                break
+
+            idx = msg_to_idx[id(msg)]
+            if idx in shown_indices:
+                continue
+
+            # Show this message
+            shown_indices.add(idx)
             role = "[user]" if msg['type'] == 'user' else "[asst]"
             text = extract_snippet(
                 msg['text'], msg['text_normalized'], keywords, keywords_normalized, context
             )
             print(f"{role} {text}")
 
-        if matches > messages_limit:
-            print(f"... and {matches - messages_limit} more matches")
+            # If this has keyword hits, show the reply (next message) as context
+            if msg['keyword_hits'] > 0 and idx + 1 < len(all_msgs_ordered):
+                next_msg = all_msgs_ordered[idx + 1]
+                if idx + 1 not in shown_indices:
+                    shown_indices.add(idx + 1)
+                    next_role = "[user]" if next_msg['type'] == 'user' else "[asst]"
+                    next_text = extract_snippet(
+                        next_msg['text'], next_msg['text_normalized'],
+                        keywords, keywords_normalized, context
+                    )
+                    print(f"  → {next_role} {next_text}")
+
+            pairs_shown += 1
+
+        if matches > len(shown_indices):
+            print(f"... and {matches - len(shown_indices)} more matches")
 
         print()
 
