@@ -23,10 +23,12 @@ fi
 
 # Block if target is on main
 if [[ "$target_branch" == "main" ]]; then
-    echo "BLOCKED: Cannot $tool_name on main branch." >&2
     echo "" >&2
-    echo "Create a worktree first:" >&2
-    echo "  worktree create <feature-name>" >&2
+    echo "Warning: Cannot $tool_name on main branch." >&2
+    echo "" >&2
+    echo "Create a worktree first: worktree create <feature-name>" >&2
+    echo "If you're not working on main, kindly ignore this message." >&2
+    echo "" >&2
     exit 2
 fi
 

@@ -36,18 +36,16 @@ if [ "$worktree_branch" = "main" ]; then
 fi
 
 # Check for uncommitted changes in the active worktree only
-if [ -n "$(git -C "$active_worktree" status --porcelain 2>/dev/null)" ]; then
+uncommitted_count=$(git -C "$active_worktree" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+if [ "$uncommitted_count" -gt 0 ]; then
+    uncommitted_files=$(git -C "$active_worktree" status --porcelain 2>/dev/null | awk '{print $2}' | head -5)
     echo "" >&2
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
-    echo "⚠️  You have uncommitted changes in $worktree_branch." >&2
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >&2
+    echo "Warning: Uncommitted changes in \`$worktree_branch\` ($uncommitted_count files):" >&2
+    echo "$uncommitted_files" | sed 's/^/  • /' >&2
+    [ "$uncommitted_count" -gt 5 ] && echo "  • ... and $((uncommitted_count - 5)) more" >&2
     echo "" >&2
-    echo "Please either:" >&2
-    echo "  1. Continue working to complete the task" >&2
-    echo "  2. Commit your progress with a meaningful message:" >&2
-    echo "     git -C $active_worktree add -A && git -C $active_worktree commit -m 'checkpoint: <summary>'" >&2
-    echo "" >&2
-    echo "Report your progress before stopping." >&2
+    echo "Consider: git add -A && git commit -m 'wip: <summary>'" >&2
+    echo "If you're not working on $worktree_branch, kindly ignore this message." >&2
     echo "" >&2
     exit 2  # Block stop, force agent to respond
 fi
