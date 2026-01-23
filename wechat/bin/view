@@ -1,0 +1,86 @@
+#!/bin/bash
+# Web viewer for WeChat - view Android screen in browser
+set -eo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PORT=${VIEW_PORT:-8080}
+DEVICE=${VIEW_DEVICE:-"localhost:5556"}  # Default to Redroid
+
+usage() {
+    echo "Usage: $0 <command> [device]"
+    echo ""
+    echo "Commands:"
+    echo "  start [device]  Start web viewer (default: localhost:5556)"
+    echo "  stop            Stop web viewer"
+    echo "  status          Show viewer status"
+    echo ""
+    echo "Devices:"
+    echo "  localhost:5556  Redroid (Lima)"
+    echo "  emulator-5554   AVD"
+    echo ""
+    echo "Example:"
+    echo "  $0 start                    # View Redroid"
+    echo "  $0 start emulator-5554      # View AVD"
+    exit 1
+}
+
+start_viewer() {
+    local device="${1:-$DEVICE}"
+
+    # Kill existing
+    pkill -f "wechat-web.*server.py" 2>/dev/null || true
+    sleep 1
+
+    mkdir -p /tmp/wechat-web
+    cat > /tmp/wechat-web/server.py << PYEOF
+#!/usr/bin/env python3
+import http.server, socketserver, subprocess, os
+PORT = $PORT
+DEVICE = "$device"
+HTML = """<!DOCTYPE html>
+<html>
+<head><title>WeChat Viewer</title>
+<style>body{margin:0;background:#1a1a1a;display:flex;justify-content:center;align-items:center;min-height:100vh}img{max-height:95vh;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.5)}</style>
+</head>
+<body><img id="s" src="/screen.png"><script>setInterval(()=>document.getElementById('s').src='/screen.png?'+Date.now(),1000)</script></body>
+</html>"""
+
+class H(http.server.SimpleHTTPRequestHandler):
+    def __init__(s,*a,**k): super().__init__(*a,directory="/tmp/wechat-web",**k)
+    def do_GET(s):
+        if s.path=="/": s.send_response(200);s.send_header("Content-type","text/html");s.send_header("Content-Length",len(HTML));s.end_headers();s.wfile.write(HTML.encode())
+        elif s.path.startswith("/screen.png"): subprocess.run(["adb","-s",DEVICE,"shell","screencap","-p"],stdout=open("/tmp/wechat-web/screen.png","wb"),stderr=subprocess.DEVNULL,timeout=3);s.path="/screen.png";super().do_GET()
+        else: super().do_GET()
+    def log_message(s,*a): pass
+
+if __name__=="__main__":
+    os.makedirs("/tmp/wechat-web",exist_ok=True);socketserver.TCPServer.allow_reuse_address=True
+    with socketserver.TCPServer(("",PORT),H) as h: h.serve_forever()
+PYEOF
+
+    python3 /tmp/wechat-web/server.py &
+    sleep 2
+    echo "Viewer running at http://localhost:$PORT (device: $device)"
+    open "http://localhost:$PORT" 2>/dev/null || true
+}
+
+stop_viewer() {
+    pkill -f "wechat-web.*server.py" 2>/dev/null || true
+    echo "Viewer stopped"
+}
+
+status_viewer() {
+    echo "=== Web Viewer Status ==="
+    if lsof -i :$PORT 2>/dev/null | grep -q "Python.*LISTEN"; then
+        echo "Status: Running at http://localhost:$PORT"
+    else
+        echo "Status: Stopped"
+    fi
+}
+
+case "${1:-}" in
+    start) start_viewer "$2" ;;
+    stop) stop_viewer ;;
+    status) status_viewer ;;
+    *) usage ;;
+esac
