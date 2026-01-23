@@ -39,11 +39,13 @@ unstaged=$(git -C "$git_dir" status --porcelain 2>/dev/null | grep -E '^(\?\?| M
 
 if [[ -n "$unstaged" ]]; then
     count=$(git -C "$git_dir" status --porcelain 2>/dev/null | grep -cE '^(\?\?| M|MM| D)' || echo 0)
-    echo "⚠️  Unstaged changes in $target_branch ($count files). Clean up before continuing:" >&2
-    echo "$unstaged" | sed 's/^/   /' >&2
-    [[ $count -gt 5 ]] && echo "   ... and $((count - 5)) more" >&2
     echo "" >&2
-    echo "Consider: git add | git checkout | mv to tmp/ | rm (if not needed)" >&2
+    echo "Warning: Unstaged changes in \`$target_branch\` ($count files):" >&2
+    echo "$unstaged" | sed 's/^/  • /' >&2
+    [[ $count -gt 5 ]] && echo "  • ... and $((count - 5)) more" >&2
+    echo "" >&2
+    echo "Consider: git add | git checkout | mv to tmp/ | rm" >&2
+    echo "If you're not working on $target_branch, kindly ignore this message." >&2
     echo "" >&2
 fi
 
