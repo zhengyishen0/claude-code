@@ -42,6 +42,15 @@ EXAMPLES
 """
 
 
+def pid_exists(pid):
+    """Check if a process with given PID exists."""
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
 def get_windows():
     """Get list of all capturable windows with their IDs and info."""
     windows = Quartz.CGWindowListCopyWindowInfo(
@@ -50,12 +59,15 @@ def get_windows():
     )
 
     result = []
+    seen_pids = {}  # Cache PID existence checks
+
     for window in windows:
         owner = window.get('kCGWindowOwnerName', '')
         title = window.get('kCGWindowName', '')
         window_id = window['kCGWindowNumber']
         layer = window.get('kCGWindowLayer', 0)
         bounds = window.get('kCGWindowBounds', {})
+        pid = window.get('kCGWindowOwnerPID')
 
         if not owner:
             continue
@@ -68,6 +80,13 @@ def get_windows():
         # Filter out utility apps (menu bar, overlays, etc.)
         if owner in UTILITY_APPS:
             continue
+
+        # Filter out windows from dead processes (stale entries)
+        if pid:
+            if pid not in seen_pids:
+                seen_pids[pid] = pid_exists(pid)
+            if not seen_pids[pid]:
+                continue
 
         # Filter out tiny windows (helper windows, 1x1 placeholders)
         width = bounds.get('Width', 0)
@@ -161,15 +180,15 @@ def show_list():
     """Show list of available windows with usage hint."""
     windows = get_windows()
 
-    # Sort: on-screen windows first
+    # Sort: on-screen windows first, then by app name
     windows.sort(key=lambda w: (not w.get('on_screen', False), w['app']))
 
     for w in windows:
-        title = w['title'] if w['title'] else '(no title)'
         bounds = w.get('bounds', {})
         size = f"{int(bounds.get('Width', 0))}x{int(bounds.get('Height', 0))}"
-        marker = '' if w.get('on_screen') else ' [other space]'
-        print(f"[{w['id']}] {w['app']} - {title} ({size}){marker}")
+        marker = ' [other space]' if not w.get('on_screen') else ''
+        title_part = f" - {w['title']}" if w['title'] else ''
+        print(f"[{w['id']}] {w['app']}{title_part} ({size}){marker}")
 
     print()
     print("Usage: screenshot <app-name|window-id> [output-path]")
