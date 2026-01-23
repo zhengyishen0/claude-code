@@ -464,13 +464,19 @@ class OnboardingHandler(http.server.BaseHTTPRequestHandler):
                                    capture_output=True, timeout=10, text=True)
 
             # Check for indicators of logged-in state
-            # If we see the main chat list or "Chats" tab, user is logged in
+            # Look for bottom tab bar items or chat list indicators
             logged_in = any(indicator in result.stdout for indicator in [
                 'text="Chats"',
+                'text="Weixin"',      # English tab name
                 'text="Contacts"',
                 'text="Discover"',
                 'text="Me"',
-                'resource-id="com.tencent.mm:id/conversation_list"'
+                'text="微信"',         # Chinese tab name
+                'text="通讯录"',       # Chinese Contacts
+                'text="发现"',         # Chinese Discover
+                'text="我"',           # Chinese Me
+                'resource-id="com.tencent.mm:id/icon_tv"',  # Tab bar text
+                'Import chat history from another device'   # Import banner
             ])
 
             self.send_json({"logged_in": logged_in})
