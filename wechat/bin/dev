@@ -179,32 +179,51 @@ do_onboard() {
     echo ""
     echo -e "${BLUE}Opening WeChat...${NC}"
     adb -s emulator-5554 shell am start -n com.tencent.mm/.ui.LauncherUI 2>/dev/null || true
+    sleep 3  # Wait for WeChat to load
 
-    # Step 2: Wait for login
+    # Navigate to QR code screen
+    echo ""
+    echo -e "${BLUE}Navigating to login QR code...${NC}"
+    navigate_to_qr_code
+
+    # Capture and display QR code
+    local QR_FILE="/tmp/wechat-login-qr.png"
+    echo ""
+    echo -e "${BLUE}Capturing QR code...${NC}"
+    adb -s emulator-5554 exec-out screencap -p > "$QR_FILE"
+
+    # Open QR code for user
     echo ""
     echo -e "${BOLD}Step 1/2: Login to WeChat${NC}"
-    echo "  Look at the emulator window."
-    echo "  Scan the QR code with your phone's WeChat app."
     echo ""
+    echo "  A QR code image will open in Preview."
+    echo "  Scan it with your phone's WeChat app."
+    echo ""
+    open "$QR_FILE"
     read -p "  Press Enter when you're logged in... "
 
     # Step 3: Import chat history
     echo ""
     echo -e "${BOLD}Step 2/2: Import Chat History (Recommended)${NC}"
-    echo "  On your PHONE's WeChat:"
-    echo "    1. Go to: Me → Settings → Chats → Chat History Migration"
-    echo "    2. Choose: Migrate to Another Device"
-    echo "    3. Select messages to migrate"
-    echo "    4. Hold your phone's QR code up to the emulator's camera"
     echo ""
-    echo "  The emulator camera will scan your phone's QR code."
+    echo "  To migrate your chat history to the tablet:"
+    echo ""
+    echo "  On the TABLET (emulator window):"
+    echo "    1. Go to: Me → Settings → Chats → Chat History Migration"
+    echo "    2. Choose: Migrate to This Device"
+    echo "    3. A QR code will appear on the tablet"
+    echo ""
+    echo "  On your PHONE:"
+    echo "    4. Scan the tablet's QR code with your phone's camera"
+    echo "    5. Select which chats to migrate"
+    echo "    6. Wait for transfer to complete"
     echo ""
     read -p "  Press Enter when done, or 's' to skip: " choice
 
     if [[ "$choice" != "s" && "$choice" != "S" ]]; then
         echo ""
         echo "  Waiting for import to complete..."
-        echo "  (This may take a few minutes depending on history size)"
+        echo "  (This may take a while depending on history size)"
         read -p "  Press Enter when import is finished... "
     fi
 
@@ -233,6 +252,34 @@ do_onboard() {
     # Stop emulator to save resources
     echo "Stopping emulator..."
     "$SCRIPT_DIR/avd" stop
+}
+
+# Navigate to QR code login screen
+navigate_to_qr_code() {
+    # Dump UI and find "Log in on Phone & Tablet" button
+    adb -s emulator-5554 shell uiautomator dump /sdcard/ui.xml 2>/dev/null
+
+    # Extract bounds for "Log in on Phone & Tablet" text using sed
+    local bounds=$(adb -s emulator-5554 shell cat /sdcard/ui.xml | sed -n 's/.*text="Log in on Phone \&amp; Tablet"[^>]*bounds="\(\[[0-9,]*\]\[[0-9,]*\]\)".*/\1/p')
+
+    if [[ -z "$bounds" ]]; then
+        echo "  Could not find login button. WeChat may already be logged in or on a different screen."
+        return 0
+    fi
+
+    # Parse bounds [left,top][right,bottom] and calculate center
+    # Format: [860,860][1292,913]
+    local left=$(echo "$bounds" | sed 's/\[\([0-9]*\),.*/\1/')
+    local top=$(echo "$bounds" | sed 's/\[[0-9]*,\([0-9]*\)\].*/\1/')
+    local right=$(echo "$bounds" | sed 's/.*\]\[\([0-9]*\),.*/\1/')
+    local bottom=$(echo "$bounds" | sed 's/.*,\([0-9]*\)\]$/\1/')
+
+    local center_x=$(( (left + right) / 2 ))
+    local center_y=$(( (top + bottom) / 2 ))
+
+    echo "  Tapping login button at ($center_x, $center_y)..."
+    adb -s emulator-5554 shell input tap "$center_x" "$center_y"
+    sleep 2  # Wait for QR code screen to load
 }
 
 do_snapshot() {
