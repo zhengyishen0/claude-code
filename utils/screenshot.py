@@ -21,41 +21,24 @@ except ImportError:
 UTILITY_APPS = {
     'AutoFill', 'loginwindow', 'ShareSheetUI', 'Maccy', 'Jitouch',
     'TheBoringNotch', 'Ice', 'Clop', 'WeatherMenu', 'Homerow',
-    'FreeGecko', 'ProNotes', 'Voca',
+    'FreeGecko', 'ProNotes', 'Voca', 'Open and Save Panel Service',
 }
 
 HELP_TEXT = """screenshot - Background window capture for macOS
 
 USAGE
-    screenshot <app_name> [output_path]
-    screenshot <window_id> [output_path]
-    screenshot --list
-
-DESCRIPTION
-    Captures screenshots of windows without activating them using macOS
-    window server APIs. Useful for capturing browser automation,
-    monitoring background processes, or documentation.
+    screenshot                              List available windows
+    screenshot <app-name|window-id> [path]  Capture a window
 
 ARGUMENTS
-    app_name      Application name to capture (case-insensitive partial match)
-                  Examples: "Chrome", "Google Chrome", "Terminal"
-
-    window_id     Numeric window ID (from --list output)
-
-    output_path   Optional output file path (default: ./tmp/screenshot-TIMESTAMP.jpg)
-
-OPTIONS
-    --list        List all capturable windows with IDs and titles
-    -h, --help    Show this help message
+    app-name      Application name (case-insensitive partial match)
+    window-id     Numeric window ID from the list
+    path          Output path (default: ./tmp/screenshot-TIMESTAMP.jpg)
 
 EXAMPLES
-    screenshot Chrome
-    screenshot "Google Chrome" /tmp/my-screenshot.jpg
-    screenshot 12345
-    screenshot --list
-
-REQUIREMENTS
-    macOS with Python 3 and pyobjc-framework-Quartz
+    screenshot                    # List windows
+    screenshot Chrome             # Capture Chrome window
+    screenshot 12345 out.png      # Capture by ID
 """
 
 
@@ -175,7 +158,7 @@ def convert_to_jpeg(png_path, jpeg_path, max_width=1500, quality=80):
 
 
 def show_list():
-    """Show list of available windows."""
+    """Show list of available windows with usage hint."""
     windows = get_windows()
 
     # Sort: on-screen windows first
@@ -188,6 +171,9 @@ def show_list():
         marker = '' if w.get('on_screen') else ' [other space]'
         print(f"[{w['id']}] {w['app']} - {title} ({size}){marker}")
 
+    print()
+    print("Usage: screenshot <app-name|window-id> [output-path]")
+
 
 def get_output_dir():
     """Get output directory (PROJECT_DIR/tmp or current dir)."""
@@ -198,14 +184,14 @@ def get_output_dir():
 
 
 def main():
-    # Help
-    if len(sys.argv) < 2 or sys.argv[1] in ['-h', '--help', 'help']:
-        print(HELP_TEXT)
+    # No args: show window list
+    if len(sys.argv) < 2:
+        show_list()
         sys.exit(0)
 
-    # List windows
-    if sys.argv[1] == '--list':
-        show_list()
+    # Help
+    if sys.argv[1] in ['-h', '--help', 'help']:
+        print(HELP_TEXT)
         sys.exit(0)
 
     # Parse arguments
