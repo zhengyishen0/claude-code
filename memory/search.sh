@@ -10,6 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATA_DIR="$SCRIPT_DIR/data"
 SESSION_DIR="$CLAUDE_DIR/projects"
 INDEX_FILE="$DATA_DIR/memory-index.tsv"
+NLP_INDEX_FILE="$DATA_DIR/memory-index-nlp.tsv"
 
 # Parse args
 # Debug options (not shown in help): --sessions, --messages, --context
@@ -18,7 +19,6 @@ MESSAGES=5
 CONTEXT=300
 QUERY=""
 RECALL_QUESTION=""
-NLP_MODE="none"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -38,10 +38,6 @@ while [[ $# -gt 0 ]]; do
       RECALL_QUESTION="$2"
       shift 2
       ;;
-    --nlp)
-      NLP_MODE="hybrid"
-      shift
-      ;;
     -*)
       echo "Error: Unknown flag '$1'" >&2
       exit 1
@@ -55,15 +51,16 @@ done
 
 # Validation
 if [ -z "$QUERY" ]; then
-  echo "Usage: memory search \"<keywords>\" [--nlp] [--recall \"question\"]" >&2
+  echo "Usage: memory search \"<keywords>\" [--recall \"question\"]" >&2
+  echo "" >&2
+  echo "NLP matching is always enabled (ran→run, specifications→specification)" >&2
   echo "" >&2
   echo "Options:" >&2
-  echo "  --nlp         Enable NLP matching (ran→run, specifications→specification)" >&2
   echo "  --recall Q    Ask matched sessions a follow-up question" >&2
   echo "" >&2
   echo "Examples:" >&2
   echo "  memory search \"browser automation\"" >&2
-  echo "  memory search \"ran specifications\" --nlp" >&2
+  echo "  memory search \"ran specifications\"" >&2
   echo "  memory search \"browser\" --recall \"how to click?\"" >&2
   exit 1
 fi
@@ -101,6 +98,14 @@ build_full_index() {
       [$session_id, .timestamp, .type, $text, .cwd // "unknown"] | @tsv
     ' 2>/dev/null > "$INDEX_FILE"
   echo "Index built: $(wc -l < "$INDEX_FILE" | tr -d ' ') messages" >&2
+  # Build NLP index with normalized text
+  build_nlp_index
+}
+
+# Build NLP index with normalized text column
+build_nlp_index() {
+  echo "Building NLP index..." >&2
+  python3 "$SCRIPT_DIR/build_index.py" "$INDEX_FILE" "$NLP_INDEX_FILE"
 }
 
 # Incremental update
@@ -118,6 +123,10 @@ update_index() {
 
   local count=$(echo "$non_fork_files" | wc -l | tr -d ' ')
   echo "Updating index ($count files)..." >&2
+
+  # Create temp file for new entries
+  local temp_file=$(mktemp)
+
   echo "$non_fork_files" | xargs -I{} rg -N --json '"type":"(user|assistant)"' {} 2>/dev/null | \
     jq -r '
       select(.type == "match") |
@@ -137,12 +146,24 @@ update_index() {
       select($session_id != "'"$CURRENT_SESSION_ID"'") |
       select($session_id | startswith("agent-") | not) |
       [$session_id, .timestamp, .type, $text, .cwd // "unknown"] | @tsv
-    ' 2>/dev/null >> "$INDEX_FILE" || true
+    ' 2>/dev/null > "$temp_file" || true
+
+  if [ -s "$temp_file" ]; then
+    # Append to base index
+    cat "$temp_file" >> "$INDEX_FILE"
+    # Normalize and append to NLP index
+    python3 "$SCRIPT_DIR/build_index.py" "$temp_file" /dev/stdout >> "$NLP_INDEX_FILE"
+  fi
+
+  rm -f "$temp_file"
 }
 
 # Check if index needs update
 if [ ! -f "$INDEX_FILE" ]; then
   build_full_index
+elif [ ! -f "$NLP_INDEX_FILE" ]; then
+  # Base index exists but NLP index doesn't - build it
+  build_nlp_index
 else
   NEW_FILES=$(find "$SESSION_DIR" -name "*.jsonl" -newer "$INDEX_FILE" 2>/dev/null || true)
   if [ -n "$NEW_FILES" ]; then
@@ -150,18 +171,23 @@ else
   fi
 fi
 
-# Convert underscore phrases to regex
-to_pattern() {
-  echo "$1" | sed 's/_/./g'
+# Fast query normalization (no NLTK dependency)
+normalize_query() {
+  python3 "$SCRIPT_DIR/normalize_query.py" "$1"
 }
 
-# Simple search: OR all keywords
+# Simple search: OR all normalized keywords with word boundaries
 run_search() {
-  read -ra KEYWORDS <<< "$QUERY"
+  # Normalize the query
+  QUERY_NORMALIZED=$(normalize_query "$QUERY")
 
+  read -ra KEYWORDS <<< "$QUERY_NORMALIZED"
+
+  # Build word-boundary patterns for each normalized keyword
   OR_PATTERNS=()
   for keyword in "${KEYWORDS[@]}"; do
-    OR_PATTERNS+=("$(to_pattern "$keyword")")
+    # Word boundary pattern: \b<word>\b
+    OR_PATTERNS+=("\\b${keyword}\\b")
   done
 
   if [ ${#OR_PATTERNS[@]} -eq 1 ]; then
@@ -171,10 +197,12 @@ run_search() {
     PATTERN="($PATTERN)"
   fi
 
-  rg -i "$PATTERN" "$INDEX_FILE" 2>/dev/null || true
+  # Search on normalized column (column 5, 0-indexed) in NLP index
+  rg -i "$PATTERN" "$NLP_INDEX_FILE" 2>/dev/null || true
 }
 
 # Execute search
+QUERY_NORMALIZED=$(normalize_query "$QUERY")
 RESULTS=$(run_search | sort -u || true)
 
 if [ -z "$RESULTS" ]; then
@@ -184,7 +212,7 @@ fi
 
 # Format results and capture session IDs from stderr
 TEMP_IDS=$(mktemp)
-OUTPUT=$(echo "$RESULTS" | python3 "$SCRIPT_DIR/format-results.py" "$SESSIONS" "$MESSAGES" "$CONTEXT" "$QUERY" "simple" "$NLP_MODE" 2>"$TEMP_IDS")
+OUTPUT=$(echo "$RESULTS" | python3 "$SCRIPT_DIR/format-results.py" "$SESSIONS" "$MESSAGES" "$CONTEXT" "$QUERY" "simple" "$QUERY_NORMALIZED" 2>"$TEMP_IDS")
 SESSION_IDS=$(cat "$TEMP_IDS")
 rm -f "$TEMP_IDS"
 

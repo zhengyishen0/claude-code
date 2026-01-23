@@ -5,12 +5,8 @@ Two modes:
 - simple: Rank by keyword hits -> match count -> recency
 - strict: Rank by match count -> recency (hits not relevant since AND-filtered)
 
-NLP modes (--nlp):
-- none: Exact matching only (default, fastest)
-- porter: Porter stemmer
-- snowball: Snowball stemmer (balanced)
-- lemma: WordNet lemmatizer (handles irregular forms)
-- hybrid: Lemmatization + stemming fallback (best accuracy)
+Uses pre-normalized index for NLP matching with zero query-time overhead.
+Index format: session_id | timestamp | type | text | text_normalized | project_path
 
 Optimized: Removed pandas dependency for 2.5x faster startup.
 """
@@ -20,13 +16,6 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
-# Import normalizer (graceful fallback if NLTK not available)
-try:
-    from normalizer import TextNormalizer
-    NORMALIZER_AVAILABLE = True
-except ImportError:
-    NORMALIZER_AVAILABLE = False
-
 
 def shorten_path(path):
     """Replace $HOME with ~"""
@@ -34,52 +23,26 @@ def shorten_path(path):
     return path.replace(home, "~")
 
 
-def get_keyword_counts(text, keywords, normalizer=None):
+def get_keyword_counts(text, text_normalized, keywords, keywords_normalized):
     """Return dict of keyword -> occurrence count in text.
-    
-    If normalizer is provided, also matches normalized forms.
+
+    Uses word boundary matching on normalized text for accurate matching.
     """
-    text_lower = text.lower()
     counts = {}
 
-    if normalizer and normalizer.mode != 'none':
-        text_normalized = normalizer.normalize(text)
-        
-        for keyword in keywords:
-            pattern = keyword.replace('_', '.')
-            # Check original text
-            matches = re.findall(pattern, text_lower, re.IGNORECASE)
-            if matches:
-                counts[keyword] = len(matches)
-                continue
-            
-            # Check normalized text
-            keyword_normalized = normalizer.normalize_word(keyword.replace('_', ''))
-            norm_matches = text_normalized.split().count(keyword_normalized)
-            if norm_matches:
-                counts[keyword] = norm_matches
-                continue
-            
-            # Check variations
-            variations = normalizer.get_variations(keyword.replace('_', ''))
-            for var in variations:
-                var_matches = len(re.findall(rf'\b{re.escape(var)}\b', text_normalized, re.IGNORECASE))
-                if var_matches:
-                    counts[keyword] = var_matches
-                    break
-    else:
-        for keyword in keywords:
-            pattern = keyword.replace('_', '.')
-            matches = re.findall(pattern, text_lower, re.IGNORECASE)
-            if matches:
-                counts[keyword] = len(matches)
+    for keyword, keyword_norm in zip(keywords, keywords_normalized):
+        # Word boundary match on normalized text
+        pattern = rf'\b{re.escape(keyword_norm)}\b'
+        matches = re.findall(pattern, text_normalized, re.IGNORECASE)
+        if matches:
+            counts[keyword] = len(matches)
 
     return counts
 
 
-def count_keyword_hits(text, keywords, normalizer=None):
+def count_keyword_hits(text, text_normalized, keywords, keywords_normalized):
     """Count how many unique keywords appear in the text."""
-    return len(get_keyword_counts(text, keywords, normalizer))
+    return len(get_keyword_counts(text, text_normalized, keywords, keywords_normalized))
 
 
 def parse_keywords(query, mode):
@@ -93,7 +56,7 @@ def parse_keywords(query, mode):
         return [k.lower() for k in query.split()]
 
 
-def extract_snippet(text, keywords, context, normalizer=None):
+def extract_snippet(text, text_normalized, keywords, keywords_normalized, context):
     """Extract snippet around a matched keyword if text is long."""
     if len(text) <= context:
         return text
@@ -101,6 +64,7 @@ def extract_snippet(text, keywords, context, normalizer=None):
     text_lower = text.lower()
     pos = -1
 
+    # Try to find keyword in original text first
     for keyword in keywords:
         pattern = keyword.replace('_', '.')
         match = re.search(pattern, text_lower, re.IGNORECASE)
@@ -108,16 +72,17 @@ def extract_snippet(text, keywords, context, normalizer=None):
             pos = match.start()
             break
 
-    if pos < 0 and normalizer and normalizer.mode != 'none':
-        text_normalized = normalizer.normalize(text)
+    # If not found, find via normalized text word position
+    if pos < 0:
         words = text_lower.split()
         norm_words = text_normalized.split()
 
-        for keyword in keywords:
-            keyword_norm = normalizer.normalize_word(keyword.replace('_', ''))
+        for keyword_norm in keywords_normalized:
             if keyword_norm in norm_words:
                 idx = norm_words.index(keyword_norm)
-                pos = sum(len(w) + 1 for w in words[:idx])
+                # Map normalized word index to character position in original
+                if idx < len(words):
+                    pos = sum(len(w) + 1 for w in words[:idx])
                 break
 
     if pos >= 0:
@@ -137,7 +102,7 @@ def extract_snippet(text, keywords, context, normalizer=None):
 
 def main():
     if len(sys.argv) < 6:
-        print("Usage: format-results.py <sessions> <messages> <context> <query> <mode> [nlp_mode]", file=sys.stderr)
+        print("Usage: format-results.py <sessions> <messages> <context> <query> <mode> <query_normalized>", file=sys.stderr)
         sys.exit(1)
 
     sessions_limit = int(sys.argv[1])
@@ -145,42 +110,23 @@ def main():
     context = int(sys.argv[3])
     query = sys.argv[4]
     mode = sys.argv[5]
-    nlp_mode = sys.argv[6] if len(sys.argv) > 6 else 'none'
-
-    normalizer = None
-    if nlp_mode != 'none':
-        if NORMALIZER_AVAILABLE:
-            normalizer = TextNormalizer(nlp_mode)
-            if normalizer.mode == 'none':
-                nlp_mode = 'none'
-        else:
-            print(f"Warning: Normalizer not available, using exact matching", file=sys.stderr)
-            nlp_mode = 'none'
+    query_normalized = sys.argv[6] if len(sys.argv) > 6 else query.lower()
 
     keywords = parse_keywords(query, mode)
-
-    if normalizer and normalizer.mode != 'none':
-        expanded_keywords = []
-        for kw in keywords:
-            expanded_keywords.append(kw)
-            normalized = normalizer.normalize_word(kw)
-            if normalized != kw and normalized not in expanded_keywords:
-                expanded_keywords.append(normalized)
-        keywords_for_matching = expanded_keywords
-    else:
-        keywords_for_matching = keywords
+    keywords_normalized = query_normalized.lower().split()
 
     sessions = defaultdict(dict)
     for line in sys.stdin:
-        parts = line.rstrip('\n').split('\t', 4)
-        if len(parts) == 5:
-            session_id, timestamp, msg_type, text, project_path = parts
+        parts = line.rstrip('\n').split('\t', 5)
+        if len(parts) == 6:
+            session_id, timestamp, msg_type, text, text_normalized, project_path = parts
             key = (timestamp, msg_type, text)
             if key not in sessions[session_id]:
                 sessions[session_id][key] = {
                     'timestamp': timestamp,
                     'type': msg_type,
                     'text': text,
+                    'text_normalized': text_normalized,
                     'project_path': project_path
                 }
 
@@ -193,7 +139,9 @@ def main():
         msgs = list(msgs_dict.values())
 
         for msg in msgs:
-            msg['keyword_counts'] = get_keyword_counts(msg['text'], keywords, normalizer)
+            msg['keyword_counts'] = get_keyword_counts(
+                msg['text'], msg['text_normalized'], keywords, keywords_normalized
+            )
             msg['keyword_hits'] = len(msg['keyword_counts'])
 
         session_keyword_counts = defaultdict(int)
@@ -224,7 +172,6 @@ def main():
 
     total_sessions = len(session_stats)
     total_keywords = len(keywords)
-    nlp_indicator = " [nlp]" if nlp_mode != 'none' else ""
 
     for s in session_stats:
         short_id = s['session_id'][:8]
@@ -239,7 +186,9 @@ def main():
         sorted_msgs = sorted(s['messages'], key=lambda m: m['keyword_hits'], reverse=True)
         for msg in sorted_msgs[:messages_limit]:
             role = "[user]" if msg['type'] == 'user' else "[asst]"
-            text = extract_snippet(msg['text'], keywords_for_matching, context, normalizer)
+            text = extract_snippet(
+                msg['text'], msg['text_normalized'], keywords, keywords_normalized, context
+            )
             print(f"{role} {text}")
 
         if matches > messages_limit:
@@ -248,9 +197,9 @@ def main():
         print()
 
     if mode == 'simple':
-        print(f"\nFound matches in {total_sessions} sessions (searched {total_keywords} keywords){nlp_indicator}")
+        print(f"\nFound matches in {total_sessions} sessions (searched {total_keywords} keywords)")
     else:
-        print(f"\nFound matches in {total_sessions} sessions (strict mode){nlp_indicator}")
+        print(f"\nFound matches in {total_sessions} sessions (strict mode)")
 
     session_ids = [s['session_id'] for s in session_stats]
     print(','.join(session_ids), file=sys.stderr)
