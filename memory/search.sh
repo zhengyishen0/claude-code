@@ -18,7 +18,7 @@ MESSAGES=5
 CONTEXT=300
 QUERY=""
 RECALL_QUESTION=""
-NLP_MODE="none"  # none, porter, snowball, lemma, hybrid
+NLP_MODE="none"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -39,8 +39,8 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --nlp)
-      NLP_MODE="$2"
-      shift 2
+      NLP_MODE="hybrid"
+      shift
       ;;
     -*)
       echo "Error: Unknown flag '$1'" >&2
@@ -55,19 +55,16 @@ done
 
 # Validation
 if [ -z "$QUERY" ]; then
-  echo "Usage: memory search \"<keywords>\" [--nlp MODE] [--recall \"question\"]" >&2
+  echo "Usage: memory search \"<keywords>\" [--nlp] [--recall \"question\"]" >&2
   echo "" >&2
   echo "Options:" >&2
-  echo "  --nlp MODE    Text normalization: none (default), porter, snowball, lemma, hybrid" >&2
-  echo "                - porter:   Fast stemming (running→run, but ran→ran)" >&2
-  echo "                - snowball: Balanced stemming, multi-language capable" >&2
-  echo "                - lemma:    Dictionary lookup (running→run, ran→run)" >&2
-  echo "                - hybrid:   Best accuracy (lemma + stemming fallback)" >&2
+  echo "  --nlp         Enable NLP matching (ran→run, specifications→specification)" >&2
+  echo "  --recall Q    Ask matched sessions a follow-up question" >&2
   echo "" >&2
-  echo "Workflow:" >&2
-  echo "  1. Search first:  memory search \"browser automation\"" >&2
-  echo "  2. Try NLP mode:  memory search \"ran specifications\" --nlp hybrid" >&2
-  echo "  3. Then recall:   memory search \"browser automation\" --recall \"how to click?\"" >&2
+  echo "Examples:" >&2
+  echo "  memory search \"browser automation\"" >&2
+  echo "  memory search \"ran specifications\" --nlp" >&2
+  echo "  memory search \"browser\" --recall \"how to click?\"" >&2
   exit 1
 fi
 

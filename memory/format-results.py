@@ -224,7 +224,7 @@ def main():
 
     total_sessions = len(session_stats)
     total_keywords = len(keywords)
-    nlp_indicator = f" [{nlp_mode}]" if nlp_mode != 'none' else ""
+    nlp_indicator = " [nlp]" if nlp_mode != 'none' else ""
 
     for s in session_stats:
         short_id = s['session_id'][:8]
