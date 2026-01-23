@@ -17,6 +17,13 @@ except ImportError:
     sys.exit(1)
 
 
+# Apps that create layer-0 windows but aren't real user windows
+UTILITY_APPS = {
+    'AutoFill', 'loginwindow', 'ShareSheetUI', 'Maccy', 'Jitouch',
+    'TheBoringNotch', 'Ice', 'Clop', 'WeatherMenu', 'Homerow',
+    'FreeGecko', 'ProNotes', 'Voca',
+}
+
 HELP_TEXT = """screenshot - Background window capture for macOS
 
 USAGE
@@ -53,9 +60,9 @@ REQUIREMENTS
 
 
 def get_windows():
-    """Get list of all on-screen windows with their IDs and info."""
+    """Get list of all capturable windows with their IDs and info."""
     windows = Quartz.CGWindowListCopyWindowInfo(
-        Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements,
+        Quartz.kCGWindowListOptionAll | Quartz.kCGWindowListExcludeDesktopElements,
         Quartz.kCGNullWindowID
     )
 
@@ -64,14 +71,33 @@ def get_windows():
         owner = window.get('kCGWindowOwnerName', '')
         title = window.get('kCGWindowName', '')
         window_id = window['kCGWindowNumber']
+        layer = window.get('kCGWindowLayer', 0)
+        bounds = window.get('kCGWindowBounds', {})
 
         if not owner:
+            continue
+
+        # Only include normal windows (layer 0)
+        # Higher layers are overlays, menu bar items, etc.
+        if layer != 0:
+            continue
+
+        # Filter out utility apps (menu bar, overlays, etc.)
+        if owner in UTILITY_APPS:
+            continue
+
+        # Filter out tiny windows (helper windows, 1x1 placeholders)
+        width = bounds.get('Width', 0)
+        height = bounds.get('Height', 0)
+        if width < 100 or height < 100:
             continue
 
         result.append({
             'id': window_id,
             'app': owner,
-            'title': title
+            'title': title,
+            'bounds': bounds,
+            'on_screen': window.get('kCGWindowIsOnscreen', False)
         })
 
     return result
@@ -152,18 +178,15 @@ def show_list():
     """Show list of available windows."""
     windows = get_windows()
 
-    # Filter out unwanted windows
-    filtered_windows = []
-    for w in windows:
-        if w['title'] == 'Item-0':
-            continue
-        if w['app'] in ['Dock', 'Control Center', 'Window Server']:
-            continue
-        filtered_windows.append(w)
+    # Sort: on-screen windows first
+    windows.sort(key=lambda w: (not w.get('on_screen', False), w['app']))
 
-    for w in filtered_windows:
+    for w in windows:
         title = w['title'] if w['title'] else '(no title)'
-        print(f"[{w['id']}] {w['app']} - {title}")
+        bounds = w.get('bounds', {})
+        size = f"{int(bounds.get('Width', 0))}x{int(bounds.get('Height', 0))}"
+        marker = '' if w.get('on_screen') else ' [other space]'
+        print(f"[{w['id']}] {w['app']} - {title} ({size}){marker}")
 
 
 def get_output_dir():
