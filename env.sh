@@ -22,6 +22,7 @@ alias memory="$PROJECT_DIR/memory/run.sh"
 alias screenshot="python3 $PROJECT_DIR/utils/screenshot.py"
 alias service="$PROJECT_DIR/integrations/run.sh"
 alias proxy="$PROJECT_DIR/utils/proxy.sh"
+alias wechat="$PROJECT_DIR/wechat/bin/wechat"
 
 # ============================================================
 # Claude CLI aliases

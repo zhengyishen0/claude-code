@@ -1,37 +1,56 @@
 #!/bin/bash
-# WeChat search tool - Search chat history from Android emulator
+# WeChat tool - Manage Android tablet emulator with WeChat
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 show_help() {
   cat << 'EOF'
-wechat - Search WeChat chat history from Android emulator
+wechat - WeChat on Android tablet emulator
 
 USAGE
-  wechat "<query>"          Search messages (auto-setup on first run)
-  wechat sync               Refresh database from emulator
+  wechat start              Start AVD emulator (resumes from snapshot)
+  wechat stop               Save snapshot and stop AVD
+  wechat status             Show AVD status
+  wechat snapshot           Save current state as snapshot
 
-EXAMPLES
-  wechat "meeting tomorrow"   # fuzzy: matches either word
-  wechat "from:张三"          # filter by sender
-  wechat "type:image"         # filter by type (image/voice/video/file)
+  wechat search "<query>"   Search messages
+  wechat sync               Pull latest database from device
+  wechat init               First-time setup (extract key, decrypt DB)
 
-FIRST RUN
-  On first search, wechat will:
-  1. Check dependencies (adb, sqlcipher, frida)
-  2. Extract encryption key via Frida (opens WeChat automatically)
-  3. Pull and decrypt database
-  4. Build search index
+  wechat view               Open browser viewer (for headless mode)
 
-  Just make sure your emulator is running with WeChat logged in.
+SEARCH EXAMPLES
+  wechat search "meeting"       # fuzzy search
+  wechat search "from:张三"     # filter by sender
+  wechat search "type:image"    # filter by type
+
+FIRST TIME SETUP
+  1. wechat start             # Start emulator
+  2. Log into WeChat (scan QR)
+  3. wechat snapshot          # Save logged-in state
+  4. wechat init              # Extract key and sync database
+  5. wechat search "test"     # Search messages
 
 EOF
 }
 
 case "${1:-}" in
+  start|stop|status|snapshot|kill)
+    "$SCRIPT_DIR/avd" "$1"
+    ;;
+  search)
+    shift
+    "$SCRIPT_DIR/search" "$@"
+    ;;
   sync)
+    "$SCRIPT_DIR/sync"
+    ;;
+  init)
     "$SCRIPT_DIR/init"
+    ;;
+  view)
+    "$SCRIPT_DIR/view" start
     ;;
   --help|-h|"")
     show_help
