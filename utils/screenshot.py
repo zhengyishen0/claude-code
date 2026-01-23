@@ -17,13 +17,6 @@ except ImportError:
     sys.exit(1)
 
 
-# Apps that create layer-0 windows but aren't real user windows
-UTILITY_APPS = {
-    'AutoFill', 'loginwindow', 'ShareSheetUI', 'Maccy', 'Jitouch',
-    'TheBoringNotch', 'Ice', 'Clop', 'WeatherMenu', 'Homerow',
-    'FreeGecko', 'ProNotes', 'Voca', 'Open and Save Panel Service',
-}
-
 HELP_TEXT = """screenshot - Background window capture for macOS
 
 USAGE
@@ -75,10 +68,6 @@ def get_windows():
         # Only include normal windows (layer 0)
         # Higher layers are overlays, menu bar items, etc.
         if layer != 0:
-            continue
-
-        # Filter out utility apps (menu bar, overlays, etc.)
-        if owner in UTILITY_APPS:
             continue
 
         # Filter out windows from dead processes (stale entries)
