@@ -155,9 +155,22 @@ def normalize_word(word):
 
 
 def normalize_query(text):
-    """Normalize all words in query text."""
-    words = re.findall(r'\b[a-zA-Z]+\b', text)
-    normalized = [normalize_word(w) for w in words]
+    """Normalize all words in query text.
+
+    ASCII words: apply stemming
+    Non-ASCII words (Chinese, etc.): pass through unchanged
+    """
+    # Split on whitespace to preserve non-ASCII words
+    tokens = text.split()
+    normalized = []
+    for token in tokens:
+        if token.isascii():
+            # ASCII: extract word and stem it
+            words = re.findall(r'\b[a-zA-Z]+\b', token)
+            normalized.extend(normalize_word(w) for w in words)
+        else:
+            # Non-ASCII: pass through unchanged
+            normalized.append(token)
     return ' '.join(normalized)
 
 
