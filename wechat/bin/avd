@@ -30,6 +30,21 @@ start_avd() {
     adb wait-for-device
     adb -s emulator-5554 shell getprop sys.boot_completed | grep -q 1 || sleep 5
     echo "AVD ready"
+    connect_wifi
+}
+
+connect_wifi() {
+    # Fix cold boot WiFi issue by toggling WiFi
+    echo "Connecting WiFi..."
+    adb -s emulator-5554 shell svc wifi disable 2>/dev/null || true
+    sleep 1
+    adb -s emulator-5554 shell svc wifi enable 2>/dev/null || true
+    sleep 2
+    if adb -s emulator-5554 shell ping -c 1 -W 2 8.8.8.8 &>/dev/null; then
+        echo "WiFi connected"
+    else
+        echo "WiFi may need manual reconnection"
+    fi
 }
 
 stop_avd() {
