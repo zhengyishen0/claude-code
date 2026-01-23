@@ -26,14 +26,20 @@ def shorten_path(path):
 def get_keyword_counts(text, text_normalized, keywords, keywords_normalized):
     """Return dict of keyword -> occurrence count in text.
 
-    Uses word boundary matching on normalized text for accurate matching.
+    Uses word boundary matching on normalized text for ASCII keywords.
+    For non-ASCII (Chinese, etc.), searches original text directly.
     """
     counts = {}
 
     for keyword, keyword_norm in zip(keywords, keywords_normalized):
-        # Word boundary match on normalized text
-        pattern = rf'\b{re.escape(keyword_norm)}\b'
-        matches = re.findall(pattern, text_normalized, re.IGNORECASE)
+        if not keyword.isascii():
+            # Non-ASCII (Chinese, etc.): search original text, no word boundary
+            matches = re.findall(re.escape(keyword), text, re.IGNORECASE)
+        else:
+            # ASCII: word boundary match on normalized text
+            pattern = rf'\b{re.escape(keyword_norm)}\b'
+            matches = re.findall(pattern, text_normalized, re.IGNORECASE)
+
         if matches:
             counts[keyword] = len(matches)
 
