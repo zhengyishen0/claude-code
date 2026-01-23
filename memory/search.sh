@@ -53,14 +53,17 @@ done
 if [ -z "$QUERY" ]; then
   echo "Usage: memory search \"<keywords>\" [--recall \"question\"]" >&2
   echo "" >&2
+  echo "IMPORTANT: Use 4+ keywords. Order matters - put most important first!" >&2
+  echo "  First keyword = highest weight, last = lowest weight" >&2
+  echo "" >&2
   echo "NLP matching is always enabled (ran→run, specifications→specification)" >&2
   echo "" >&2
   echo "Options:" >&2
   echo "  --recall Q    Ask matched sessions a follow-up question" >&2
   echo "" >&2
   echo "Examples:" >&2
-  echo "  memory search \"browser automation\"" >&2
-  echo "  memory search \"ran specifications\"" >&2
+  echo "  memory search \"bandwidth M4 MacBook LLM slow\"     # 'bandwidth' weighted highest" >&2
+  echo "  memory search \"CoreML Neural Engine performance\"  # 'CoreML' weighted highest" >&2
   echo "  memory search \"browser\" --recall \"how to click?\"" >&2
   exit 1
 fi

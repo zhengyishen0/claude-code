@@ -152,10 +152,19 @@ def main():
         hits = len(session_keyword_counts) if mode == 'simple' else 0
         max_ts = max(m['timestamp'] for m in msgs)
 
+        # Calculate weighted score: first keyword = n, last keyword = 1
+        # This prioritizes core keywords (listed first) over less confident ones
+        weighted_score = 0
+        n = len(keywords)
+        for i, kw in enumerate(keywords):
+            weight = n - i  # First keyword gets highest weight
+            weighted_score += session_keyword_counts.get(kw, 0) * weight
+
         session_stats.append({
             'session_id': session_id,
             'hits': hits,
             'matches': len(msgs),
+            'weighted_score': weighted_score,
             'timestamp': max_ts,
             'project_path': msgs[0]['project_path'],
             'messages': msgs,
@@ -163,7 +172,8 @@ def main():
         })
 
     if mode == 'simple':
-        session_stats.sort(key=lambda x: (x['hits'], x['matches'], x['timestamp']), reverse=True)
+        # Rank by weighted score (core keywords matter more), then hits, then matches
+        session_stats.sort(key=lambda x: (x['weighted_score'], x['hits'], x['matches'], x['timestamp']), reverse=True)
     else:
         session_stats = [s for s in session_stats if s['matches'] >= 5]
         session_stats.sort(key=lambda x: (x['matches'], x['timestamp']), reverse=True)
