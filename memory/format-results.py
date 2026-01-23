@@ -186,10 +186,7 @@ def main():
         for msg in sorted_msgs[:messages_limit]:
             role = "[user]" if msg['type'] == 'user' else "[asst]"
             text = extract_snippet(msg['text'], keywords, context)
-            # Show which keywords matched in this message
-            msg_kw = [kw for kw in keywords if kw in msg['keyword_counts']]
-            tag = f"[{','.join(msg_kw)}]" if msg_kw else ""
-            print(f"{role} {text} {tag}")
+            print(f"{role} {text}")
 
         if matches > messages_limit:
             print(f"... and {matches - messages_limit} more matches")
