@@ -20,16 +20,21 @@ def shorten_path(path):
     return path.replace(home, "~")
 
 
+def get_keyword_counts(text, keywords):
+    """Return dict of keyword -> occurrence count in text."""
+    text_lower = text.lower()
+    counts = {}
+    for keyword in keywords:
+        pattern = keyword.replace('_', '.')
+        matches = re.findall(pattern, text_lower, re.IGNORECASE)
+        if matches:
+            counts[keyword] = len(matches)
+    return counts
+
+
 def count_keyword_hits(text, keywords):
     """Count how many unique keywords appear in the text."""
-    text_lower = text.lower()
-    hits = 0
-    for keyword in keywords:
-        # Convert underscore to regex pattern (same as shell script)
-        pattern = keyword.replace('_', '.')
-        if re.search(pattern, text_lower, re.IGNORECASE):
-            hits += 1
-    return hits
+    return len(get_keyword_counts(text, keywords))
 
 
 def parse_keywords(query, mode):
@@ -121,10 +126,16 @@ def main():
 
         # Calculate keyword hits for each message (for sorting)
         for msg in msgs:
-            msg['keyword_hits'] = count_keyword_hits(msg['text'], keywords)
+            msg['keyword_counts'] = get_keyword_counts(msg['text'], keywords)
+            msg['keyword_hits'] = len(msg['keyword_counts'])
 
-        all_text = ' '.join(m['text'] for m in msgs)
-        hits = count_keyword_hits(all_text, keywords) if mode == 'simple' else 0
+        # Aggregate keyword counts across all messages in session
+        session_keyword_counts = defaultdict(int)
+        for msg in msgs:
+            for kw, count in msg['keyword_counts'].items():
+                session_keyword_counts[kw] += count
+
+        hits = len(session_keyword_counts) if mode == 'simple' else 0
         max_ts = max(m['timestamp'] for m in msgs)
 
         session_stats.append({
@@ -133,7 +144,8 @@ def main():
             'matches': len(msgs),
             'timestamp': max_ts,
             'project_path': msgs[0]['project_path'],
-            'messages': msgs
+            'messages': msgs,
+            'keyword_counts': dict(session_keyword_counts)
         })
 
     # Filter and sort based on mode
@@ -154,17 +166,20 @@ def main():
     total_keywords = len(keywords)
 
     for s in session_stats:
-        session_id = s['session_id']
+        short_id = s['session_id'][:8]
         project = shorten_path(s['project_path'])
         hits = s['hits']
         matches = s['matches']
-        timestamp = s['timestamp']
+        date = s['timestamp'][:10]  # YYYY-MM-DD
 
-        # Format header based on mode
-        if mode == 'simple':
-            print(f"{project} | {session_id} | {hits}/{total_keywords} keywords, {matches} matches | {timestamp}")
-        else:
-            print(f"{project} | {session_id} | {matches} matches | {timestamp}")
+        # Format header: project | short_id | date
+        print(f"{project} | {short_id} | {date}")
+
+        # Format keyword stats: asus[15] spec[5] [2/4 keywords | 40 matches]
+        kw_counts = s['keyword_counts']
+        kw_parts = [f"{kw}[{kw_counts[kw]}]" for kw in keywords if kw in kw_counts]
+        kw_line = ' '.join(kw_parts) + f" [{hits}/{total_keywords} keywords | {matches} matches]"
+        print(kw_line)
 
         # Get messages with most keyword hits (not just first N)
         sorted_msgs = sorted(s['messages'], key=lambda m: m['keyword_hits'], reverse=True)
