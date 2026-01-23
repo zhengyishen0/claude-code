@@ -14,7 +14,8 @@ wechat dev - Developer commands
 
 USAGE
   wechat dev setup              Install emulator and download snapshot
-  wechat dev onboard            Run login and import flow
+  wechat dev onboard            Run login and import flow (terminal)
+  wechat dev onboard --web      Run login and import flow (browser UI)
   wechat dev status             Show current state
 
 EMULATOR CONTROL
@@ -41,7 +42,12 @@ main() {
             do_setup
             ;;
         onboard)
-            do_onboard
+            shift
+            if [[ "${1:-}" == "--web" ]]; then
+                do_onboard_web
+            else
+                do_onboard
+            fi
             ;;
         status)
             print_status
@@ -149,6 +155,35 @@ download_snapshot() {
         echo ""
         echo "      You can download from: https://www.wandoujia.com/apps/596157"
     fi
+}
+
+do_onboard_web() {
+    echo -e "${BOLD}WeChat Search - Web Setup${NC}"
+    echo "=========================="
+    echo ""
+
+    # Check setup first
+    if ! check_emulator_installed || ! check_avd_exists; then
+        echo "Setup required first. Running setup..."
+        do_setup
+        echo ""
+    fi
+
+    # Start emulator if not running
+    if ! adb -s emulator-5554 get-state &>/dev/null; then
+        echo -e "${BLUE}Starting emulator...${NC}"
+        "$SCRIPT_DIR/avd" start
+    fi
+
+    # Open WeChat
+    echo -e "${BLUE}Opening WeChat...${NC}"
+    adb -s emulator-5554 shell am start -n com.tencent.mm/.ui.LauncherUI 2>/dev/null || true
+    sleep 2
+
+    # Start the web server
+    echo ""
+    echo -e "${BLUE}Starting onboarding server...${NC}"
+    "$SCRIPT_DIR/onboard-server"
 }
 
 do_onboard() {

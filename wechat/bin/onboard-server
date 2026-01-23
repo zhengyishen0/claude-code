@@ -1,0 +1,590 @@
+#!/usr/bin/env python3
+"""
+Web-based onboarding server for WeChat setup.
+Handles QR code display, login detection, and migration image upload.
+"""
+
+import http.server
+import json
+import os
+import shutil
+import subprocess
+import tempfile
+import base64
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+
+PORT = 8765
+AVD_NAME = "WeChat_Tablet"
+ADB = ["adb", "-s", "emulator-5554"]
+
+class OnboardingHandler(http.server.BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        pass  # Suppress default logging
+
+    def send_json(self, data, status=200):
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(json.dumps(data).encode())
+
+    def do_GET(self):
+        path = urlparse(self.path).path
+
+        if path == "/" or path == "/index.html":
+            self.serve_html()
+        elif path == "/api/qr":
+            self.get_login_qr()
+        elif path == "/api/status":
+            self.get_login_status()
+        elif path == "/api/screenshot":
+            self.get_screenshot()
+        else:
+            self.send_error(404)
+
+    def do_POST(self):
+        path = urlparse(self.path).path
+
+        if path == "/api/navigate-qr":
+            self.navigate_to_qr()
+        elif path == "/api/upload-migration-qr":
+            self.upload_migration_qr()
+        elif path == "/api/start-migration":
+            self.start_migration()
+        else:
+            self.send_error(404)
+
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
+
+    def serve_html(self):
+        html = '''<!DOCTYPE html>
+<html>
+<head>
+    <title>WeChat Setup</title>
+    <meta charset="utf-8">
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 { color: #07C160; margin-bottom: 10px; }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .step {
+            display: none;
+        }
+        .step.active {
+            display: block;
+        }
+        .step-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .step-number {
+            background: #07C160;
+            color: white;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+        .qr-container {
+            text-align: center;
+            padding: 20px;
+        }
+        .qr-container img {
+            max-width: 280px;
+            border-radius: 8px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+        }
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-top: 16px;
+        }
+        .status.checking { background: #fff7e6; color: #d48806; }
+        .status.success { background: #f6ffed; color: #52c41a; }
+        .status.error { background: #fff2f0; color: #ff4d4f; }
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid currentColor;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .btn {
+            background: #07C160;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 16px;
+        }
+        .btn:hover { background: #06ad56; }
+        .btn:disabled { background: #ccc; cursor: not-allowed; }
+        .btn-secondary {
+            background: #f0f0f0;
+            color: #333;
+        }
+        .btn-secondary:hover { background: #e0e0e0; }
+        .upload-area {
+            border: 2px dashed #d9d9d9;
+            border-radius: 8px;
+            padding: 40px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.2s;
+        }
+        .upload-area:hover { border-color: #07C160; }
+        .upload-area.dragover { border-color: #07C160; background: #f6ffed; }
+        .upload-preview {
+            margin-top: 16px;
+        }
+        .upload-preview img {
+            max-width: 200px;
+            border-radius: 8px;
+        }
+        .instructions {
+            background: #fafafa;
+            padding: 16px;
+            border-radius: 8px;
+            margin-top: 16px;
+        }
+        .instructions ol {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .instructions li {
+            margin-bottom: 8px;
+        }
+        .complete-icon {
+            font-size: 48px;
+            text-align: center;
+            margin-bottom: 16px;
+        }
+    </style>
+</head>
+<body>
+    <h1>WeChat Setup</h1>
+
+    <!-- Step 1: Login -->
+    <div id="step1" class="card step active">
+        <div class="step-title">
+            <span class="step-number">1</span>
+            <span>Login to WeChat</span>
+        </div>
+        <div class="qr-container">
+            <img id="qr-image" src="" alt="Loading QR code...">
+        </div>
+        <p style="text-align: center; color: #666;">
+            Scan this QR code with your phone's WeChat app
+        </p>
+        <div id="login-status" class="status checking">
+            <div class="spinner"></div>
+            <span>Waiting for login...</span>
+        </div>
+    </div>
+
+    <!-- Step 2: Migration -->
+    <div id="step2" class="card step">
+        <div class="step-title">
+            <span class="step-number">2</span>
+            <span>Import Chat History</span>
+        </div>
+
+        <div class="instructions">
+            <strong>On your phone:</strong>
+            <ol>
+                <li>Open WeChat → Me → Settings → Chats</li>
+                <li>Tap "Chat History Migration"</li>
+                <li>Choose "Migrate to Another Device"</li>
+                <li>Select chats and tap "Start"</li>
+                <li>A QR code will appear - screenshot it</li>
+            </ol>
+        </div>
+
+        <p style="margin-top: 20px;"><strong>Upload the QR code screenshot:</strong></p>
+
+        <div id="upload-area" class="upload-area">
+            <div>📷 Click or drag image here</div>
+            <input type="file" id="file-input" accept="image/*" style="display: none;">
+        </div>
+
+        <div id="upload-preview" class="upload-preview" style="display: none;">
+            <img id="preview-image" src="">
+        </div>
+
+        <button id="start-migration" class="btn" style="display: none;">
+            Start Migration
+        </button>
+
+        <button id="skip-migration" class="btn btn-secondary">
+            Skip (I'll import later)
+        </button>
+    </div>
+
+    <!-- Step 3: Complete -->
+    <div id="step3" class="card step">
+        <div class="complete-icon">✅</div>
+        <h2 style="text-align: center; margin: 0;">Setup Complete!</h2>
+        <p style="text-align: center; color: #666;">
+            You can now search your WeChat messages.
+        </p>
+        <div style="background: #f5f5f5; padding: 12px; border-radius: 8px; margin-top: 16px; text-align: center; font-family: monospace;">
+            wechat search "your query"
+        </div>
+    </div>
+
+    <script>
+        let currentStep = 1;
+        let loginCheckInterval = null;
+        let uploadedImage = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadQRCode();
+            startLoginCheck();
+            setupUpload();
+        });
+
+        function loadQRCode() {
+            // First navigate to QR screen, then capture
+            fetch('/api/navigate-qr', { method: 'POST' })
+                .then(() => new Promise(r => setTimeout(r, 2000)))
+                .then(() => fetch('/api/qr'))
+                .then(r => r.json())
+                .then(data => {
+                    if (data.qr) {
+                        document.getElementById('qr-image').src = 'data:image/png;base64,' + data.qr;
+                    }
+                })
+                .catch(err => console.error('Failed to load QR:', err));
+        }
+
+        function startLoginCheck() {
+            loginCheckInterval = setInterval(checkLoginStatus, 3000);
+        }
+
+        function checkLoginStatus() {
+            fetch('/api/status')
+                .then(r => r.json())
+                .then(data => {
+                    const statusEl = document.getElementById('login-status');
+                    if (data.logged_in) {
+                        clearInterval(loginCheckInterval);
+                        statusEl.className = 'status success';
+                        statusEl.innerHTML = '✓ Logged in successfully!';
+                        setTimeout(() => goToStep(2), 1500);
+                    }
+                })
+                .catch(err => console.error('Status check failed:', err));
+        }
+
+        function goToStep(step) {
+            document.querySelectorAll('.step').forEach(el => el.classList.remove('active'));
+            document.getElementById('step' + step).classList.add('active');
+            currentStep = step;
+        }
+
+        function setupUpload() {
+            const uploadArea = document.getElementById('upload-area');
+            const fileInput = document.getElementById('file-input');
+            const previewDiv = document.getElementById('upload-preview');
+            const previewImg = document.getElementById('preview-image');
+            const startBtn = document.getElementById('start-migration');
+            const skipBtn = document.getElementById('skip-migration');
+
+            uploadArea.addEventListener('click', () => fileInput.click());
+
+            uploadArea.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                uploadArea.classList.add('dragover');
+            });
+
+            uploadArea.addEventListener('dragleave', () => {
+                uploadArea.classList.remove('dragover');
+            });
+
+            uploadArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                uploadArea.classList.remove('dragover');
+                const file = e.dataTransfer.files[0];
+                if (file) handleFile(file);
+            });
+
+            fileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) handleFile(file);
+            });
+
+            function handleFile(file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    uploadedImage = e.target.result;
+                    previewImg.src = uploadedImage;
+                    previewDiv.style.display = 'block';
+                    startBtn.style.display = 'block';
+                    uploadArea.style.display = 'none';
+                };
+                reader.readAsDataURL(file);
+            }
+
+            startBtn.addEventListener('click', startMigration);
+            skipBtn.addEventListener('click', () => goToStep(3));
+        }
+
+        function startMigration() {
+            const btn = document.getElementById('start-migration');
+            btn.disabled = true;
+            btn.textContent = 'Setting up camera...';
+
+            // Upload the image
+            fetch('/api/upload-migration-qr', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: uploadedImage })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    btn.textContent = 'Restarting emulator...';
+                    return fetch('/api/start-migration', { method: 'POST' });
+                } else {
+                    throw new Error(data.error || 'Upload failed');
+                }
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    btn.textContent = 'Migration started!';
+                    // TODO: Monitor migration progress
+                    setTimeout(() => goToStep(3), 3000);
+                }
+            })
+            .catch(err => {
+                btn.textContent = 'Error: ' + err.message;
+                btn.disabled = false;
+            });
+        }
+    </script>
+</body>
+</html>'''
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html")
+        self.end_headers()
+        self.wfile.write(html.encode())
+
+    def get_login_qr(self):
+        """Capture and return the QR code as base64."""
+        try:
+            result = subprocess.run(
+                ADB + ["exec-out", "screencap", "-p"],
+                capture_output=True, timeout=10
+            )
+            if result.returncode == 0:
+                qr_b64 = base64.b64encode(result.stdout).decode()
+                self.send_json({"qr": qr_b64})
+            else:
+                self.send_json({"error": "Screenshot failed"}, 500)
+        except Exception as e:
+            self.send_json({"error": str(e)}, 500)
+
+    def navigate_to_qr(self):
+        """Navigate WeChat to QR code screen."""
+        try:
+            # Dump UI
+            subprocess.run(ADB + ["shell", "uiautomator", "dump", "/sdcard/ui.xml"],
+                          capture_output=True, timeout=10)
+
+            # Get UI XML
+            result = subprocess.run(ADB + ["shell", "cat", "/sdcard/ui.xml"],
+                                   capture_output=True, timeout=10, text=True)
+
+            # Check if already on QR screen or need to tap login button
+            if "Log in by scanning" in result.stdout:
+                self.send_json({"status": "already_on_qr"})
+                return
+
+            # Find login button bounds
+            import re
+            match = re.search(
+                r'text="Log in on Phone &amp; Tablet"[^>]*bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',
+                result.stdout
+            )
+
+            if match:
+                left, top, right, bottom = map(int, match.groups())
+                center_x = (left + right) // 2
+                center_y = (top + bottom) // 2
+
+                subprocess.run(ADB + ["shell", "input", "tap", str(center_x), str(center_y)],
+                              capture_output=True, timeout=10)
+                self.send_json({"status": "navigated", "tap": [center_x, center_y]})
+            else:
+                self.send_json({"status": "button_not_found"})
+        except Exception as e:
+            self.send_json({"error": str(e)}, 500)
+
+    def get_login_status(self):
+        """Check if WeChat is logged in by looking at the UI."""
+        try:
+            subprocess.run(ADB + ["shell", "uiautomator", "dump", "/sdcard/ui.xml"],
+                          capture_output=True, timeout=10)
+            result = subprocess.run(ADB + ["shell", "cat", "/sdcard/ui.xml"],
+                                   capture_output=True, timeout=10, text=True)
+
+            # Check for indicators of logged-in state
+            # If we see the main chat list or "Chats" tab, user is logged in
+            logged_in = any(indicator in result.stdout for indicator in [
+                'text="Chats"',
+                'text="Contacts"',
+                'text="Discover"',
+                'text="Me"',
+                'resource-id="com.tencent.mm:id/conversation_list"'
+            ])
+
+            self.send_json({"logged_in": logged_in})
+        except Exception as e:
+            self.send_json({"error": str(e), "logged_in": False})
+
+    def get_screenshot(self):
+        """Get current screenshot as base64."""
+        try:
+            result = subprocess.run(
+                ADB + ["exec-out", "screencap", "-p"],
+                capture_output=True, timeout=10
+            )
+            if result.returncode == 0:
+                img_b64 = base64.b64encode(result.stdout).decode()
+                self.send_json({"image": img_b64})
+            else:
+                self.send_json({"error": "Screenshot failed"}, 500)
+        except Exception as e:
+            self.send_json({"error": str(e)}, 500)
+
+    def upload_migration_qr(self):
+        """Receive uploaded QR code image and set up virtualscene."""
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length)
+            data = json.loads(body)
+
+            # Extract base64 image data
+            image_data = data.get('image', '')
+            if ',' in image_data:
+                image_data = image_data.split(',')[1]
+
+            image_bytes = base64.b64decode(image_data)
+
+            # Set up virtualscene directory
+            avd_path = Path.home() / ".android" / "avd" / f"{AVD_NAME}.avd"
+            vs_path = avd_path / "virtualscene"
+            vs_path.mkdir(exist_ok=True)
+
+            # Save as poster.png
+            poster_path = vs_path / "poster.png"
+            with open(poster_path, 'wb') as f:
+                f.write(image_bytes)
+
+            # Create posters config
+            posters_config = """poster wall
+size 2 2
+position -0.807 0.320 5.316
+rotation 0 -150 0
+default poster.png
+"""
+            with open(vs_path / "posters", 'w') as f:
+                f.write(posters_config)
+
+            self.send_json({"success": True, "poster_path": str(poster_path)})
+        except Exception as e:
+            self.send_json({"error": str(e)}, 500)
+
+    def start_migration(self):
+        """Restart emulator to pick up new camera image and start migration."""
+        try:
+            # Save current snapshot first
+            subprocess.run(ADB + ["emu", "avd", "snapshot", "save", "pre_migration"],
+                          capture_output=True, timeout=30)
+
+            # Kill and restart emulator
+            subprocess.run(["pkill", "-f", "qemu-system"], capture_output=True)
+
+            import time
+            time.sleep(2)
+
+            # Start emulator with virtualscene camera
+            emulator_path = "/opt/homebrew/share/android-commandlinetools/emulator/emulator"
+            subprocess.Popen([
+                emulator_path,
+                "-avd", AVD_NAME,
+                "-camera-back", "virtualscene",
+                "-no-snapshot-load"
+            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+            # Wait for emulator to boot
+            for _ in range(30):
+                time.sleep(2)
+                result = subprocess.run(ADB + ["shell", "getprop", "sys.boot_completed"],
+                                       capture_output=True, text=True, timeout=5)
+                if result.stdout.strip() == "1":
+                    break
+
+            # Open WeChat
+            subprocess.run(ADB + ["shell", "am", "start", "-n",
+                                  "com.tencent.mm/.ui.LauncherUI"],
+                          capture_output=True, timeout=10)
+
+            self.send_json({"success": True, "message": "Emulator restarted with QR code camera"})
+        except Exception as e:
+            self.send_json({"error": str(e)}, 500)
+
+
+def main():
+    print(f"Starting onboarding server on http://localhost:{PORT}")
+    print("Open this URL in your browser to begin setup.")
+
+    server = http.server.HTTPServer(("localhost", PORT), OnboardingHandler)
+
+    # Open browser
+    import webbrowser
+    webbrowser.open(f"http://localhost:{PORT}")
+
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nServer stopped.")
+
+
+if __name__ == "__main__":
+    main()
