@@ -3,7 +3,8 @@
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DATA_DIR="$SCRIPT_DIR/data"
+WECHAT_DIR="$(dirname "$SCRIPT_DIR")"
+DATA_DIR="$WECHAT_DIR/data"
 DECRYPTED_DB="$DATA_DIR/wechat.db"
 CONFIG_FILE="$DATA_DIR/config.env"
 
@@ -44,7 +45,7 @@ fi
 # Auto-init if no key or no database
 if [ -z "${WECHAT_KEY:-}" ] || [ ! -f "$DECRYPTED_DB" ]; then
   echo "First run - setting up..." >&2
-  "$SCRIPT_DIR/init.sh"
+  "$SCRIPT_DIR/init"
   # Reload config after init
   source "$CONFIG_FILE"
 fi
@@ -52,7 +53,7 @@ fi
 # Check FTS index
 if ! sqlite3 "$DECRYPTED_DB" "SELECT 1 FROM sqlite_master WHERE name='message_fts'" 2>/dev/null | grep -q 1; then
   echo "Rebuilding index..." >&2
-  "$SCRIPT_DIR/init.sh"
+  "$SCRIPT_DIR/init"
 fi
 
 # Build SQL based on query syntax

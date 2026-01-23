@@ -31,13 +31,13 @@ EOF
 
 case "${1:-}" in
   sync)
-    "$SCRIPT_DIR/init.sh"
+    "$SCRIPT_DIR/init"
     ;;
   --help|-h|"")
     show_help
     ;;
   *)
     # Treat any other argument as a search query
-    "$SCRIPT_DIR/search.sh" "$@"
+    "$SCRIPT_DIR/search" "$@"
     ;;
 esac

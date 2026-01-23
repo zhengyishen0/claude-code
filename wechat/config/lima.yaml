@@ -1,0 +1,33 @@
+# Lima VM configuration for Redroid
+images:
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-arm64.img"
+    arch: "aarch64"
+
+cpus: 4
+memory: "4GiB"
+disk: "20GiB"
+
+portForwards:
+  - guestPort: 5555
+    hostPort: 5555
+  - guestPort: 5556
+    hostPort: 5556
+
+containerd:
+  system: false
+  user: false
+
+provision:
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux
+      export DEBIAN_FRONTEND=noninteractive
+      apt-get update
+      apt-get install -y --no-install-recommends \
+        linux-modules-extra-$(uname -r) \
+        docker.io \
+        adb
+      systemctl enable docker
+      systemctl start docker
+      usermod -aG docker $(getent passwd 1000 | cut -d: -f1) || true

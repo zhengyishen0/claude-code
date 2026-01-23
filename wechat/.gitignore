@@ -1,2 +1,12 @@
-data/
+# Downloaded resources
+downloads/
+*.apk
 docker/*.apk
+
+# Synced data
+data/
+*.db
+
+# Temp files
+*.log
+.DS_Store

@@ -3,7 +3,9 @@
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DATA_DIR="$SCRIPT_DIR/data"
+WECHAT_DIR="$(dirname "$SCRIPT_DIR")"
+DATA_DIR="$WECHAT_DIR/data"
+LIB_DIR="$WECHAT_DIR/lib"
 CONFIG_FILE="$DATA_DIR/config.env"
 
 WECHAT_DB_PATH="/data/data/com.tencent.mm/MicroMsg"
@@ -45,7 +47,7 @@ extract_key() {
   echo "Please open WeChat on the emulator and wait..." >&2
 
   local output
-  output=$(timeout 30 frida -U -f com.tencent.mm -l "$SCRIPT_DIR/extract-key.js" --no-pause 2>&1 || true)
+  output=$(timeout 30 frida -U -f com.tencent.mm -l "$LIB_DIR/extract-key.js" --no-pause 2>&1 || true)
 
   local key=$(echo "$output" | grep "^WECHAT_KEY=" | head -1 | cut -d= -f2)
   local db_path=$(echo "$output" | grep "^WECHAT_DB_PATH=" | head -1 | cut -d= -f2)
