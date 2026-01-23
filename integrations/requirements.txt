@@ -10,3 +10,6 @@ requests>=2.25.0
 
 # For noise pattern configuration
 pyyaml>=6.0.0
+
+# Feishu/Lark SDK
+lark-oapi>=1.0.0

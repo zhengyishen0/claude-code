@@ -29,6 +29,7 @@ def cli(ctx, list_services):
     if list_services:
         click.echo("Available services:")
         click.echo("  google    Google APIs (Gmail, Calendar, Drive, Sheets, etc.)")
+        click.echo("  feishu    Feishu/Lark APIs (Messaging, Calendar, Drive, Docs, etc.)")
         click.echo("  aws       AWS APIs (coming soon)")
         click.echo("  stripe    Stripe APIs (coming soon)")
         click.echo("  slack     Slack APIs (coming soon)")
@@ -42,6 +43,9 @@ def cli(ctx, list_services):
 # Register services
 from google_service import google_cli
 cli.add_command(google_cli, name='google')
+
+from feishu_service import feishu_cli
+cli.add_command(feishu_cli, name='feishu')
 
 # Future services (uncomment when implemented)
 # from aws import aws_cli
