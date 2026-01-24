@@ -23,8 +23,20 @@ This is equivalent to: "User opens tablet → app syncs → user closes tablet"
 | **Zygisk** | Process injection framework | ✅ Enabled |
 | **Shamiko** | Hide root from DenyList apps | ✅ Active |
 | **DeviceSpoof** | Property + file + MAC spoofing | ✅ Active |
-| **LSPosed** | Xposed framework for hooking | ✅ Installed |
-| **ZygiskFrida** | Stealthy Frida injection | ✅ Installed |
+| **LSPosed** | Xposed framework for hooking | ⚠️ Not working (Android 15) |
+| **ZygiskFrida** | Stealthy Frida injection | ❌ Disabled (Android 15) |
+
+> **⚠️ Android 15 Compatibility Issue**
+>
+> The current AVD uses Android 15 (API 35), which has compatibility issues:
+> - **LSPosed**: Only supports Android 8.1-14; Java hooks non-functional on Android 15
+> - **ZygiskFrida**: Causes segmentation faults on Android 15; currently disabled
+> - **Frida Java bridge**: `Java.perform()` fails - Frida 17.x doesn't fully support API 35
+>
+> **Impact**: Java runtime hooks (GL_RENDERER, SystemProperties at runtime) unavailable.
+> Property-level spoofing via `resetprop` still works (95% coverage).
+>
+> **Solution**: For 97%+ coverage with Java hooks, create AVD with Android 14 (API 34).
 
 ---
 
@@ -135,16 +147,16 @@ GPU and display characteristics can reveal emulation.
 
 | Check | Emulator Value | Real Device | Our Mitigation | Status |
 |-------|---------------|-------------|----------------|--------|
-| `GL_RENDERER` | `Google SwiftShader` | `Mali-G710` | LSPosed installed (needs Xposed module) | ⚠️ Partial |
-| `GL_VENDOR` | `Google` | `ARM` | LSPosed installed (needs Xposed module) | ⚠️ Partial |
+| `GL_RENDERER` | `Google SwiftShader` | `Mali-G710` | ❌ LSPosed broken on Android 15 | ❌ Not mitigated |
+| `GL_VENDOR` | `Google` | `ARM` | ❌ LSPosed broken on Android 15 | ❌ Not mitigated |
 | `ro.hardware.egl` | `emulation` | `mali` | DeviceSpoof sets to `mali` | ✅ Mitigated |
 | `ro.hardware.vulkan` | `emulation` | `mali` | DeviceSpoof sets to `mali` | ✅ Mitigated |
 | Screen density | Configured | Physical DPI | AVD set to realistic DPI | ✅ Mitigated |
 | Display size | Configured | Physical size | Pixel Tablet profile | ✅ Mitigated |
 
-**Risk Level:** 🟡 Medium - GL_RENDERER requires Xposed hook, but WeChat doesn't check this.
+**Risk Level:** 🟡 Medium - GL_RENDERER requires Xposed hook; LSPosed doesn't work on Android 15.
 
-**Coverage:** 70% → Property-level GPU spoofed, runtime GL strings need Xposed module
+**Coverage:** 60% → Property-level GPU spoofed, runtime GL strings cannot be hooked on Android 15
 
 ---
 
@@ -205,17 +217,19 @@ Apps detect debugging and instrumentation tools.
 
 | Check | Default | Our Setup | Status |
 |-------|---------|-----------|--------|
-| Port 27042 listening | Frida default | Not used | ✅ Mitigated |
+| Port 27042 listening | Frida default | Not used (hluda-server off) | ✅ Mitigated |
 | Port 27043 listening | Frida default | Not used | ✅ Mitigated |
-| Process named `frida*` | frida-server | ZygiskFrida (no process) | ✅ Mitigated |
-| `/data/local/tmp/frida*` | Common path | ZygiskFrida (no file) | ✅ Mitigated |
-| Frida gadget in memory | Visible | ZygiskFrida injects via Zygisk | ✅ Mitigated |
-| D-Bus protocol detection | Frida uses D-Bus | ZygiskFrida doesn't use D-Bus | ✅ Mitigated |
-| Library injection detection | frida-agent.so | ZygiskFrida uses Zygisk native | ✅ Mitigated |
+| Process named `frida*` | frida-server | Not running | ✅ Mitigated |
+| `/data/local/tmp/frida*` | Common path | Not present | ✅ Mitigated |
+| Frida gadget in memory | Visible | Not injected | ✅ Mitigated |
+| D-Bus protocol detection | Frida uses D-Bus | Not used | ✅ Mitigated |
+| Library injection detection | frida-agent.so | Not injected | ✅ Mitigated |
 
-**Solution:** ZygiskFrida replaces frida-server - no process, no ports, Zygisk-native injection
+**Note:** ZygiskFrida disabled due to Android 15 incompatibility (segfaults). Frida not actively used.
 
-**Coverage:** 98% → Most stealthy Frida approach available
+**Solution:** No Frida components running = no detection possible
+
+**Coverage:** 100% → No Frida = no Frida detection risk
 
 ---
 
@@ -268,15 +282,17 @@ Server-side analysis of usage patterns.
 | Root Detection | 100% | 100% | 🟢 None | Shamiko fully hides |
 | Emulator Files | 30% | **90%** | 🟢 Low | Bind mounts hide qemu files |
 | Hardware/Sensors | 60% | 60% | 🟢 Low | Irrelevant for sync |
-| Graphics | 20% | **70%** | 🟢 Low | Props spoofed, GL needs Xposed |
+| Graphics | 20% | **60%** | 🟡 Medium | Props spoofed, GL hooks broken (Android 15) |
 | Network | 80% | **95%** | 🟢 None | MAC spoofed to Google OUI |
 | Timing | 0% | 0% | 🟢 Low | Can't control, sessions brief |
 | Battery | 100% | 100% | 🟢 None | Fully randomized |
-| Frida Detection | 80% | **98%** | 🟢 None | ZygiskFrida is stealthiest |
+| Frida Detection | 80% | **100%** | 🟢 None | Frida not running = no detection |
 | Play Integrity | 0% | 0% | ❌ N/A | **WeChat cannot use** |
 | Behavioral | 100% | 100% | 🟢 None | Read-only, no patterns |
 
-**Overall Coverage: ~85% → ~95%**
+**Overall Coverage (Android 15): ~85% → ~95%** (max achievable without Java hooks)
+
+**Potential with Android 14: ~97%** (LSPosed + ZygiskFrida would add GL_RENDERER spoofing)
 
 ---
 
@@ -285,9 +301,10 @@ Server-side analysis of usage patterns.
 | Gap | Why It's Acceptable |
 |-----|---------------------|
 | `init.goldfish.rc` visible | Requires system partition mod; WeChat doesn't check |
-| GL_RENDERER shows emulator | Needs Xposed module; WeChat doesn't check for messaging |
+| GL_RENDERER shows emulator | LSPosed broken on Android 15; WeChat doesn't check for messaging |
 | Sensor data is synthetic | Sensor validation is for active usage, not background sync |
 | CPU timing artifacts | Would require sustained measurement; our sessions are < 1 min |
+| **Java runtime hooks** | Android 15 incompatible with LSPosed/ZygiskFrida; property-level spoofing sufficient |
 
 ---
 
@@ -300,7 +317,8 @@ Server-side analysis of usage patterns.
 | `03_anti_detection` | Basic stealth | Baseline |
 | `04_wechat_installed` | WeChat ready | Fresh login |
 | `05_wechat_clean` | Working copy | Daily use (don't pollute) |
-| `06_enhanced_stealth` | All improvements | **Production** |
+| `06_enhanced_stealth` | All improvements | Intermediate |
+| `07_max_stealth` | Max Android 15 coverage | **Production** (95% coverage) |
 
 ---
 
@@ -337,12 +355,12 @@ OVERALL RISK: 🟢 VERY LOW
 
 ## Recommendations
 
-1. **Use `06_enhanced_stealth` snapshot** - Has all improvements applied
+1. **Use `07_max_stealth` snapshot** - Has all working improvements applied (95% coverage)
 2. **Keep sessions brief** - Restore → sync → copy → exit
 3. **Don't modify anything** - Read-only operations only
 4. **Use consistent snapshots** - Same device fingerprint every time
 5. **Don't automate messaging** - That's what triggers bans
-6. **Use ZygiskFrida** - Stealthier than frida-server when extracting key
+6. **Don't use Frida** - ZygiskFrida disabled on Android 15; not needed for DB extraction anyway
 
 ---
 
@@ -350,11 +368,13 @@ OVERALL RISK: 🟢 VERY LOW
 
 | Improvement | Effort | Impact |
 |-------------|--------|--------|
-| Add Xposed module for GL_RENDERER | Medium | +2% |
-| Sensor noise injection | Medium | +3% |
+| **Use Android 14 (API 34)** | Low | **+2%** (enables LSPosed + ZygiskFrida) |
+| Add Xposed module for GL_RENDERER | Medium | +2% (requires Android 14) |
+| Sensor noise injection | Medium | +3% (requires Frida Java) |
 | Custom kernel to remove qemu devices | High | +2% |
 
-These are diminishing returns - current 95% coverage is sufficient for read-only sync.
+**Recommended**: Create new AVD with Android 14 to enable full Java hooking capabilities.
+Current 95% coverage on Android 15 is sufficient for read-only sync, but Android 14 would enable 97%+.
 
 ---
 
@@ -364,3 +384,4 @@ These are diminishing returns - current 95% coverage is sufficient for read-only
 |------|---------|
 | 2026-01-24 | Initial comprehensive checklist |
 | 2026-01-24 | Enhanced with: emulator file hiding, 50+ props, MAC spoofing, ZygiskFrida, LSPosed |
+| 2026-01-24 | **Android 15 compatibility issue**: LSPosed (8.1-14 only), ZygiskFrida (segfaults), Frida Java bridge broken. Disabled ZygiskFrida. Max coverage on API 35 is 95%. |
