@@ -15,7 +15,7 @@ SDKMANAGER="$ANDROID_SDK/cmdline-tools/latest/bin/sdkmanager"
 
 # AVD config
 AVD_NAME="WeChat_Stealth"
-SYSTEM_IMAGE="system-images;android-35;google_apis;arm64-v8a"
+SYSTEM_IMAGE="system-images;android-35;google_apis_tablet;arm64-v8a"
 DEVICE="pixel_tablet"
 
 # Snapshot names (progressive stages)
@@ -39,7 +39,7 @@ error() { echo -e "${RED}[✗]${NC} $1" >&2; }
 
 # Required downloads
 ROOTAVD_URL="https://github.com/newbit1/rootAVD/archive/refs/heads/master.zip"
-SHAMIKO_URL="https://github.com/LSPosed/LSPosed.github.io/releases/download/shamiko-174/Shamiko-v1.2.1-174-release.zip"
+SHAMIKO_URL="https://github.com/LSPosed/LSPosed.github.io/releases/download/shamiko-414/Shamiko-v1.2.5-414-release.zip"
 FRIDA_VERSION="16.6.6"
 
 usage() {
@@ -225,7 +225,7 @@ create_avd() {
     # Check if system image exists, download google_apis (not tablet) for easier rooting
     if [ ! -d "$ANDROID_SDK/system-images/android-35/google_apis/arm64-v8a" ]; then
         log "Downloading system image (google_apis for rooting compatibility)..."
-        "$SDKMANAGER" "system-images;android-35;google_apis;arm64-v8a"
+        "$SDKMANAGER" "system-images;android-35;google_apis_tablet;arm64-v8a"
     fi
 
     # Delete existing AVD if present
@@ -240,7 +240,7 @@ create_avd() {
     log "Creating AVD with Pixel Tablet profile..."
     echo "no" | "$AVDMANAGER" create avd \
         -n "$AVD_NAME" \
-        -k "system-images;android-35;google_apis;arm64-v8a" \
+        -k "system-images;android-35;google_apis_tablet;arm64-v8a" \
         -d "$DEVICE" \
         --force
 
@@ -326,7 +326,7 @@ root_avd() {
     cd "$DOWNLOADS_DIR/rootAVD-master"
 
     # Find the ramdisk path
-    local RAMDISK="$ANDROID_SDK/system-images/android-35/google_apis/arm64-v8a/ramdisk.img"
+    local RAMDISK="$ANDROID_SDK/system-images/android-35/google_apis_tablet/arm64-v8a/ramdisk.img"
 
     if [ ! -f "$RAMDISK" ]; then
         error "Ramdisk not found at: $RAMDISK"
