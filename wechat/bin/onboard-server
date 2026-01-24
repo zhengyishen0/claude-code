@@ -374,8 +374,21 @@ class QRManager:
             'message': 'Could not refresh QR code'
         }
 
+    def check_status_light(self):
+        """
+        Lightweight status check using only activity detection.
+        Does NOT use uiautomator dump (which blocks touch input).
+        """
+        logged_in = UIAutomator.is_logged_in_by_activity()
+        return {
+            'logged_in': logged_in is True,
+            'on_login_screen': logged_in is False,
+            'refresh_count': self.refresh_count,
+            'max_auto_refresh': self.MAX_AUTO_REFRESH
+        }
+
     def check_status(self):
-        """Quick status check for polling."""
+        """Full status check (uses UI dump - can block touch)."""
         page = self.detect_page()
         return {
             'page': page,
@@ -436,8 +449,8 @@ class OnboardingHandler(http.server.BaseHTTPRequestHandler):
         self.send_json(result)
 
     def get_status(self):
-        """Get current status for polling."""
-        result = qr_manager.check_status()
+        """Get current status for polling (lightweight, no UI blocking)."""
+        result = qr_manager.check_status_light()
         self.send_json(result)
 
     def manual_refresh(self):
