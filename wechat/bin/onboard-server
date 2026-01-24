@@ -11,8 +11,17 @@ import shutil
 import subprocess
 import tempfile
 import base64
+import io
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+
+try:
+    import cv2
+    import numpy as np
+    import qrcode
+    QR_LIBS_AVAILABLE = True
+except ImportError:
+    QR_LIBS_AVAILABLE = False
 
 PORT = 8765
 AVD_NAME = "WeChat_Tablet"
@@ -405,19 +414,64 @@ class OnboardingHandler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(html.encode())
 
     def get_login_qr(self):
-        """Capture and return the QR code as base64."""
+        """Capture QR code, decode it, and regenerate a clean version."""
         try:
             result = subprocess.run(
                 ADB + ["exec-out", "screencap", "-p"],
                 capture_output=True, timeout=10
             )
-            if result.returncode == 0:
-                qr_b64 = base64.b64encode(result.stdout).decode()
-                self.send_json({"qr": qr_b64})
-            else:
+            if result.returncode != 0:
                 self.send_json({"error": "Screenshot failed"}, 500)
+                return
+
+            # Try to decode and regenerate clean QR
+            if QR_LIBS_AVAILABLE:
+                clean_qr = self._decode_and_regenerate_qr(result.stdout)
+                if clean_qr:
+                    self.send_json({"qr": clean_qr, "clean": True})
+                    return
+
+            # Fallback: return raw screenshot
+            qr_b64 = base64.b64encode(result.stdout).decode()
+            self.send_json({"qr": qr_b64, "clean": False})
         except Exception as e:
             self.send_json({"error": str(e)}, 500)
+
+    def _decode_and_regenerate_qr(self, image_bytes):
+        """Decode QR from image bytes and regenerate a clean QR code."""
+        try:
+            # Convert bytes to numpy array for OpenCV
+            nparr = np.frombuffer(image_bytes, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+            if img is None:
+                return None
+
+            # Detect and decode QR code
+            detector = cv2.QRCodeDetector()
+            data, vertices, _ = detector.detectAndDecode(img)
+
+            if not data:
+                return None
+
+            # Regenerate clean QR code
+            qr = qrcode.QRCode(
+                version=1,
+                error_correction=qrcode.constants.ERROR_CORRECT_L,
+                box_size=10,
+                border=2,
+            )
+            qr.add_data(data)
+            qr.make(fit=True)
+
+            # Create image and convert to base64
+            qr_img = qr.make_image(fill_color="black", back_color="white")
+            buffer = io.BytesIO()
+            qr_img.save(buffer, format='PNG')
+            return base64.b64encode(buffer.getvalue()).decode()
+        except Exception as e:
+            print(f"QR decode/regenerate failed: {e}")
+            return None
 
     def navigate_to_qr(self):
         """Navigate WeChat to QR code screen."""
