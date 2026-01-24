@@ -16,6 +16,7 @@ Commands:
   create <name>  Create new worktree and branch
   merge <name>   Merge to main, archive worktree
   abandon <name> Archive worktree without merging
+  prune          Delete all orphan branches (no worktree)
 HELP
 }
 
@@ -150,6 +151,30 @@ do_abandon() {
     echo "Abandoned: $name (archived, not merged)"
 }
 
+do_prune() {
+    # Get branches with worktrees
+    local worktree_branches=$(git -C "$PROJECT_DIR" worktree list | awk '{print $NF}' | tr -d '[]')
+
+    # Get all non-main branches
+    local all_branches=$(git -C "$PROJECT_DIR" branch --format='%(refname:short)' | grep -v '^main$' | grep -v '^master$')
+
+    local count=0
+    for branch in $all_branches; do
+        if ! echo "$worktree_branches" | grep -q "^$branch$"; then
+            echo "Deleting: $branch"
+            git -C "$PROJECT_DIR" branch -D "$branch" 2>/dev/null || true
+            count=$((count + 1))
+        fi
+    done
+
+    if [ "$count" -eq 0 ]; then
+        echo "No orphan branches found"
+    else
+        echo ""
+        echo "Pruned $count orphan branches"
+    fi
+}
+
 # Parse arguments
 case "${1:-}" in
     ""|list)
@@ -171,6 +196,9 @@ case "${1:-}" in
     abandon)
         [ $# -lt 2 ] && { echo "Error: abandon requires <name>" >&2; exit 1; }
         do_abandon "$2"
+        ;;
+    prune)
+        do_prune
         ;;
     help|-h|--help)
         show_help
