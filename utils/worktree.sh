@@ -20,55 +20,34 @@ HELP
 }
 
 do_list() {
-    local worktrees
-    worktrees=$(git -C "$PROJECT_DIR" worktree list --porcelain | grep "^worktree " | sed 's/worktree //')
-
     echo "Worktrees:"
-    echo ""
 
-    while IFS= read -r path; do
-        # Skip main project directory
-        if [ "$path" = "$PROJECT_DIR" ]; then
-            continue
-        fi
+    local count=0
+    for dir in "$PROJECT_WORKTREES"/*/; do
+        [ -d "$dir" ] || continue
 
-        local name=$(basename "$path")
-        local status=""
+        local name=$(basename "$dir")
+        [[ "$name" == ".archive" ]] && continue
 
-        # Check for uncommitted changes
-        if [ -d "$path" ]; then
-            local changes=$(git -C "$path" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
-            if [ "$changes" -gt 0 ]; then
-                status=" ($changes uncommitted)"
-            else
-                status=" (clean)"
-            fi
+        count=$((count + 1))
+        local status="clean"
+
+        if [ -d "$dir/.git" ] || [ -f "$dir/.git" ]; then
+            local changes=$(git -C "$dir" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
+            [ "$changes" -gt 0 ] && status="$changes uncommitted"
         else
-            status=" (missing)"
+            status="not a git worktree"
         fi
 
-        echo "  $name$status"
-        echo "    $path"
-    done <<< "$worktrees"
-
-    # Check for orphan branches (branches without worktrees)
-    local worktree_branches=$(git -C "$PROJECT_DIR" worktree list | awk '{print $NF}' | tr -d '[]')
-    local all_branches=$(git -C "$PROJECT_DIR" branch --format='%(refname:short)' | grep -v '^main$' | grep -v '^master$')
-
-    local orphans=""
-    for branch in $all_branches; do
-        if ! echo "$worktree_branches" | grep -q "^$branch$"; then
-            orphans="$orphans $branch"
-        fi
+        echo "  $count. $name ($status): $dir"
     done
 
-    if [ -n "$orphans" ]; then
-        echo ""
-        echo "Orphan branches (no worktree):"
-        for branch in $orphans; do
-            echo "  $branch"
-        done
+    if [ "$count" -eq 0 ]; then
+        echo "  (none)"
     fi
+
+    echo ""
+    echo "Commands: worktree create/merge/abandon <name>"
 }
 
 do_create() {
