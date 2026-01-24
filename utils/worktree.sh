@@ -7,6 +7,10 @@ set -euo pipefail
 PROJECT_WORKTREES="$(dirname "$PROJECT_DIR")/.worktrees/$(basename "$PROJECT_DIR")"
 PROJECT_ARCHIVE="$PROJECT_WORKTREES/.archive"
 
+shorten_path() {
+    echo "${1/#$HOME/~}"
+}
+
 show_help() {
     cat <<'HELP'
 Usage: worktree [command] [name]
@@ -40,7 +44,7 @@ do_list() {
             status="not a git worktree"
         fi
 
-        echo "  $count. $name ($status): $dir"
+        echo "  $count. $name ($status): $(shorten_path "$dir")"
     done
 
     if [ "$count" -eq 0 ]; then
