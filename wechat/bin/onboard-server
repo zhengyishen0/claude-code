@@ -105,6 +105,60 @@ class UIAutomator:
             return result.stdout
         return None
 
+    @staticmethod
+    def get_current_activity():
+        """
+        Get the current foreground activity.
+        Returns activity name or None.
+        """
+        result = UIAutomator.run_adb("shell", "dumpsys", "activity", "activities")
+        if result and result.returncode == 0:
+            output = result.stdout.decode('utf-8', errors='ignore')
+            # Look for topResumedActivity or mResumedActivity
+            match = re.search(r'(?:topResumedActivity|mResumedActivity)=ActivityRecord\{[^}]+\s+\w+\s+(com\.tencent\.mm/[^\s]+)', output)
+            if match:
+                return match.group(1)
+        return None
+
+    @staticmethod
+    def is_logged_in_by_activity():
+        """
+        Check login status by current activity name.
+        Returns: True (logged in), False (on login screen), None (unknown)
+        """
+        activity = UIAutomator.get_current_activity()
+        if not activity:
+            return None
+
+        # Login-related activities (not logged in)
+        login_activities = [
+            'LoginAsExDeviceUI',
+            'ExtDeviceLoginUI',
+            'LoginUI',
+            'WelcomeActivity',
+            'plugin.login',
+        ]
+
+        # Main app activities (logged in)
+        main_activities = [
+            'LauncherUI',
+            'HomeUI',
+            'ChattingUI',
+            'ContactInfoUI',
+            'plugin.setting',
+            'plugin.profile',
+        ]
+
+        for login_act in login_activities:
+            if login_act in activity:
+                return False
+
+        for main_act in main_activities:
+            if main_act in activity:
+                return True
+
+        return None  # Unknown activity
+
 
 class QRManager:
     """Manages QR code capture, decoding, and refresh logic."""
@@ -119,10 +173,18 @@ class QRManager:
         """
         Detect current page state.
         Returns: 'qr_valid' | 'qr_expired' | 'login_menu' | 'logged_in' | 'unknown'
+
+        Uses activity-based detection first (most reliable), then falls back to UI text.
         """
+        # Method 1: Activity-based detection (most reliable)
+        logged_in_by_activity = UIAutomator.is_logged_in_by_activity()
+        if logged_in_by_activity is True:
+            return 'logged_in'
+
+        # Method 2: UI text-based detection
         ui_xml = UIAutomator.dump_ui()
 
-        # Check for logged-in indicators
+        # Check for logged-in indicators (tab bar)
         logged_in_indicators = [
             'text="Chats"', 'text="Weixin"', 'text="Contacts"',
             'text="Discover"', 'text="Me"',
