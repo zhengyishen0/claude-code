@@ -204,7 +204,7 @@ def main():
     total_keywords = len(keywords)
 
     for s in session_stats:
-        short_id = s['session_id'][:8]
+        short_id = s['session_id']  # Full session ID
         project = shorten_path(s['project_path'])
         matches = s['matches']
         date = s['timestamp'][:10]
