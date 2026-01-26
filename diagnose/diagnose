@@ -3,46 +3,17 @@
 # Silent on success, outputs errors only (designed for AI agents)
 set -eo pipefail
 
-usage() {
-    cat <<EOF
-Usage: diagnose <file|directory> [options]
-
-Run language-specific diagnostics on files.
-Silent on success, outputs errors only.
-
-Options:
-  -v, --verbose   Show output even on success
-  -h, --help      Show this help
-
-Supported:
-  TypeScript (.ts, .tsx)  → tsc
-  JavaScript (.js, .jsx)  → eslint
-  Python     (.py)        → ruff / pyright
-  Go         (.go)        → go vet + build
-  Rust       (.rs)        → cargo check
-  Shell      (.sh, .bash) → shellcheck
-
-Examples:
-  diagnose src/app.ts
-  diagnose src/
-  diagnose file.py -v
-EOF
-    exit 0
-}
-
 VERBOSE=false
 TARGET=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        -v|--verbose) VERBOSE=true; shift ;;
-        -h|--help) usage ;;
-        -*) echo "Unknown option: $1"; exit 1 ;;
+        --verbose) VERBOSE=true; shift ;;
         *) TARGET="$1"; shift ;;
     esac
 done
 
-[ -z "$TARGET" ] && usage
+[ -z "$TARGET" ] && { echo "Usage: diagnose <file|directory> [--verbose]"; exit 1; }
 
 if [ ! -e "$TARGET" ]; then
     echo "Error: '$TARGET' not found"
