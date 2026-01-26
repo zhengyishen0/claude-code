@@ -24,10 +24,6 @@
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/claude/update-task-status.sh"
-          },
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/claude/cleanup-pid.sh"
           }
         ]
       }
