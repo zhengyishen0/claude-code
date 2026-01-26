@@ -1,15 +1,15 @@
-#!/bin/bash
-# diagnose - Run language-specific diagnostics on files
-# Silent on success, outputs errors only (designed for AI agents)
+#!/usr/bin/env bash
+# diagnose - Fast per-file diagnostics for AI agents
+# Silent on success, outputs errors only
 set -eo pipefail
 
 VERBOSE=false
-TARGET=""
+# --verbose: show success messages (hidden from help)
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --verbose) VERBOSE=true; shift ;;
-        *) TARGET="$1"; shift ;;
+        *) break ;;
     esac
 done
 
@@ -25,111 +25,35 @@ detect_from_shebang() {
     esac
 }
 
-# Detect language
+# Detect language from file extension
 detect_language() {
-    local target="$1"
-    if [ -f "$target" ]; then
-        case "$target" in
-            *.ts|*.tsx) echo "typescript" ;;
-            *.js|*.jsx) echo "javascript" ;;
-            *.py) echo "python" ;;
-            *.go) echo "go" ;;
-            *.rs) echo "rust" ;;
-            *.sh|*.bash) echo "shell" ;;
-            *) detect_from_shebang "$target" || echo "unknown" ;;
-        esac
-    elif [ -d "$target" ]; then
-        if [ -f "$target/tsconfig.json" ]; then echo "typescript"
-        elif [ -f "$target/package.json" ]; then echo "javascript"
-        elif [ -f "$target/pyproject.toml" ]; then echo "python"
-        elif [ -f "$target/go.mod" ]; then echo "go"
-        elif [ -f "$target/Cargo.toml" ]; then echo "rust"
-        else echo "unknown"
-        fi
-    fi
-}
-
-# Find project root
-find_project_root() {
-    local dir="$1"
-    [ -f "$dir" ] && dir=$(dirname "$dir")
-    while [ "$dir" != "/" ]; do
-        [ -f "$dir/tsconfig.json" ] || [ -f "$dir/package.json" ] || \
-        [ -f "$dir/pyproject.toml" ] || [ -f "$dir/go.mod" ] || \
-        [ -f "$dir/Cargo.toml" ] && { echo "$dir"; return; }
-        dir=$(dirname "$dir")
-    done
-    pwd
-}
-
-# Run diagnostics on a single file
-run_diagnostics() {
-    local target="$1"
-    local lang="$2"
-    local root
-    root=$(find_project_root "$target")
-
-    case "$lang" in
-        typescript)
-            command -v tsc &>/dev/null && { cd "$root" && tsc --noEmit 2>&1; return; }
-            command -v npx &>/dev/null && { cd "$root" && npx tsc --noEmit 2>&1; return; }
-            echo "tsc not found"; return 1
-            ;;
-        javascript)
-            command -v eslint &>/dev/null && { eslint "$target" 2>&1; return; }
-            command -v npx &>/dev/null && { npx eslint "$target" 2>&1; return; }
-            ;;
-        python)
-            local out=""
-            command -v ruff &>/dev/null && out=$(ruff check "$target" 2>&1) || true
-            command -v pyright &>/dev/null && out="$out"$'\n'$(pyright "$target" 2>&1) || true
-            [ -n "$out" ] && echo "$out"
-            ;;
-        go)
-            command -v go &>/dev/null || { echo "go not found"; return 1; }
-            go vet "$target" 2>&1 || true
-            go build -o /dev/null "$target" 2>&1
-            ;;
-        rust)
-            command -v cargo &>/dev/null || { echo "cargo not found"; return 1; }
-            cd "$root" && cargo check --message-format short 2>&1
-            ;;
-        shell)
-            command -v shellcheck &>/dev/null || return 0
-            shellcheck "$target" 2>&1
-            ;;
-        *)
-            return 0
-            ;;
+    local file="$1"
+    case "$file" in
+        *.sh|*.bash) echo "shell" ;;
+        *.py) echo "python" ;;
+        *.js|*.jsx) echo "javascript" ;;
+        *.ts|*.tsx) echo "typescript" ;;
+        *.go) echo "go" ;;
+        *.json) echo "json" ;;
+        *.yaml|*.yml) echo "yaml" ;;
+        *.c|*.h) echo "c" ;;
+        *.cpp|*.cc|*.cxx|*.hpp|*.hxx) echo "cpp" ;;
+        *.md|*.markdown) echo "markdown" ;;
+        *) detect_from_shebang "$file" ;;
     esac
 }
 
-# Diagnose a single file
-diagnose_file() {
-    local file="$1"
-
-    if [ ! -e "$file" ]; then
-        echo "Error: '$file' not found"
-        return 1
-    fi
-
-    local lang
-    lang=$(detect_language "$file")
-    local output
-    output=$(run_diagnostics "$file" "$lang" 2>&1) || local exit_code=$?
-    exit_code=${exit_code:-0}
-
-    if [ "$exit_code" -ne 0 ]; then
-        echo "Errors in $file:"
-        echo "$output"
-        return 1
-    elif $VERBOSE; then
-        echo "No errors in $file"
-    fi
-    return 0
+# Check if file has YAML frontmatter
+has_frontmatter() {
+    head -1 "$1" 2>/dev/null | grep -q '^---$'
 }
 
-# Diagnose uncommitted files in worktree
+# Extract YAML frontmatter from markdown
+extract_frontmatter() {
+    awk '/^---$/{if(++c==2)exit; next} c==1{print}' "$1"
+}
+
+# Diagnose uncommitted files in worktree (with batching)
 diagnose_worktree() {
     if ! git rev-parse --git-dir &>/dev/null; then
         echo "Not in a git repository"
@@ -139,45 +63,157 @@ diagnose_worktree() {
     local repo_root
     repo_root=$(git rev-parse --show-toplevel)
 
-    # Get uncommitted files (modified + staged + untracked) as absolute paths
-    local files
-    files=$(git status --porcelain | awk -v root="$repo_root" '{print root "/" $NF}')
+    # Get uncommitted files as absolute paths
+    local all_files
+    all_files=$(git status --porcelain | awk -v root="$repo_root" '{print root "/" $NF}')
 
-    if [ -z "$files" ]; then
+    if [ -z "$all_files" ]; then
         $VERBOSE && echo "No uncommitted files"
         echo ""
-        echo "diagnose <file|directory> [--verbose]"
+        echo "diagnose"
         return 0
     fi
 
     local has_errors=false
     local checked=0
 
-    while IFS= read -r file; do
-        # Skip deleted files and non-existent files
-        [ ! -f "$file" ] && continue
+    # Collect files by type
+    local shell_files="" python_files="" js_files="" ts_files="" go_files=""
+    local json_files="" yaml_files="" c_files="" cpp_files="" md_files=""
 
-        # Skip unsupported file types
+    while IFS= read -r file; do
+        [ ! -f "$file" ] && continue
         local lang
         lang=$(detect_language "$file")
-        [ "$lang" = "unknown" ] && continue
+        case "$lang" in
+            shell) shell_files+="$file"$'\n' ;;
+            python) python_files+="$file"$'\n' ;;
+            javascript) js_files+="$file"$'\n' ;;
+            typescript) ts_files+="$file"$'\n' ;;
+            go) go_files+="$file"$'\n' ;;
+            json) json_files+="$file"$'\n' ;;
+            yaml) yaml_files+="$file"$'\n' ;;
+            c) c_files+="$file"$'\n' ;;
+            cpp) cpp_files+="$file"$'\n' ;;
+            markdown) md_files+="$file"$'\n' ;;
+        esac
+    done <<< "$all_files"
 
-        ((checked++)) || true
-        diagnose_file "$file" || has_errors=true
-    done <<< "$files"
+    # Shell
+    if [ -n "$shell_files" ] && command -v shellcheck &>/dev/null; then
+        local output
+        output=$(echo -n "$shell_files" | tr '\n' '\0' | xargs -0 shellcheck 2>&1) || {
+            echo "$output"
+            has_errors=true
+        }
+        ((checked += $(echo -n "$shell_files" | grep -c .))) || true
+    fi
+
+    # Python
+    if [ -n "$python_files" ] && command -v ruff &>/dev/null; then
+        local output
+        output=$(echo -n "$python_files" | tr '\n' '\0' | xargs -0 ruff check 2>&1) || {
+            echo "$output"
+            has_errors=true
+        }
+        ((checked += $(echo -n "$python_files" | grep -c .))) || true
+    fi
+
+    # JavaScript
+    if [ -n "$js_files" ] && command -v eslint &>/dev/null; then
+        local output
+        output=$(echo -n "$js_files" | tr '\n' '\0' | xargs -0 eslint 2>&1) || {
+            echo "$output"
+            has_errors=true
+        }
+        ((checked += $(echo -n "$js_files" | grep -c .))) || true
+    fi
+
+    # TypeScript
+    if [ -n "$ts_files" ] && command -v eslint &>/dev/null; then
+        local output
+        output=$(echo -n "$ts_files" | tr '\n' '\0' | xargs -0 eslint 2>&1) || {
+            echo "$output"
+            has_errors=true
+        }
+        ((checked += $(echo -n "$ts_files" | grep -c .))) || true
+    fi
+
+    # Go
+    if [ -n "$go_files" ] && command -v go &>/dev/null; then
+        local output
+        output=$(echo -n "$go_files" | tr '\n' '\0' | xargs -0 go vet 2>&1) || {
+            echo "$output"
+            has_errors=true
+        }
+        ((checked += $(echo -n "$go_files" | grep -c .))) || true
+    fi
+
+    # JSON
+    if [ -n "$json_files" ] && command -v jq &>/dev/null; then
+        while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            jq . "$file" >/dev/null 2>&1 || {
+                echo "Invalid JSON: $file"
+                has_errors=true
+            }
+            ((checked++)) || true
+        done <<< "$json_files"
+    fi
+
+    # YAML
+    if [ -n "$yaml_files" ] && command -v yamllint &>/dev/null; then
+        local output
+        output=$(echo -n "$yaml_files" | tr '\n' '\0' | xargs -0 yamllint -d relaxed 2>&1) || {
+            echo "$output"
+            has_errors=true
+        }
+        ((checked += $(echo -n "$yaml_files" | grep -c .))) || true
+    fi
+
+    # C
+    if [ -n "$c_files" ] && command -v cppcheck &>/dev/null; then
+        local output
+        output=$(echo -n "$c_files" | tr '\n' '\0' | xargs -0 cppcheck --quiet --error-exitcode=1 2>&1) || {
+            echo "$output"
+            has_errors=true
+        }
+        ((checked += $(echo -n "$c_files" | grep -c .))) || true
+    fi
+
+    # C++
+    if [ -n "$cpp_files" ] && command -v cppcheck &>/dev/null; then
+        local output
+        output=$(echo -n "$cpp_files" | tr '\n' '\0' | xargs -0 cppcheck --quiet --error-exitcode=1 2>&1) || {
+            echo "$output"
+            has_errors=true
+        }
+        ((checked += $(echo -n "$cpp_files" | grep -c .))) || true
+    fi
+
+    # Markdown (frontmatter only)
+    if [ -n "$md_files" ] && command -v yamllint &>/dev/null; then
+        while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            if has_frontmatter "$file"; then
+                local fm_errors
+                fm_errors=$(extract_frontmatter "$file" | yamllint -d relaxed - 2>&1) || {
+                    echo "Frontmatter errors in $file:"
+                    echo "$fm_errors"
+                    has_errors=true
+                }
+            fi
+            ((checked++)) || true
+        done <<< "$md_files"
+    fi
 
     $VERBOSE && echo "Checked $checked files"
     echo ""
-    echo "diagnose <file|directory> [--verbose]"
+    echo "diagnose"
 
     $has_errors && return 1
     return 0
 }
 
 # Main
-if [ -z "$TARGET" ]; then
-    # Default: check uncommitted files in worktree
-    diagnose_worktree
-else
-    diagnose_file "$TARGET"
-fi
+diagnose_worktree
