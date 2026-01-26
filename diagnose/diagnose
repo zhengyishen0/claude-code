@@ -1,53 +1,41 @@
 #!/bin/bash
 # diagnose - Run language-specific diagnostics on files
-# Returns errors/warnings in a clean format for AI consumption
+# Silent on success, outputs errors only (designed for AI agents)
 set -eo pipefail
 
 usage() {
     cat <<EOF
 Usage: diagnose <file|directory> [options]
 
-Run language-specific diagnostics (type checking, linting) on files.
+Run language-specific diagnostics on files.
+Silent on success, outputs errors only.
 
 Options:
-  -q, --quiet     Only output if errors found
-  -j, --json      Output in JSON format
+  -v, --verbose   Show output even on success
   -h, --help      Show this help
 
-Supported languages:
-  TypeScript/JavaScript  (.ts, .tsx, .js, .jsx)  → tsc / eslint
-  Python                 (.py)                   → ruff / pyright
-  Go                     (.go)                   → go vet / go build
-  Rust                   (.rs)                   → cargo check
-  Shell                  (.sh, .bash)            → shellcheck
+Supported:
+  TypeScript (.ts, .tsx)  → tsc
+  JavaScript (.js, .jsx)  → eslint
+  Python     (.py)        → ruff / pyright
+  Go         (.go)        → go vet + build
+  Rust       (.rs)        → cargo check
+  Shell      (.sh, .bash) → shellcheck
 
 Examples:
   diagnose src/app.ts
   diagnose src/
-  diagnose file.py --quiet
+  diagnose file.py -v
 EOF
     exit 0
 }
 
-# Colors (disabled if not tty)
-if [ -t 1 ]; then
-    RED='\033[0;31m'
-    YELLOW='\033[0;33m'
-    GREEN='\033[0;32m'
-    NC='\033[0m'
-else
-    RED='' YELLOW='' GREEN='' NC=''
-fi
-
-QUIET=false
-JSON=false
+VERBOSE=false
 TARGET=""
 
-# Parse args
 while [[ $# -gt 0 ]]; do
     case $1 in
-        -q|--quiet) QUIET=true; shift ;;
-        -j|--json) JSON=true; shift ;;
+        -v|--verbose) VERBOSE=true; shift ;;
         -h|--help) usage ;;
         -*) echo "Unknown option: $1"; exit 1 ;;
         *) TARGET="$1"; shift ;;
@@ -56,33 +44,26 @@ done
 
 [ -z "$TARGET" ] && usage
 
-# Check if target exists
 if [ ! -e "$TARGET" ]; then
     echo "Error: '$TARGET' not found"
     exit 1
 fi
 
-# Detect language from shebang line
+# Detect language from shebang
 detect_from_shebang() {
-    local file="$1"
     local shebang
-    shebang=$(head -1 "$file" 2>/dev/null)
-
+    shebang=$(head -1 "$1" 2>/dev/null)
     case "$shebang" in
-        "#!/bin/bash"*|"#!/usr/bin/env bash"*|"#!/bin/sh"*|"#!/usr/bin/env sh"*)
-            echo "shell" ;;
-        "#!/usr/bin/env python"*|"#!/usr/bin/python"*)
-            echo "python" ;;
-        "#!/usr/bin/env node"*|"#!/usr/bin/node"*)
-            echo "javascript" ;;
+        *bash*|*"/bin/sh"*) echo "shell" ;;
+        *python*) echo "python" ;;
+        *node*) echo "javascript" ;;
         *) echo "" ;;
     esac
 }
 
-# Detect language from file extension or directory contents
+# Detect language
 detect_language() {
     local target="$1"
-
     if [ -f "$target" ]; then
         case "$target" in
             *.ts|*.tsx) echo "typescript" ;;
@@ -91,22 +72,12 @@ detect_language() {
             *.go) echo "go" ;;
             *.rs) echo "rust" ;;
             *.sh|*.bash) echo "shell" ;;
-            *)
-                # Try shebang detection for extensionless files
-                local shebang_lang
-                shebang_lang=$(detect_from_shebang "$target")
-                if [ -n "$shebang_lang" ]; then
-                    echo "$shebang_lang"
-                else
-                    echo "unknown"
-                fi
-                ;;
+            *) detect_from_shebang "$target" || echo "unknown" ;;
         esac
     elif [ -d "$target" ]; then
-        # Detect from project files
         if [ -f "$target/tsconfig.json" ]; then echo "typescript"
         elif [ -f "$target/package.json" ]; then echo "javascript"
-        elif [ -f "$target/pyproject.toml" ] || [ -f "$target/setup.py" ]; then echo "python"
+        elif [ -f "$target/pyproject.toml" ]; then echo "python"
         elif [ -f "$target/go.mod" ]; then echo "go"
         elif [ -f "$target/Cargo.toml" ]; then echo "rust"
         else echo "unknown"
@@ -114,136 +85,59 @@ detect_language() {
     fi
 }
 
-# Find project root (for tools that need it)
+# Find project root
 find_project_root() {
     local dir="$1"
     [ -f "$dir" ] && dir=$(dirname "$dir")
-
     while [ "$dir" != "/" ]; do
-        if [ -f "$dir/tsconfig.json" ] || [ -f "$dir/package.json" ] || \
-           [ -f "$dir/pyproject.toml" ] || [ -f "$dir/go.mod" ] || \
-           [ -f "$dir/Cargo.toml" ]; then
-            echo "$dir"
-            return
-        fi
+        [ -f "$dir/tsconfig.json" ] || [ -f "$dir/package.json" ] || \
+        [ -f "$dir/pyproject.toml" ] || [ -f "$dir/go.mod" ] || \
+        [ -f "$dir/Cargo.toml" ] && { echo "$dir"; return; }
         dir=$(dirname "$dir")
     done
-    echo "$(pwd)"
+    pwd
 }
 
-# Run diagnostics based on language
+# Run diagnostics
 run_diagnostics() {
     local target="$1"
     local lang="$2"
-    local project_root
-    project_root=$(find_project_root "$target")
-    local output=""
-    local exit_code=0
+    local root
+    root=$(find_project_root "$target")
 
     case "$lang" in
         typescript)
-            if command -v tsc &>/dev/null; then
-                output=$(cd "$project_root" && tsc --noEmit 2>&1) || exit_code=$?
-            elif command -v npx &>/dev/null; then
-                output=$(cd "$project_root" && npx tsc --noEmit 2>&1) || exit_code=$?
-            else
-                output="Error: tsc not found. Install typescript."
-                exit_code=1
-            fi
+            command -v tsc &>/dev/null && { cd "$root" && tsc --noEmit 2>&1; return; }
+            command -v npx &>/dev/null && { cd "$root" && npx tsc --noEmit 2>&1; return; }
+            echo "tsc not found"; return 1
             ;;
         javascript)
-            if command -v eslint &>/dev/null; then
-                output=$(eslint "$target" 2>&1) || exit_code=$?
-            elif command -v npx &>/dev/null; then
-                output=$(npx eslint "$target" 2>&1) || exit_code=$?
-            else
-                output="Warning: eslint not found. No diagnostics available for JS."
-            fi
+            command -v eslint &>/dev/null && { eslint "$target" 2>&1; return; }
+            command -v npx &>/dev/null && { npx eslint "$target" 2>&1; return; }
             ;;
         python)
-            # Try ruff first (fast), then pyright (thorough)
-            if command -v ruff &>/dev/null; then
-                output=$(ruff check "$target" 2>&1) || exit_code=$?
-            fi
-            if command -v pyright &>/dev/null; then
-                local pyright_out
-                pyright_out=$(pyright "$target" 2>&1) || exit_code=$?
-                output="${output}${output:+\n}${pyright_out}"
-            fi
-            if [ -z "$output" ]; then
-                output="Warning: ruff/pyright not found. Install with: pip install ruff pyright"
-            fi
+            local out=""
+            command -v ruff &>/dev/null && out=$(ruff check "$target" 2>&1) || true
+            command -v pyright &>/dev/null && out="$out"$'\n'$(pyright "$target" 2>&1) || true
+            [ -n "$out" ] && echo "$out"
             ;;
         go)
-            if command -v go &>/dev/null; then
-                local vet_out build_out
-                vet_out=$(go vet "$target" 2>&1) || exit_code=$?
-                build_out=$(go build -o /dev/null "$target" 2>&1) || exit_code=$?
-                output="${vet_out}${vet_out:+\n}${build_out}"
-            else
-                output="Error: go not found."
-                exit_code=1
-            fi
+            command -v go &>/dev/null || { echo "go not found"; return 1; }
+            go vet "$target" 2>&1 || true
+            go build -o /dev/null "$target" 2>&1
             ;;
         rust)
-            if command -v cargo &>/dev/null; then
-                output=$(cd "$project_root" && cargo check --message-format short 2>&1) || exit_code=$?
-            else
-                output="Error: cargo not found."
-                exit_code=1
-            fi
+            command -v cargo &>/dev/null || { echo "cargo not found"; return 1; }
+            cd "$root" && cargo check --message-format short 2>&1
             ;;
         shell)
-            if command -v shellcheck &>/dev/null; then
-                output=$(shellcheck "$target" 2>&1) || exit_code=$?
-            else
-                output="Warning: shellcheck not found. Install with: brew install shellcheck"
-            fi
+            command -v shellcheck &>/dev/null || return 0
+            shellcheck "$target" 2>&1
             ;;
-        unknown)
-            output="Warning: Unknown file type. Cannot determine diagnostics tool."
+        *)
+            return 0
             ;;
     esac
-
-    echo "$output"
-    return $exit_code
-}
-
-# Format output
-format_output() {
-    local output="$1"
-    local exit_code="$2"
-    local lang="$3"
-
-    if $JSON; then
-        # JSON output for programmatic use
-        local status="ok"
-        [ "$exit_code" -ne 0 ] && status="error"
-
-        # Escape for JSON
-        local escaped_output
-        escaped_output=$(echo "$output" | jq -Rs .)
-
-        cat <<EOF
-{
-  "file": "$TARGET",
-  "language": "$lang",
-  "status": "$status",
-  "exit_code": $exit_code,
-  "output": $escaped_output
-}
-EOF
-    else
-        # Human/AI readable output
-        if [ "$exit_code" -eq 0 ]; then
-            if ! $QUIET; then
-                echo -e "${GREEN}No errors in $TARGET${NC}"
-            fi
-        else
-            echo -e "${RED}Errors in $TARGET ($lang):${NC}"
-            echo "$output"
-        fi
-    fi
 }
 
 # Main
@@ -251,5 +145,11 @@ LANG=$(detect_language "$TARGET")
 OUTPUT=$(run_diagnostics "$TARGET" "$LANG" 2>&1) || EXIT_CODE=$?
 EXIT_CODE=${EXIT_CODE:-0}
 
-format_output "$OUTPUT" "$EXIT_CODE" "$LANG"
+if [ "$EXIT_CODE" -ne 0 ]; then
+    echo "Errors in $TARGET:"
+    echo "$OUTPUT"
+elif $VERBOSE; then
+    echo "No errors in $TARGET"
+fi
+
 exit $EXIT_CODE
