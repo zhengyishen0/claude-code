@@ -5,7 +5,15 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/claude/session-start.sh"
+            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/claude/persist-env.sh"
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/claude/inject-task-prompt.sh"
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/claude/log-agent-start.sh"
           }
         ]
       }
@@ -15,7 +23,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/claude/session-end.sh"
+            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/claude/update-task-status.sh"
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/claude/cleanup-pid.sh"
           }
         ]
       }
@@ -32,20 +44,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/claude/warn-unstaged.sh"
-          },
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/claude/block-main-branch.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Write",
+        "matcher": "Edit|Write",
         "hooks": [
           {
             "type": "command",
