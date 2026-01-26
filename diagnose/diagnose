@@ -1,0 +1,219 @@
+#!/usr/bin/env bash
+# diagnose - Fast per-file diagnostics for AI agents
+# Silent on success, outputs errors only
+set -eo pipefail
+
+VERBOSE=false
+# --verbose: show success messages (hidden from help)
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --verbose) VERBOSE=true; shift ;;
+        *) break ;;
+    esac
+done
+
+# Detect language from shebang
+detect_from_shebang() {
+    local shebang
+    shebang=$(head -1 "$1" 2>/dev/null)
+    case "$shebang" in
+        *bash*|*"/bin/sh"*) echo "shell" ;;
+        *python*) echo "python" ;;
+        *node*) echo "javascript" ;;
+        *) echo "" ;;
+    esac
+}
+
+# Detect language from file extension
+detect_language() {
+    local file="$1"
+    case "$file" in
+        *.sh|*.bash) echo "shell" ;;
+        *.py) echo "python" ;;
+        *.js|*.jsx) echo "javascript" ;;
+        *.ts|*.tsx) echo "typescript" ;;
+        *.go) echo "go" ;;
+        *.json) echo "json" ;;
+        *.yaml|*.yml) echo "yaml" ;;
+        *.c|*.h) echo "c" ;;
+        *.cpp|*.cc|*.cxx|*.hpp|*.hxx) echo "cpp" ;;
+        *.md|*.markdown) echo "markdown" ;;
+        *) detect_from_shebang "$file" ;;
+    esac
+}
+
+# Check if file has YAML frontmatter
+has_frontmatter() {
+    head -1 "$1" 2>/dev/null | grep -q '^---$'
+}
+
+# Extract YAML frontmatter from markdown
+extract_frontmatter() {
+    awk '/^---$/{if(++c==2)exit; next} c==1{print}' "$1"
+}
+
+# Diagnose uncommitted files in worktree (with batching)
+diagnose_worktree() {
+    if ! git rev-parse --git-dir &>/dev/null; then
+        echo "Not in a git repository"
+        return 1
+    fi
+
+    local repo_root
+    repo_root=$(git rev-parse --show-toplevel)
+
+    # Get uncommitted files as absolute paths
+    local all_files
+    all_files=$(git status --porcelain | awk -v root="$repo_root" '{print root "/" $NF}')
+
+    if [ -z "$all_files" ]; then
+        $VERBOSE && echo "No uncommitted files"
+        echo ""
+        echo "diagnose"
+        return 0
+    fi
+
+    local has_errors=false
+    local checked=0
+
+    # Collect files by type
+    local shell_files="" python_files="" js_files="" ts_files="" go_files=""
+    local json_files="" yaml_files="" c_files="" cpp_files="" md_files=""
+
+    while IFS= read -r file; do
+        [ ! -f "$file" ] && continue
+        local lang
+        lang=$(detect_language "$file")
+        case "$lang" in
+            shell) shell_files+="$file"$'\n' ;;
+            python) python_files+="$file"$'\n' ;;
+            javascript) js_files+="$file"$'\n' ;;
+            typescript) ts_files+="$file"$'\n' ;;
+            go) go_files+="$file"$'\n' ;;
+            json) json_files+="$file"$'\n' ;;
+            yaml) yaml_files+="$file"$'\n' ;;
+            c) c_files+="$file"$'\n' ;;
+            cpp) cpp_files+="$file"$'\n' ;;
+            markdown) md_files+="$file"$'\n' ;;
+        esac
+    done <<< "$all_files"
+
+    # Shell
+    if [ -n "$shell_files" ] && command -v shellcheck &>/dev/null; then
+        local output
+        output=$(echo -n "$shell_files" | tr '\n' '\0' | xargs -0 shellcheck 2>&1) || {
+            echo "$output"
+            has_errors=true
+        }
+        ((checked += $(echo -n "$shell_files" | grep -c .))) || true
+    fi
+
+    # Python
+    if [ -n "$python_files" ] && command -v ruff &>/dev/null; then
+        local output
+        output=$(echo -n "$python_files" | tr '\n' '\0' | xargs -0 ruff check 2>&1) || {
+            echo "$output"
+            has_errors=true
+        }
+        ((checked += $(echo -n "$python_files" | grep -c .))) || true
+    fi
+
+    # JavaScript
+    if [ -n "$js_files" ] && command -v eslint &>/dev/null; then
+        local output
+        output=$(echo -n "$js_files" | tr '\n' '\0' | xargs -0 eslint 2>&1) || {
+            echo "$output"
+            has_errors=true
+        }
+        ((checked += $(echo -n "$js_files" | grep -c .))) || true
+    fi
+
+    # TypeScript
+    if [ -n "$ts_files" ] && command -v eslint &>/dev/null; then
+        local output
+        output=$(echo -n "$ts_files" | tr '\n' '\0' | xargs -0 eslint 2>&1) || {
+            echo "$output"
+            has_errors=true
+        }
+        ((checked += $(echo -n "$ts_files" | grep -c .))) || true
+    fi
+
+    # Go
+    if [ -n "$go_files" ] && command -v go &>/dev/null; then
+        local output
+        output=$(echo -n "$go_files" | tr '\n' '\0' | xargs -0 go vet 2>&1) || {
+            echo "$output"
+            has_errors=true
+        }
+        ((checked += $(echo -n "$go_files" | grep -c .))) || true
+    fi
+
+    # JSON
+    if [ -n "$json_files" ] && command -v jq &>/dev/null; then
+        while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            jq . "$file" >/dev/null 2>&1 || {
+                echo "Invalid JSON: $file"
+                has_errors=true
+            }
+            ((checked++)) || true
+        done <<< "$json_files"
+    fi
+
+    # YAML
+    if [ -n "$yaml_files" ] && command -v yamllint &>/dev/null; then
+        local output
+        output=$(echo -n "$yaml_files" | tr '\n' '\0' | xargs -0 yamllint -d relaxed 2>&1) || {
+            echo "$output"
+            has_errors=true
+        }
+        ((checked += $(echo -n "$yaml_files" | grep -c .))) || true
+    fi
+
+    # C
+    if [ -n "$c_files" ] && command -v cppcheck &>/dev/null; then
+        local output
+        output=$(echo -n "$c_files" | tr '\n' '\0' | xargs -0 cppcheck --quiet --error-exitcode=1 2>&1) || {
+            echo "$output"
+            has_errors=true
+        }
+        ((checked += $(echo -n "$c_files" | grep -c .))) || true
+    fi
+
+    # C++
+    if [ -n "$cpp_files" ] && command -v cppcheck &>/dev/null; then
+        local output
+        output=$(echo -n "$cpp_files" | tr '\n' '\0' | xargs -0 cppcheck --quiet --error-exitcode=1 2>&1) || {
+            echo "$output"
+            has_errors=true
+        }
+        ((checked += $(echo -n "$cpp_files" | grep -c .))) || true
+    fi
+
+    # Markdown (frontmatter only)
+    if [ -n "$md_files" ] && command -v yamllint &>/dev/null; then
+        while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            if has_frontmatter "$file"; then
+                local fm_errors
+                fm_errors=$(extract_frontmatter "$file" | yamllint -d relaxed - 2>&1) || {
+                    echo "Frontmatter errors in $file:"
+                    echo "$fm_errors"
+                    has_errors=true
+                }
+            fi
+            ((checked++)) || true
+        done <<< "$md_files"
+    fi
+
+    $VERBOSE && echo "Checked $checked files"
+    echo ""
+    echo "diagnose"
+
+    $has_errors && return 1
+    return 0
+}
+
+# Main
+diagnose_worktree
