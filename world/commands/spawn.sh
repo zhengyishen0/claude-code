@@ -6,8 +6,10 @@ set -euo pipefail
 
 : "${PROJECT_DIR:?PROJECT_DIR not set - source env.sh}"
 
+# ZFC: Source process utilities
+source "$PROJECT_DIR/utils/process.sh"
+
 TASKS_DIR="$PROJECT_DIR/task/data"
-PID_DIR="/tmp/world-watch/pids"
 PROJECT_WORKTREES="$(dirname "$PROJECT_DIR")/.worktrees/$(basename "$PROJECT_DIR")"
 
 
@@ -23,7 +25,6 @@ DESCRIPTION:
     2. Creates worktree: ~/Codes/.worktrees/<project>/<task-id>
     3. Updates status to 'running', sets 'started' timestamp
     4. Starts claude with --session-id (preserves context)
-    5. Saves PID for monitoring
 
 EXAMPLES:
     world spawn fix-bug
@@ -63,16 +64,10 @@ if [ "$status" != "pending" ]; then
     exit 1
 fi
 
-# Check if already running
-mkdir -p "$PID_DIR"
-if [ -f "$PID_DIR/$task_id.pid" ]; then
-    pid=$(cat "$PID_DIR/$task_id.pid")
-    if kill -0 "$pid" 2>/dev/null; then
-        echo "Error: Task '$task_id' already running (PID: $pid)" >&2
-        exit 1
-    fi
-    # Stale PID file, remove it
-    rm -f "$PID_DIR/$task_id.pid"
+# ZFC: Check if already running by session_id
+if is_task_running "$session_id"; then
+    echo "Error: Task '$task_id' already running (session: $session_id)" >&2
+    exit 1
 fi
 
 echo "=== Spawning Task: $task_id ==="
@@ -137,11 +132,10 @@ export CLAUDE_PROJECT_DIR="$worktree_path"
     "$task_prompt") &
 CLAUDE_PID=$!
 
-# Save PID
-echo "$CLAUDE_PID" > "$PID_DIR/$task_id.pid"
-
-echo "Spawned with PID: $CLAUDE_PID"
-echo "PID file: $PID_DIR/$task_id.pid"
+# ZFC: No PID file - process IS the state
+echo "Spawned task: $task_id"
+echo "  Session: $session_id"
+echo "  PID: $CLAUDE_PID"
 
 # Wait for completion
 wait $CLAUDE_PID || true

@@ -14,6 +14,7 @@ world - Agent coordination
 
 COMMANDS:
     world                             Show recent log entries
+    world ps                          List running task agents (ZFC)
     world record <type> <msg>         Record an event to world.log
     world spawn <task-id>             Start agent in worktree
     world watch [interval]            Run polling daemon (foreground)
@@ -28,6 +29,7 @@ RECORD TYPES:
 EXAMPLES:
     world record "system" "daemon started"
     world record "git:commit" "fix: login bug"
+    world ps                          # List running agents
 
 SEE ALSO:
     task help                         Task management
@@ -46,6 +48,10 @@ show_entries() {
 
 # Route
 case "${1:-}" in
+    ps|processes)
+        shift || true
+        "$COMMANDS_DIR/ps.sh" "$@"
+        ;;
     record)
         shift
         "$COMMANDS_DIR/record.sh" "$@"

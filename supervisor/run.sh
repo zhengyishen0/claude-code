@@ -6,8 +6,10 @@ set -euo pipefail
 
 : "${PROJECT_DIR:?PROJECT_DIR not set - source env.sh}"
 
+# ZFC: Source process utilities
+source "$PROJECT_DIR/utils/process.sh"
+
 TASKS_DIR="$PROJECT_DIR/task/data"
-PID_DIR="/tmp/world-watch/pids"
 PROJECT_WORKTREES="$(dirname "$PROJECT_DIR")/.worktrees/$(basename "$PROJECT_DIR")"
 PROJECT_ARCHIVE="$PROJECT_WORKTREES/.archive"
 
@@ -83,15 +85,12 @@ do_cancel() {
         exit 1
     fi
 
-    # Kill if running
-    local pid_file="$PID_DIR/$task_id.pid"
-    if [ -f "$pid_file" ]; then
-        local pid=$(cat "$pid_file")
-        if kill -0 "$pid" 2>/dev/null; then
-            echo "Killing running process (PID: $pid)..."
-            kill "$pid" 2>/dev/null || true
-        fi
-        rm -f "$pid_file"
+    # ZFC: Kill by session_id
+    local session_id=$(yq eval --front-matter=extract '.session_id' "$task_md" 2>/dev/null || echo "")
+    if [ -n "$session_id" ] && is_task_running "$session_id"; then
+        local pid=$(get_task_pid "$session_id")
+        echo "Killing running process (PID: $pid)..."
+        kill_task "$session_id"
     fi
 
     # Set review field

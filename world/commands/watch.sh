@@ -6,9 +6,11 @@ set -euo pipefail
 
 : "${PROJECT_DIR:?PROJECT_DIR not set - source env.sh}"
 
+# ZFC: Source process utilities
+source "$PROJECT_DIR/utils/process.sh"
+
 TASKS_DIR="$PROJECT_DIR/task/data"
 WORLD_LOG="$PROJECT_DIR/world/world.log"
-PID_DIR="/tmp/world-watch/pids"
 PROJECT_WORKTREES="$(dirname "$PROJECT_DIR")/.worktrees/$(basename "$PROJECT_DIR")"
 PROJECT_ARCHIVE="$PROJECT_WORKTREES/.archive"
 PROJECT_NAME="$(basename "$PROJECT_DIR")"
@@ -20,7 +22,7 @@ RECORD_CMD="$PROJECT_DIR/world/commands/record.sh"
 WORKTREE_BASE="$PROJECT_WORKTREES"
 ARCHIVE_DIR="$PROJECT_ARCHIVE"
 
-mkdir -p "$PID_DIR" "$WORKTREE_BASE" "$ARCHIVE_DIR" "$TASKS_DIR"
+mkdir -p "$WORKTREE_BASE" "$ARCHIVE_DIR" "$TASKS_DIR"
 
 # Interval between checks (seconds)
 INTERVAL="${1:-5}"
@@ -35,9 +37,12 @@ USAGE:
 DESCRIPTION:
     Runs continuously, performing:
     1. SYNC: MD changes → world.log
-    2. SPAWN: pending tasks in log → start agents
-    3. RECOVER: dead PIDs with running status → re-spawn
+    2. SPAWN: pending tasks → start agents
+    3. RECOVER: crashed tasks (status:running but no process) → re-spawn
     4. ARCHIVE: verified/canceled → move worktree to archive
+
+    Uses ZFC (Zero File-based State): queries process table directly,
+    no PID files to manage or clean up.
 
     Default interval: 5 seconds
 
@@ -98,7 +103,7 @@ sync_all() {
 }
 
 # ============================================================
-# SPAWN: pending in log → start agent
+# SPAWN: pending tasks → start agent (ZFC)
 # ============================================================
 spawn_pending() {
     for md_file in "$TASKS_DIR"/*.md; do
@@ -110,13 +115,12 @@ spawn_pending() {
         local status=$(yq eval --front-matter=extract '.status' "$md_file" 2>/dev/null || echo "")
         [ "$status" != "pending" ] && continue
 
-        # Check if already has PID
-        if [ -f "$PID_DIR/$id.pid" ]; then
-            local pid=$(cat "$PID_DIR/$id.pid")
-            if kill -0 "$pid" 2>/dev/null; then
-                continue  # Already running
-            fi
-            rm -f "$PID_DIR/$id.pid"  # Stale PID
+        local session_id=$(yq eval --front-matter=extract '.session_id' "$md_file" 2>/dev/null || echo "")
+        [ -z "$session_id" ] && continue
+
+        # ZFC: Check if already running by session_id
+        if is_task_running "$session_id"; then
+            continue  # Already running
         fi
 
         echo "[SPAWN] Starting task: $id"
@@ -126,41 +130,34 @@ spawn_pending() {
 }
 
 # ============================================================
-# RECOVER: dead PID + running status → re-spawn
+# RECOVER: crashed tasks (status:running but no process) → re-spawn (ZFC)
 # ============================================================
 recover_crashed() {
-    for pid_file in "$PID_DIR"/*.pid; do
-        [ -e "$pid_file" ] || continue
+    for md_file in "$TASKS_DIR"/*.md; do
+        [ -e "$md_file" ] || continue
 
-        local task_id=$(basename "$pid_file" .pid)
-        local pid=$(cat "$pid_file")
+        local status=$(yq eval --front-matter=extract '.status' "$md_file" 2>/dev/null || echo "")
+        [ "$status" != "running" ] && continue
 
-        # Check if process is running
-        if kill -0 "$pid" 2>/dev/null; then
-            continue  # Still running
+        local id=$(yq eval --front-matter=extract '.id' "$md_file" 2>/dev/null || echo "")
+        local session_id=$(yq eval --front-matter=extract '.session_id' "$md_file" 2>/dev/null || echo "")
+        [ -z "$session_id" ] && continue
+
+        # ZFC: Check if process is actually running
+        if is_task_running "$session_id"; then
+            continue  # Still running, all good
         fi
 
-        # Process dead, check task status
-        local task_md="$TASKS_DIR/$task_id.md"
-        [ -f "$task_md" ] || continue
+        # Process dead + status:running = crashed
+        echo "[RECOVER] Crashed task: $id (session: $session_id)"
 
-        local status=$(yq eval --front-matter=extract '.status' "$task_md" 2>/dev/null || echo "")
+        # Reset to pending for re-spawn
+        yq -i --front-matter=process '.status = "pending"' "$md_file"
 
-        if [ "$status" = "running" ]; then
-            echo "[RECOVER] Crashed task: $task_id (was PID $pid)"
-            
-            # Reset to pending
-            yq -i --front-matter=process '.status = "pending"' "$task_md"
-            rm -f "$pid_file"
-
-            # Re-spawn
-            echo "[RECOVER] Re-spawning: $task_id"
-            "$SPAWN_CMD" "$task_id" &
-            sleep 1
-        else
-            # Task completed/failed normally, just clean up PID
-            rm -f "$pid_file"
-        fi
+        # Re-spawn
+        echo "[RECOVER] Re-spawning: $id"
+        "$SPAWN_CMD" "$id" &
+        sleep 1
     done
 }
 
