@@ -70,9 +70,6 @@ fi
 
 [ ! -d "$SESSION_DIR" ] && { echo "Error: No Claude sessions found" >&2; exit 1; }
 
-# Get current session to exclude from search results
-CURRENT_SESSION_ID="${CLAUDE_SESSION_ID:-}"
-
 # Build full index with jq
 build_full_index() {
   echo "Building index..." >&2
@@ -96,7 +93,6 @@ build_full_index() {
       select($text | test("<ide_|\\[Request interrupted|New environment|API Error|Limit reached|Caveat:|<bash-|<function_calls|<invoke|</invoke|<parameter|</parameter|</function_calls") | not) |
       select($text | test("^\\[[0-9]+/[0-9]+\\]\\s+[a-f0-9]{7}\\s+•") | not) |
       ($filepath | split("/") | last | split(".jsonl") | first) as $session_id |
-      select($session_id != "'"$CURRENT_SESSION_ID"'") |
       select($session_id | startswith("agent-") | not) |
       [$session_id, .timestamp, .type, $text, .cwd // "unknown"] | @tsv
     ' 2>/dev/null > "$INDEX_FILE"
@@ -146,7 +142,6 @@ update_index() {
       select($text | test("<ide_|\\[Request interrupted|New environment|API Error|Limit reached|Caveat:|<bash-|<function_calls|<invoke|</invoke|<parameter|</parameter|</function_calls") | not) |
       select($text | test("^\\[[0-9]+/[0-9]+\\]\\s+[a-f0-9]{7}\\s+•") | not) |
       ($filepath | split("/") | last | split(".jsonl") | first) as $session_id |
-      select($session_id != "'"$CURRENT_SESSION_ID"'") |
       select($session_id | startswith("agent-") | not) |
       [$session_id, .timestamp, .type, $text, .cwd // "unknown"] | @tsv
     ' 2>/dev/null > "$temp_file" || true

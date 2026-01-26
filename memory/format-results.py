@@ -12,6 +12,7 @@ Optimized: Removed pandas dependency for 2.5x faster startup.
 """
 
 import sys
+import os
 import re
 from collections import defaultdict
 from pathlib import Path
@@ -121,11 +122,17 @@ def main():
     keywords = parse_keywords(query, mode)
     keywords_normalized = query_normalized.lower().split()
 
+    # Exclude current session from search results
+    current_session_id = os.environ.get('CLAUDE_SESSION_ID', '')
+
     sessions = defaultdict(dict)
     for line in sys.stdin:
         parts = line.rstrip('\n').split('\t', 5)
         if len(parts) == 6:
             session_id, timestamp, msg_type, text, text_normalized, project_path = parts
+            # Skip current session
+            if current_session_id and session_id == current_session_id:
+                continue
             key = (timestamp, msg_type, text)
             if key not in sessions[session_id]:
                 sessions[session_id][key] = {

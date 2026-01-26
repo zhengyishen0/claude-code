@@ -16,6 +16,7 @@ memory - Cross-session knowledge sharing for Claude Code
 USAGE
   memory search "<keywords>"
   memory search "<keywords>" --recall "<question>"
+  memory recall <session-id> "<question>"
 
 WORKFLOW
   1. Search first to find relevant sessions
@@ -39,6 +40,10 @@ case "${1:-}" in
   search)
     shift
     "$SCRIPT_DIR/search.sh" "$@"
+    ;;
+  recall)
+    shift
+    "$SCRIPT_DIR/recall.sh" "$@"
     ;;
   ""|--help|-h)
     show_help
