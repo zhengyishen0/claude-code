@@ -9,10 +9,6 @@
           },
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/claude/inject-task-prompt.sh"
-          },
-          {
-            "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/claude/log-agent-start.sh"
           }
         ]
