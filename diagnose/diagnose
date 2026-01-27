@@ -3,6 +3,12 @@
 # Silent on success, outputs errors only
 set -eo pipefail
 
+# Global timeout: kill self after 30 seconds to prevent zombie processes
+TIMEOUT_SECONDS=30
+( sleep $TIMEOUT_SECONDS; kill -9 $$ 2>/dev/null ) &
+TIMEOUT_PID=$!
+trap 'kill $TIMEOUT_PID 2>/dev/null' EXIT
+
 VERBOSE=false
 # --verbose: show success messages (hidden from help)
 

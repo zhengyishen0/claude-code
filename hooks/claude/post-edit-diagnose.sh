@@ -6,11 +6,13 @@
 
 set -eo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DIAGNOSE="$SCRIPT_DIR/../../diagnose/diagnose"
+# Global timeout: kill self after 10 seconds to prevent zombie processes
+TIMEOUT_SECONDS=10
+( sleep $TIMEOUT_SECONDS; kill -9 $$ 2>/dev/null ) &
+TIMEOUT_PID=$!
+trap 'kill $TIMEOUT_PID 2>/dev/null' EXIT
 
 input=$(cat)
-tool_name=$(echo "$input" | jq -r '.tool_name')
 file_path=$(echo "$input" | jq -r '.tool_input.file_path // ""')
 
 # Skip if no file path
