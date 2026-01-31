@@ -27,6 +27,25 @@ def get_header(headers: list, name: str) -> Optional[str]:
     return None
 
 
+def strip_html_to_text(html: str) -> str:
+    """Convert HTML to plain text, removing scripts, styles, and tags"""
+    # Remove style tags with their contents
+    text = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.IGNORECASE | re.DOTALL)
+    # Remove script tags with their contents
+    text = re.sub(r'<script[^>]*>.*?</script>', '', text, flags=re.IGNORECASE | re.DOTALL)
+    # Remove HTML comments
+    text = re.sub(r'<!--.*?-->', '', text, flags=re.DOTALL)
+    # Remove all remaining tags
+    text = re.sub(r'<[^>]+>', '', text)
+    # Decode common HTML entities
+    text = text.replace('&nbsp;', ' ').replace('&amp;', '&')
+    text = text.replace('&lt;', '<').replace('&gt;', '>')
+    text = text.replace('&quot;', '"').replace('&#39;', "'")
+    # Normalize whitespace
+    text = re.sub(r'\s+', ' ', text)
+    return text.strip()
+
+
 def extract_text_from_payload(payload: dict) -> str:
     """
     Extract plain text content from a Gmail message payload
@@ -43,35 +62,46 @@ def extract_text_from_payload(payload: dict) -> str:
             return base64.urlsafe_b64decode(data).decode('utf-8', errors='replace')
         return ''
 
-    # Multipart message - look for text/plain part
+    # Simple HTML message - convert to text
+    if mime_type == 'text/html':
+        body = payload.get('body', {})
+        data = body.get('data', '')
+        if data:
+            html = base64.urlsafe_b64decode(data).decode('utf-8', errors='replace')
+            return strip_html_to_text(html)
+        return ''
+
+    # Multipart message - look for text/plain first, fall back to text/html
     if mime_type.startswith('multipart/'):
         parts = payload.get('parts', [])
+        html_content = None
+
         for part in parts:
             part_type = part.get('mimeType', '')
 
-            # Found plain text
+            # Found plain text - prefer this
             if part_type == 'text/plain':
                 body = part.get('body', {})
                 data = body.get('data', '')
                 if data:
                     return base64.urlsafe_b64decode(data).decode('utf-8', errors='replace')
 
+            # Remember HTML as fallback
+            if part_type == 'text/html':
+                body = part.get('body', {})
+                data = body.get('data', '')
+                if data:
+                    html_content = base64.urlsafe_b64decode(data).decode('utf-8', errors='replace')
+
             # Nested multipart - recurse
             if part_type.startswith('multipart/'):
                 text = extract_text_from_payload(part)
-                if text:
+                if text and text != '(no text content)':
                     return text
 
-    # Fallback: try to get HTML and strip tags (basic)
-    if mime_type == 'text/html':
-        body = payload.get('body', {})
-        data = body.get('data', '')
-        if data:
-            html = base64.urlsafe_b64decode(data).decode('utf-8', errors='replace')
-            # Very basic tag stripping
-            text = re.sub(r'<[^>]+>', '', html)
-            text = re.sub(r'\s+', ' ', text)
-            return text.strip()
+        # No plain text found, use HTML fallback
+        if html_content:
+            return strip_html_to_text(html_content)
 
     return '(no text content)'
 
