@@ -260,22 +260,36 @@ def create_service_command(service_name: str):
             return
 
         # Parse params: "userId=me" "q=is:unread" → {"userId": "me", "q": "is:unread"}
+        # Or for plugins: '[{...}, {...}]' → list of dicts (JSON array)
         param_dict = {}
-        for p in params:
-            if '=' in p:
-                k, v = p.split('=', 1)
-                # Try to parse as JSON for complex values
-                try:
-                    v = json.loads(v)
-                except (json.JSONDecodeError, ValueError):
-                    pass
-                param_dict[k] = v
+        plugin_json_input = None
+
+        # Check if first param is a JSON array/object (for plugins)
+        if params and params[0].startswith(('[', '{')):
+            try:
+                plugin_json_input = json.loads(params[0])
+            except json.JSONDecodeError:
+                pass
+
+        # Otherwise parse as key=value pairs
+        if plugin_json_input is None:
+            for p in params:
+                if '=' in p:
+                    k, v = p.split('=', 1)
+                    # Try to parse as JSON for complex values
+                    try:
+                        v = json.loads(v)
+                    except (json.JSONDecodeError, ValueError):
+                        pass
+                    param_dict[k] = v
 
         # Check if method is a plugin action
         plugin = get_plugin(svc_name, method)
         if plugin:
             try:
-                result = run_plugin(svc_name, method, param_dict)
+                # Use JSON input if provided, otherwise use param_dict
+                plugin_args = plugin_json_input if plugin_json_input is not None else param_dict
+                result = run_plugin(svc_name, method, plugin_args)
                 click.echo(json.dumps(result, indent=2, ensure_ascii=False))
             except ValueError as e:
                 click.echo(f"Error: {e}", err=True)
