@@ -13,8 +13,9 @@
 #       optional_args: List of optional argument names with defaults
 #
 # Usage:
-#   Single: api google gmail forward '{"id": "xxx", "to": "email@example.com"}'
-#   Batch:  api google gmail forward '[{"id": "xxx", "to": "a@b.com"}, {"id": "yyy", "to": "c@d.com"}]'
+#   api google gmail forward '[{"id": "xxx", "to": "a@b.com"}, {"id": "yyy", "to": "c@d.com"}]'
+#   api google gmail reply '[{"id": "xxx", "body": "Thanks!"}]'
+#   api google gmail send '[{"to": "a@b.com", "subject": "Hi", "body": "Hello"}]'
 #
 
 gmail:

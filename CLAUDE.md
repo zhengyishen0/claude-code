@@ -151,26 +151,17 @@ api google sheets spreadsheets.get spreadsheetId=<id>
 
 ### gmail plugins
 
-Custom actions for Gmail (supports batch via JSON array):
+Custom actions for Gmail (parallel batch operations):
 
 ```bash
-# Forward email(s)
-api google gmail forward '{"id": "msg_id", "to": "a@b.com", "cc": "c@d.com", "note": "FYI"}'
+# Forward
+api google gmail forward '[{"id": "x", "to": "a@b.com", "cc": "c@d.com", "note": "FYI"}]'
 
-# Batch forward (parallel)
-api google gmail forward '[{"id": "x", "to": "a@b.com"}, {"id": "y", "to": "c@d.com"}]'
+# Reply
+api google gmail reply '[{"id": "x", "body": "Thanks!", "reply_all": true}]'
 
-# Reply to email(s)
-api google gmail reply '{"id": "msg_id", "body": "Thanks!", "reply_all": true}'
-
-# Batch reply (parallel)
-api google gmail reply '[{"id": "x", "body": "Got it"}, {"id": "y", "body": "Thanks"}]'
-
-# Send new email(s)
-api google gmail send '{"to": "a@b.com", "subject": "Hello", "body": "Message here"}'
-
-# Batch send (parallel)
-api google gmail send '[{"to": "a@b.com", "subject": "Hi", "body": "Msg 1"}, {"to": "c@d.com", "subject": "Hey", "body": "Msg 2"}]'
+# Send
+api google gmail send '[{"to": "a@b.com", "subject": "Hello", "body": "Message here"}]'
 ```
 
 | Command | Required | Optional |
