@@ -89,9 +89,9 @@ All critical issues in cli.js have been fixed:
 - Signal handlers clean up on Ctrl+C
 - Hash-based port assignment avoids conflicts
 
-## Files Analyzed
+## Files
 
-- `browser/run.sh` - Bash implementation (2072 lines) - **DEPRECATED**
-- `browser/cli.js` - Node.js implementation (1460 lines) - **RECOMMENDED**
-- `browser/cdp-cli.js` - CDP interface (407 lines)
-- `browser/README.md` - Documentation (749 lines)
+- `browser/cli.js` - Node.js implementation (production)
+- `browser/README.md` - Documentation
+
+Note: The deprecated bash implementation (`run.sh`, `cdp-cli.js`, `py/`) was removed 2026-01-31.
