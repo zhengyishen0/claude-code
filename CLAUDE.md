@@ -2,119 +2,98 @@
 
 Toolkit for browser automation, knowledge persistence, and API access.
 
-## Quick Decision Guide
+## Where Does Information Live?
 
-| Need to... | Use |
-|------------|-----|
-| Make any code changes | `worktree create` first (main is protected) |
-| Automate a website / fill forms / click buttons | `browser` |
-| See what's on screen (any app) | `screenshot` |
-| Recall how something was done before | `memory search` |
-| Call external APIs (Google, etc.) | `api` (service) |
+| Looking for... | Use | Examples |
+|----------------|-----|----------|
+| Past events, "what did I do", appointments | `api google calendar` | "last summer", "dentist", "meetings" |
+| Emails, notifications, order status, replies | `api google gmail` | "shipping update", "job reply", "cord blood status" |
+| Files in cloud storage | `api google drive` | "project folder", "shared docs" |
+| Spreadsheet data | `api google sheets` | "Q4 budget", "expense report" |
+| Facts from past coding sessions | `memory search` | "laptop spec", "API key", "port number" |
+| How/why we did something (needs thinking) | `memory --recall` | "OAuth approach", "how we solved X", "progress on Y" |
+| What's on screen right now (any app) | `screenshot` | "Figma design", "terminal output", "Slack message" |
+| Interact with websites | `browser` | "buy VPS", "sign up", "book flight", "upload to TestFlight" |
+| Change code | `worktree` first | "fix bug", "add feature", "refactor" |
+
+## Quick Rules
+
+1. **"What did I do..."** → Calendar (events), not memory
+2. **"Updates on..." / "Status of..."** → Gmail (notifications come via email)
+3. **"What was the [fact]"** → `memory search` (lookup)
+4. **"How did we..." / "Progress on..."** → `memory --recall` (synthesis)
+5. **Code changes** → `worktree create` first, always
 
 ## Workflow
 
-**Always use worktrees** — main branch is protected to prevent accidents.
+Main branch is protected. Use worktrees:
 
 ```bash
 worktree create feature-name     # Before ANY file changes
-# ... work using absolute paths to worktree ...
-worktree merge feature-name      # When done: merge, archive, cleanup
-worktree abandon feature-name    # If you want to discard instead
+worktree merge feature-name      # When done
+worktree abandon feature-name    # To discard
 ```
-
-Keep clean: temp files in `tmp/`, stage changes promptly, commit at checkpoints.
 
 ## Tools
 
-Run any tool without arguments for help.
-
----
-
 ### worktree — Git isolation
-
-**When:** Always, before making any code changes.
-
-**Why:** Protects main branch. Each feature gets isolated workspace. Easy to abandon failed experiments.
-
 ```bash
-worktree                        # List all worktrees
 worktree create <name>          # Create branch + worktree
-worktree merge <name>           # Merge to main, archive, delete branch
-worktree abandon <name>         # Archive without merging
+worktree merge <name>           # Merge to main, cleanup
+worktree abandon <name>         # Discard without merging
 ```
-
----
 
 ### browser — Web automation
-
-**When:** Interacting with websites — login, form filling, clicking, scraping, testing.
-
-**Why browser vs screenshot:** Browser *controls* the page (clicks, inputs). Screenshot only *sees* native apps.
-
-**Key insight:** URL params are 10x faster than form filling. Check `browser inspect` first.
+**When:** Websites — login, forms, clicking, purchasing, uploading.
 
 ```bash
-browser open <url>              # Navigate and discover page structure
-browser click <selector|x,y>    # Click by CSS selector or coordinates
-browser input <selector> <val>  # Fill input (React-aware, triggers state)
-browser snapshot [--full]       # See page state + diff from last snapshot
-browser screenshot              # Capture for vision analysis
-browser sendkey <key>           # esc, enter, tab, arrows
-browser inspect                 # Discover URL params and form fields
+browser open <url>              # Navigate
+browser click <selector|x,y>    # Click
+browser input <selector> <val>  # Fill input
+browser snapshot                # See page state
 ```
-
-Options: `--account SERVICE[:USER]` (inject Chrome cookies), `--debug` (headed mode)
-
----
 
 ### screenshot — Native app capture
-
-**When:** Need to see what's on screen in *any* macOS app (not just browser).
-
-**Why screenshot vs browser screenshot:** This captures *any window* (Finder, Slack, VSCode). Browser screenshot only captures the automated browser.
+**When:** See any macOS app window (Terminal, Figma, Slack, Finder).
 
 ```bash
-screenshot                    # List available windows
-screenshot <app-name>         # Capture by app (fuzzy match)
-screenshot <window-id>        # Capture specific window
+screenshot <app-name>           # Capture by app name
 ```
-
----
 
 ### memory — Past session knowledge
 
-**When:** Stuck on a problem, or need to recall how something was done before.
-
-**Why:** Your past sessions contain solutions. Search before reinventing.
-
+**`memory search`** — Find specific facts (names, specs, numbers, configs)
 ```bash
-memory search "error handling api"           # Find relevant sessions
-memory search "oauth" --recall "how did we handle refresh tokens?"
-memory recall <session-id> "summarize the approach"
+memory search "asus laptop spec"
+memory search "wechat database path"
 ```
 
----
+**`memory --recall`** — Synthesize/analyze (how, why, progress, approach)
+```bash
+memory search "oauth" --recall "what approach did we use?"
+memory search "wechat" --recall "how far did we get?"
+```
 
-### api (service) — Google APIs
-
-**When:** Need to interact with Google services (Gmail, Calendar, Drive, Sheets, etc.).
-
-**Why api vs browser:** Direct API calls are faster, more reliable, and don't require UI navigation.
+### api — Google APIs
+**When:** Personal data in Google (calendar, email, drive, sheets).
 
 ```bash
-api google admin                              # First-time setup
-api google auth                               # Login
-api google gmail users.messages.list userId=me
+# Calendar - events, schedule, appointments, "what did I do"
 api google calendar events.list calendarId=primary
+
+# Gmail - emails, order updates, replies, notifications
+api google gmail users.messages.list userId=me q="subject:shipping"
+
+# Drive - cloud files
 api google drive files.list q="name contains 'report'"
+
+# Sheets - spreadsheet data
 api google sheets spreadsheets.get spreadsheetId=<id>
 ```
 
 ## Setup
 
 ```bash
-./setup              # Show status
 ./setup all          # Install everything
 ./setup shell        # Add to ~/.zshrc
 ```
