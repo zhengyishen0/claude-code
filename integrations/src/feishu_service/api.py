@@ -1,5 +1,6 @@
 """Core Feishu API caller - generic interface for all Feishu APIs"""
 
+import json
 from typing import Optional, Any
 import lark_oapi as lark
 
@@ -145,7 +146,11 @@ def call_api(
 
     # Handle response
     if response.success():
-        return response.data or {'success': True}
+        # Parse the actual response from raw.content
+        if response.raw and response.raw.content:
+            data = json.loads(response.raw.content)
+            return data.get('data', {'success': True})
+        return {'success': True}
     else:
         return {
             'error': True,
