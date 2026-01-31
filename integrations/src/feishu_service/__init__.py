@@ -13,6 +13,7 @@ from .auth import (
     CREDENTIALS_PATH,
 )
 from .api import call_api, list_domains, SERVICE_DOMAINS
+from .bot import cli_start as bot_start, cli_status as bot_status, BotError
 
 
 @click.group(invoke_without_command=True)
@@ -262,3 +263,74 @@ def create_domain_command(domain_name: str, domain_info: dict):
 for domain_name, domain_info in SERVICE_DOMAINS.items():
     cmd = create_domain_command(domain_name, domain_info)
     feishu_cli.add_command(cmd)
+
+
+# Bot subcommand group
+@feishu_cli.group('bot')
+def bot():
+    """Feishu Bot listener (WebSocket long connection)
+
+    \b
+    Listen for messages sent to your Feishu bot in real-time.
+
+    \b
+    Prerequisites:
+        1. Run 'service feishu admin' to configure credentials
+        2. Enable 'im:message' event in Feishu Open Platform console
+        3. Configure event subscription (WebSocket mode)
+
+    \b
+    Commands:
+        service feishu bot status   Check bot configuration
+        service feishu bot start    Start listening for messages
+    """
+    pass
+
+
+@bot.command('status')
+def bot_status_cmd():
+    """Check if bot is configured and ready
+
+    \b
+    This checks:
+    - Credentials are configured
+    - App ID and secret are present
+
+    \b
+    Note: To fully verify, you need to enable 'im:message' event
+    in the Feishu Open Platform console under Event Subscriptions.
+    """
+    status_info = bot_status()
+    click.echo(json.dumps(status_info, indent=2))
+
+
+@bot.command('start')
+@click.option('--verbose', '-v', is_flag=True, help='Enable debug logging')
+def bot_start_cmd(verbose):
+    """Start the bot listener (WebSocket long connection)
+
+    \b
+    This starts a WebSocket connection to Feishu and listens for
+    im.message.receive_v1 events (messages sent to your bot).
+
+    \b
+    The connection will:
+    - Auto-reconnect on disconnection
+    - Print received messages to stdout
+    - Keep running until Ctrl+C
+
+    \b
+    Prerequisites:
+        1. Configure credentials: service feishu admin
+        2. In Feishu Open Platform console:
+           - Go to Event Subscriptions
+           - Enable WebSocket mode
+           - Add 'im.message.receive_v1' event
+           - Grant 'im:message' permission
+
+    \b
+    Example:
+        service feishu bot start
+        service feishu bot start --verbose
+    """
+    bot_start(verbose=verbose)
