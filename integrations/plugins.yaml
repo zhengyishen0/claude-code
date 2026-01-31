@@ -1,0 +1,38 @@
+# Plugin Registry
+# ================
+#
+# Register plugins for Google services here.
+# Plugins provide high-level actions that wrap complex API operations.
+#
+# Format:
+#   <service>:
+#     <action>:
+#       description: Short description shown in help
+#       module: Python module path (relative to plugins/)
+#       required_args: List of required argument names
+#       optional_args: List of optional argument names with defaults
+#
+# Usage:
+#   api google gmail forward message_id=xxx to=email@example.com
+#   api google gmail reply message_id=xxx body="Thanks!"
+#
+
+gmail:
+  forward:
+    description: Forward an email to a recipient (attaches original as .eml)
+    module: gmail.forward
+    required_args:
+      - message_id
+      - to
+    optional_args:
+      - cc
+      - note
+
+  reply:
+    description: Reply to an email with proper threading
+    module: gmail.reply
+    required_args:
+      - message_id
+      - body
+    optional_args:
+      - reply_all
