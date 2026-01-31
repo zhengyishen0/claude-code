@@ -15,7 +15,8 @@
 # Usage:
 #   api google gmail forward '[{"id": "xxx", "to": "a@b.com"}, {"id": "yyy", "to": "c@d.com"}]'
 #   api google gmail reply '[{"id": "xxx", "body": "Thanks!"}]'
-#   api google gmail send '[{"to": "a@b.com", "subject": "Hi", "body": "Hello"}]'
+#   api google gmail compose '[{"to": "a@b.com", "subject": "Hi", "body": "Hello"}]'
+#   api google gmail compose '[{"to": "a@b.com", "subject": "Hi", "body": "Hello", "draft": true}]'
 #
 
 gmail:
@@ -38,9 +39,9 @@ gmail:
     optional_args:
       - reply_all
 
-  send:
-    description: Compose and send new email(s)
-    module: gmail.send
+  compose:
+    description: Compose new email(s) - send or save as draft
+    module: gmail.compose
     required_args:
       - to
       - subject
@@ -49,3 +50,4 @@ gmail:
       - cc
       - bcc
       - html
+      - draft

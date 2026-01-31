@@ -167,15 +167,18 @@ api google gmail forward '[{"id": "x", "to": "a@b.com", "cc": "c@d.com", "note":
 # Reply
 api google gmail reply '[{"id": "x", "body": "Thanks!", "reply_all": true}]'
 
-# Send
-api google gmail send '[{"to": "a@b.com", "subject": "Hello", "body": "Message here"}]'
+# Compose (send)
+api google gmail compose '[{"to": "a@b.com", "subject": "Hello", "body": "Message here"}]'
+
+# Compose (draft)
+api google gmail compose '[{"to": "a@b.com", "subject": "Hello", "body": "Message here", "draft": true}]'
 ```
 
 | Command | Required | Optional |
 |---------|----------|----------|
 | `forward` | `id`, `to` | `cc`, `note` |
 | `reply` | `id`, `body` | `reply_all` |
-| `send` | `to`, `subject`, `body` | `cc`, `bcc`, `html` |
+| `compose` | `to`, `subject`, `body` | `cc`, `bcc`, `html`, `draft` |
 
 ## Setup
 

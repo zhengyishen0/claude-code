@@ -1,4 +1,4 @@
-"""Gmail send plugin - Compose and send new emails"""
+"""Gmail compose plugin - Compose new emails (send or save as draft)"""
 
 import base64
 from email.mime.multipart import MIMEMultipart
@@ -9,16 +9,17 @@ from typing import Optional
 from ...api import call_api
 
 
-def send_email(
+def compose_email(
     to_address: str,
     subject: str,
     body: str,
     cc_address: Optional[str] = None,
     bcc_address: Optional[str] = None,
-    html: bool = False
+    html: bool = False,
+    draft: bool = False
 ) -> dict:
     """
-    Compose and send a new email.
+    Compose a new email and send or save as draft.
 
     Args:
         to_address: Recipient email address
@@ -27,9 +28,10 @@ def send_email(
         cc_address: Optional CC address
         bcc_address: Optional BCC address
         html: If True, treat body as HTML
+        draft: If True, save as draft instead of sending
 
     Returns:
-        API response with sent message details
+        API response with message/draft details
     """
     # Get sender's email
     profile = call_api('gmail', 'users.getProfile', {'userId': 'me'})
@@ -65,25 +67,42 @@ def send_email(
     msg['Date'] = formatdate(localtime=True)
     msg['Message-ID'] = make_msgid()
 
-    # Encode and send
+    # Encode
     raw_message = base64.urlsafe_b64encode(msg.as_bytes()).decode('utf-8')
 
-    result = call_api(
-        'gmail',
-        'users.messages.send',
-        {'userId': 'me'},
-        body={'raw': raw_message}
-    )
-
-    return {
-        'status': 'sent',
-        'messageId': result.get('id'),
-        'threadId': result.get('threadId'),
-        'to': to_address,
-        'cc': cc_address,
-        'bcc': bcc_address,
-        'subject': subject
-    }
+    if draft:
+        # Save as draft
+        result = call_api(
+            'gmail',
+            'users.drafts.create',
+            {'userId': 'me'},
+            body={'message': {'raw': raw_message}}
+        )
+        return {
+            'status': 'draft',
+            'draftId': result.get('id'),
+            'messageId': result.get('message', {}).get('id'),
+            'threadId': result.get('message', {}).get('threadId'),
+            'to': to_address,
+            'subject': subject
+        }
+    else:
+        # Send immediately
+        result = call_api(
+            'gmail',
+            'users.messages.send',
+            {'userId': 'me'},
+            body={'raw': raw_message}
+        )
+        return {
+            'status': 'sent',
+            'messageId': result.get('id'),
+            'threadId': result.get('threadId'),
+            'to': to_address,
+            'cc': cc_address,
+            'bcc': bcc_address,
+            'subject': subject
+        }
 
 
 def run(args):
@@ -100,13 +119,17 @@ def run(args):
         html = op.get('html', False)
         if isinstance(html, str):
             html = html.lower() in ('true', '1', 'yes')
-        return send_email(
+        draft = op.get('draft', False)
+        if isinstance(draft, str):
+            draft = draft.lower() in ('true', '1', 'yes')
+        return compose_email(
             to_address=op['to'],
             subject=op['subject'],
             body=op['body'],
             cc_address=op.get('cc'),
             bcc_address=op.get('bcc'),
-            html=html
+            html=html,
+            draft=draft
         )
 
     if len(operations) == 1:
