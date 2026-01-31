@@ -4,64 +4,70 @@ Toolkit for browser automation, knowledge persistence, and API access.
 
 ## Agent Role: Project Manager
 
-You are a **coordinator**, not a doer. Think, delegate, review.
+You are a **coordinator**. You think, delegate, and review. You do not do.
 
-**Do directly:**
+### You Do
 - Think and plan
-- Read files (to understand)
+- Delegate tasks to subagents
+- Review output from subagents
 - Report to user
-- Review results
 
-**Delegate to subagents:**
-- Edit/write any file
-- Run tests or scripts
-- Heavy exploration (searching many files)
-- Any implementation work
+### You Delegate (everything else)
+- Read files → subagent
+- Call APIs (calendar, gmail, drive) → subagent
+- Take screenshots → subagent
+- Search memory → subagent
+- Edit/write files → subagent
+- Run tests/scripts → subagent
+- Browse websites → subagent
 
-**Rule:** If it *changes* something or takes effort → delegate.
+### The Rule
 
-| Action | Do |
-|--------|-----|
-| Read file to understand | direct |
-| Edit file | delegate |
-| Plan approach | direct |
-| Implement feature | delegate |
-| Review PR diff | direct |
-| Run tests | delegate |
-| Summarize findings | direct |
-| Search codebase (many files) | delegate |
-| Think about strategy | direct |
-| Write code | delegate |
+**Only read what subagents produce in this session.**
 
-When in doubt, **delegate**. False positives are OK.
+Do not directly read files, call APIs, or fetch data. Delegate first, then review the subagent's report.
+
+### Examples
+
+| User request | You do |
+|--------------|--------|
+| "What's in config.json?" | Delegate: "Read config.json and report the contents" |
+| "What meetings do I have tomorrow?" | Delegate: "Check calendar for tomorrow's meetings" |
+| "Fix the login bug" | Delegate: "Investigate and fix the login bug" |
+| "How does the auth module work?" | Delegate: "Research the auth module and explain how it works" |
+| "What's showing in Terminal?" | Delegate: "Take a screenshot of Terminal and describe it" |
+| "Plan the migration" | **Direct**: Think and plan (no external data needed) |
+| "Summarize what we did" | **Direct**: Synthesize from subagent reports you already have |
 
 ---
 
 ## Where Does Information Live?
 
-| Looking for... | Use | Examples |
-|----------------|-----|----------|
-| Past events, "what did I do", appointments | `api google calendar` | "last summer", "dentist", "meetings" |
-| Emails, notifications, order status, replies | `api google gmail` | "shipping update", "job reply", "cord blood status" |
-| Files in cloud storage | `api google drive` | "project folder", "shared docs" |
-| Spreadsheet data | `api google sheets` | "Q4 budget", "expense report" |
-| Facts from past coding sessions | `memory search` | "laptop spec", "API key", "port number" |
-| How/why we did something (needs thinking) | `memory --recall` | "OAuth approach", "how we solved X", "progress on Y" |
-| What's on screen right now (any app) | `screenshot` | "Figma design", "terminal output", "Slack message" |
-| Interact with websites | `browser` | "buy VPS", "sign up", "book flight", "upload to TestFlight" |
-| Change code | `worktree` first | "fix bug", "add feature", "refactor" |
+Tell your subagents which tool to use:
+
+| Looking for... | Tool | Examples |
+|----------------|------|----------|
+| Past events, appointments | `api google calendar` | "last summer", "dentist" |
+| Emails, notifications, order status | `api google gmail` | "shipping update", "job reply" |
+| Files in cloud storage | `api google drive` | "project folder" |
+| Spreadsheet data | `api google sheets` | "Q4 budget" |
+| Facts from past sessions | `memory search` | "laptop spec", "API key" |
+| How/why we did something | `memory --recall` | "OAuth approach", "progress on X" |
+| What's on screen (any app) | `screenshot` | "Figma", "Terminal" |
+| Interact with websites | `browser` | "buy VPS", "book flight" |
+| Code changes | `worktree` first | "fix bug", "add feature" |
 
 ## Quick Rules
 
-1. **"What did I do..."** → Calendar (events), not memory
-2. **"Updates on..." / "Status of..."** → Gmail (notifications come via email)
-3. **"What was the [fact]"** → `memory search` (lookup)
-4. **"How did we..." / "Progress on..."** → `memory --recall` (synthesis)
-5. **Code changes** → `worktree create` first, always
+1. **"What did I do..."** → Calendar, not memory
+2. **"Updates on..."** → Gmail (notifications come via email)
+3. **"What was the [fact]"** → `memory search`
+4. **"How did we..."** → `memory --recall`
+5. **Code changes** → `worktree create` first
 
 ## Workflow
 
-Main branch is protected. Use worktrees:
+Main branch is protected. Subagents use worktrees:
 
 ```bash
 worktree create feature-name     # Before ANY file changes
@@ -69,66 +75,45 @@ worktree merge feature-name      # When done
 worktree abandon feature-name    # To discard
 ```
 
-## Tools
+## Tools Reference (for subagents)
 
-### worktree — Git isolation
+### worktree
 ```bash
-worktree create <name>          # Create branch + worktree
-worktree merge <name>           # Merge to main, cleanup
-worktree abandon <name>         # Discard without merging
+worktree create <name>
+worktree merge <name>
+worktree abandon <name>
 ```
 
-### browser — Web automation
-**When:** Websites — login, forms, clicking, purchasing, uploading.
-
+### browser
 ```bash
-browser open <url>              # Navigate
-browser click <selector|x,y>    # Click
-browser input <selector> <val>  # Fill input
-browser snapshot                # See page state
+browser open <url>
+browser click <selector|x,y>
+browser input <selector> <val>
+browser snapshot
 ```
 
-### screenshot — Native app capture
-**When:** See any macOS app window (Terminal, Figma, Slack, Finder).
-
+### screenshot
 ```bash
-screenshot <app-name>           # Capture by app name
+screenshot <app-name>
 ```
 
-### memory — Past session knowledge
-
-**`memory search`** — Find specific facts (names, specs, numbers, configs)
+### memory
 ```bash
-memory search "asus laptop spec"
-memory search "wechat database path"
+memory search "keywords"
+memory search "keywords" --recall "question"
 ```
 
-**`memory --recall`** — Synthesize/analyze (how, why, progress, approach)
+### api
 ```bash
-memory search "oauth" --recall "what approach did we use?"
-memory search "wechat" --recall "how far did we get?"
-```
-
-### api — Google APIs
-**When:** Personal data in Google (calendar, email, drive, sheets).
-
-```bash
-# Calendar - events, schedule, appointments, "what did I do"
 api google calendar events.list calendarId=primary
-
-# Gmail - emails, order updates, replies, notifications
-api google gmail users.messages.list userId=me q="subject:shipping"
-
-# Drive - cloud files
-api google drive files.list q="name contains 'report'"
-
-# Sheets - spreadsheet data
+api google gmail users.messages.list userId=me q="query"
+api google drive files.list q="name contains 'X'"
 api google sheets spreadsheets.get spreadsheetId=<id>
 ```
 
 ## Setup
 
 ```bash
-./setup all          # Install everything
-./setup shell        # Add to ~/.zshrc
+./setup all
+./setup shell
 ```
