@@ -2005,6 +2005,47 @@ function cmdProfile() {
   cmdAccounts(false);
 }
 
+async function cmdPasswords(filterName = null, showAll = false) {
+  const profiles = getAllChromeProfiles();
+
+  for (const profileName of profiles) {
+    const profilePath = path.join(CHROME_APP_DIR, profileName);
+    const logins = getSavedLogins(profilePath);
+
+    let results = Object.entries(logins)
+      .map(([domain, username]) => ({ domain, username }))
+      .sort((a, b) => a.domain.localeCompare(b.domain));
+
+    if (filterName) {
+      const filter = filterName.toLowerCase();
+      results = results.filter(r =>
+        r.domain.toLowerCase().includes(filter) ||
+        r.username.toLowerCase().includes(filter)
+      );
+    }
+
+    console.log(`\nSaved Passwords (Chrome: ${profileName})\n`);
+
+    if (results.length === 0) {
+      console.log('  No saved passwords found.\n');
+      continue;
+    }
+
+    const limit = showAll ? results.length : 50;
+    const displayList = results.slice(0, limit);
+    const maxDomain = Math.min(30, Math.max(...displayList.map(r => r.domain.length)));
+
+    for (const { domain, username } of displayList) {
+      console.log(`  ${domain.padEnd(maxDomain)}  ${username}`);
+    }
+    console.log();
+
+    if (!showAll && results.length > 50) {
+      console.log(`Showing 50 of ${results.length}. Use --all for complete list.\n`);
+    }
+  }
+}
+
 // Capitalize first letter
 function capitalize(str) {
   if (!str) return str;
@@ -2348,6 +2389,12 @@ async function main() {
         const showAll = restArgs.includes('--all');
         const filterTerm = restArgs.find(arg => arg && !arg.startsWith('--'));
         cmdAccounts(showAll, filterTerm);
+        break;
+      }
+      case 'passwords': {
+        const showAll = restArgs.includes('--all');
+        const filterName = restArgs.find(arg => arg && !arg.startsWith('--'));
+        await cmdPasswords(filterName, showAll);
         break;
       }
       case 'profile':
