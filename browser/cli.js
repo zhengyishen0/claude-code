@@ -2446,36 +2446,22 @@ OPTIONS:
   --debug                   Use headed browser (visible window)
 
 COMMANDS:
-
-  Navigation:
-    open URL              Navigate to URL and show page state
-    snapshot [--full]     Show page state (smart diff by default)
-    selector              List all interactive elements with CSS selectors
-    inspect               Discover URL parameters from page
-
-  Interaction:
-    click SELECTOR        Click element by CSS selector or text
-    click X Y             Click at coordinates
-    input SELECTOR VALUE  Set input value
-    hover SELECTOR        Hover element
-    hover X Y             Hover at coordinates
-    drag SRC TARGET       Drag element to element
-    drag X1 Y1 X2 Y2      Drag coordinates
-    sendkey KEY           Send keyboard input (esc, enter, tab, etc.)
-
-  Management:
-    tabs                  List open tabs
-    wait [SELECTOR]       Wait for DOM stability or element
-    execute JS            Execute JavaScript code
-    screenshot            Capture page screenshot
-    close                 Close browser instance
-
-  Accounts:
-    account [--all]       List all logged-in accounts from Chrome (auto-discovery)
-    password [FILTER]     List saved passwords from Chrome
-
-  Options:
-    --index N             Select Nth match when multiple elements found
+  open URL                Open URL
+  click SELECTOR          Click element (--index N for Nth match)
+  input SELECTOR VALUE    Type into field
+  sendkey KEY             Send key (enter, esc, tab, arrows)
+  snapshot                Page accessibility tree
+  selector                List clickable elements with CSS selectors
+  account                 Saved accounts
+  password                Saved passwords
+  execute JS              Run JS in page (last resort)
+#   hover SELECTOR        Hover element
+#   drag SRC TARGET       Drag element
+#   tabs                  List open tabs
+#   wait [SELECTOR]       Wait for element
+#   screenshot            Capture screenshot
+#   close                 Close browser
+#   inspect               Discover URL parameters
 
 EXAMPLES:
   browser open "https://google.com"

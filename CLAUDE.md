@@ -124,11 +124,18 @@ worktree abandon <name>
 
 ### browser
 ```bash
-browser open <url>
-browser click <selector|x,y>
-browser input <selector> <val>
-browser snapshot
+browser open <url>                    # Open URL
+browser click <selector> (--index N)  # Click element
+browser input <selector> <value>      # Type into field
+browser sendkey <key>                 # Send key (enter, esc, tab, arrows)
+browser snapshot                      # Page accessibility tree
+browser selector                      # List clickable elements with CSS selectors
+browser account                       # Saved accounts
+browser password                      # Saved passwords
+browser execute <js>                  # Run JS in page (last resort)
 ```
+
+**Rules:** Use CSS selectors only. Run `selector` before clicking to find valid targets.
 
 ### screenshot
 ```bash
