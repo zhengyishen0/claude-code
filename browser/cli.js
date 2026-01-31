@@ -1527,6 +1527,9 @@ function discoverAllAccounts(profilePath, chromeKey, showAll = false) {
     }
   }
 
+  // Get saved logins from Login Data database (for account name lookup)
+  const savedLogins = getSavedLogins(profilePath);
+
   // Chrome time epoch
   const CHROME_EPOCH_OFFSET = 11644473600000000n;
   const nowChrome = BigInt(Date.now()) * 1000n + CHROME_EPOCH_OFFSET;
@@ -1640,13 +1643,18 @@ function discoverAllAccounts(profilePath, chromeKey, showAll = false) {
     // Check if logged in (auth score > 5 indicates likely logged in)
     const isLoggedIn = info.authScore >= 5 && info.cookies.some(c => !c.expired && c.score > 0);
 
-    // Try to extract account name
+    // Try to extract account name from cookies first
     let accountName = null;
     for (const cookie of info.cookies.sort((a, b) => b.score - a.score)) {
       if (cookie.score > 0 && cookie.value) {
         accountName = extractAccountName(service, cookie.name, cookie.value, profilePath);
         if (accountName) break;
       }
+    }
+
+    // Fallback: look up account name from saved logins (Login Data)
+    if (!accountName && savedLogins[registrable]) {
+      accountName = savedLogins[registrable];
     }
 
     const secondsAgo = Number((nowChrome - info.lastAccess) / 1000000n);
@@ -2007,6 +2015,83 @@ function cmdProfile() {
 function capitalize(str) {
   if (!str) return str;
   return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+// ============================================================================
+// Chrome Login Data - Saved Usernames/Passwords
+// ============================================================================
+
+/**
+ * Get saved logins from Chrome's Login Data database.
+ * Returns a map of registrable domain -> username/email
+ *
+ * @param {string} profilePath - Path to Chrome profile directory
+ * @returns {Object} Map of domain -> username (e.g., { 'github.com': 'myuser' })
+ */
+function getSavedLogins(profilePath) {
+  const loginDataDb = path.join(profilePath, 'Login Data');
+  if (!fs.existsSync(loginDataDb)) return {};
+
+  // Chrome locks the database, so we need to copy it first
+  const tempDb = `/tmp/login_data_copy_${process.pid}.db`;
+
+  try {
+    execSync(`cp "${loginDataDb}" "${tempDb}"`, { stdio: 'pipe' });
+  } catch (err) {
+    return {};
+  }
+
+  // Query for saved logins (we don't need passwords, just usernames)
+  const query = `SELECT origin_url, username_value FROM logins WHERE username_value <> '' ORDER BY date_last_used DESC`;
+
+  let result;
+  try {
+    result = execSync(`sqlite3 -separator '|' "${tempDb}" "${query}"`, {
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      maxBuffer: 10 * 1024 * 1024
+    });
+  } catch (err) {
+    try { fs.unlinkSync(tempDb); } catch {}
+    return {};
+  }
+
+  // Clean up temp file
+  try { fs.unlinkSync(tempDb); } catch {}
+
+  // Parse results and build domain -> username map
+  // Keep most recently used username for each domain
+  const domainLogins = {};
+
+  for (const line of result.trim().split('\n')) {
+    if (!line) continue;
+    const pipeIdx = line.indexOf('|');
+    if (pipeIdx === -1) continue;
+
+    const originUrl = line.substring(0, pipeIdx);
+    const username = line.substring(pipeIdx + 1);
+
+    if (!username) continue;
+
+    // Extract domain from origin_url
+    let domain;
+    try {
+      const url = new URL(originUrl);
+      domain = url.hostname.replace(/^www\./, '');
+    } catch {
+      continue;
+    }
+
+    // Get registrable domain (e.g., 'accounts.google.com' -> 'google.com')
+    const registrable = getRegistrableDomain(domain);
+
+    // Only keep first (most recent) username per domain
+    if (!domainLogins[registrable]) {
+      domainLogins[registrable] = username;
+    }
+  }
+
+  return domainLogins;
 }
 
 // ============================================================================
