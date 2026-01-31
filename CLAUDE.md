@@ -1,6 +1,6 @@
 # Claude Code
 
-Agent orchestration framework with browser automation, knowledge persistence, and background agents.
+Toolkit for browser automation, knowledge persistence, and API access.
 
 ## Quick Decision Guide
 
@@ -11,8 +11,6 @@ Agent orchestration framework with browser automation, knowledge persistence, an
 | See what's on screen (any app) | `screenshot` |
 | Recall how something was done before | `memory search` |
 | Call external APIs (Google, etc.) | `api` (service) |
-| Run background agents | `world spawn` |
-| Manage persistent services | `daemon` |
 
 ## Workflow
 
@@ -30,6 +28,21 @@ Keep clean: temp files in `tmp/`, stage changes promptly, commit at checkpoints.
 ## Tools
 
 Run any tool without arguments for help.
+
+---
+
+### worktree — Git isolation
+
+**When:** Always, before making any code changes.
+
+**Why:** Protects main branch. Each feature gets isolated workspace. Easy to abandon failed experiments.
+
+```bash
+worktree                        # List all worktrees
+worktree create <name>          # Create branch + worktree
+worktree merge <name>           # Merge to main, archive, delete branch
+worktree abandon <name>         # Archive without merging
+```
 
 ---
 
@@ -83,9 +96,9 @@ memory recall <session-id> "summarize the approach"
 
 ---
 
-### api (service) — External APIs
+### api (service) — Google APIs
 
-**When:** Need to interact with Google (Gmail, Calendar, Drive), or other services.
+**When:** Need to interact with Google services (Gmail, Calendar, Drive, Sheets, etc.).
 
 **Why api vs browser:** Direct API calls are faster, more reliable, and don't require UI navigation.
 
@@ -95,49 +108,7 @@ api google auth                               # Login
 api google gmail users.messages.list userId=me
 api google calendar events.list calendarId=primary
 api google drive files.list q="name contains 'report'"
-```
-
----
-
-### world — Background agents and event log
-
-**When:** Running agents in parallel, or tracking system events.
-
-**Why:** Spawn agents in isolated worktrees, monitor progress via event log.
-
-```bash
-world                           # Recent events
-world ps                        # Running agents
-world spawn <task-id>           # Start agent in its own worktree
-world record <type> <msg>       # Log an event
-```
-
----
-
-### worktree — Git isolation
-
-**When:** Always, before making any code changes.
-
-**Why:** Protects main branch. Each feature gets isolated workspace. Easy to abandon failed experiments.
-
-```bash
-worktree                        # List all worktrees
-worktree create <name>          # Create branch + worktree
-worktree merge <name>           # Merge to main, archive, delete branch
-worktree abandon <name>         # Archive without merging
-```
-
----
-
-### daemon — Background services
-
-**When:** Need persistent processes (watchers, pollers) that survive terminal close.
-
-```bash
-daemon list                     # Available daemons
-daemon <name> install           # Install and start
-daemon <name> status            # Check if running
-daemon <name> log               # View logs
+api google sheets spreadsheets.get spreadsheetId=<id>
 ```
 
 ## Setup
@@ -147,9 +118,3 @@ daemon <name> log               # View logs
 ./setup all          # Install everything
 ./setup shell        # Add to ~/.zshrc
 ```
-
-## Architecture
-
-- **world.log** — Append-only event log (source of truth)
-- **~/.worktrees/** — Isolated feature worktrees
-- **~/.claude/memory-index.tsv** — Session search index
