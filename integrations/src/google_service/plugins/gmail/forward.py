@@ -185,11 +185,27 @@ To: {original_to}
     }
 
 
-def run(args: dict) -> dict:
-    """Plugin entry point"""
-    return forward_email(
-        message_id=args['message_id'],
-        to_address=args['to'],
-        cc_address=args.get('cc'),
-        forward_note=args.get('note')
-    )
+def run(args):
+    """Plugin entry point - accepts single op or list of ops"""
+    from concurrent.futures import ThreadPoolExecutor
+
+    # Handle both single dict and list of dicts
+    if isinstance(args, dict):
+        operations = [args]
+    else:
+        operations = args
+
+    def process_one(op):
+        return forward_email(
+            message_id=op['id'],
+            to_address=op['to'],
+            cc_address=op.get('cc'),
+            forward_note=op.get('note')
+        )
+
+    if len(operations) == 1:
+        return process_one(operations[0])
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        results = list(executor.map(process_one, operations))
+    return results

@@ -224,15 +224,29 @@ On {original_date}, {original_from} wrote:
     }
 
 
-def run(args: dict) -> dict:
-    """Plugin entry point"""
-    # Parse reply_all as boolean if it's a string
-    reply_all = args.get('reply_all', False)
-    if isinstance(reply_all, str):
-        reply_all = reply_all.lower() in ('true', '1', 'yes')
+def run(args):
+    """Plugin entry point - accepts single op or list of ops"""
+    from concurrent.futures import ThreadPoolExecutor
 
-    return reply_email(
-        message_id=args['message_id'],
-        reply_body=args['body'],
-        reply_all=reply_all
-    )
+    # Handle both single dict and list of dicts
+    if isinstance(args, dict):
+        operations = [args]
+    else:
+        operations = args
+
+    def process_one(op):
+        reply_all = op.get('reply_all', False)
+        if isinstance(reply_all, str):
+            reply_all = reply_all.lower() in ('true', '1', 'yes')
+        return reply_email(
+            message_id=op['id'],
+            reply_body=op['body'],
+            reply_all=reply_all
+        )
+
+    if len(operations) == 1:
+        return process_one(operations[0])
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        results = list(executor.map(process_one, operations))
+    return results
