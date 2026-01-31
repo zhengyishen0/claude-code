@@ -2450,7 +2450,7 @@ COMMANDS:
   Navigation:
     open URL              Navigate to URL and show page state
     snapshot [--full]     Show page state (smart diff by default)
-    snapshot --selectors  List all interactive elements with CSS selectors
+    selector              List all interactive elements with CSS selectors
     inspect               Discover URL parameters from page
 
   Interaction:
@@ -2471,8 +2471,8 @@ COMMANDS:
     close                 Close browser instance
 
   Accounts:
-    accounts [--all]      List all logged-in accounts from Chrome (auto-discovery)
-    profile               Alias for 'accounts' (backward compatible)
+    account [--all]       List all logged-in accounts from Chrome (auto-discovery)
+    password [FILTER]     List saved passwords from Chrome
 
   Options:
     --index N             Select Nth match when multiple elements found
@@ -2551,11 +2551,10 @@ async function main() {
         await cmdOpen(restArgs[0]);
         break;
       case 'snapshot':
-        if (restArgs.includes('--selectors')) {
-          await cmdSnapshotSelectors();
-        } else {
-          await cmdSnapshot(restArgs.includes('--full'));
-        }
+        await cmdSnapshot(restArgs.includes('--full'));
+        break;
+      case 'selector':
+        await cmdSnapshotSelectors();
         break;
       case 'inspect':
         await cmdInspect();
@@ -2590,13 +2589,13 @@ async function main() {
       case 'close':
         await cmdClose();
         break;
-      case 'accounts': {
+      case 'account': {
         const showAll = restArgs.includes('--all');
         const filterTerm = restArgs.find(arg => arg && !arg.startsWith('--'));
         cmdAccounts(showAll, filterTerm);
         break;
       }
-      case 'passwords': {
+      case 'password': {
         const showAll = restArgs.includes('--all');
         const filterName = restArgs.find(arg => arg && !arg.startsWith('--'));
         await cmdPasswords(filterName, showAll);
