@@ -58,14 +58,14 @@ def list_plugins(service: str) -> list:
     ]
 
 
-def run_plugin(service: str, action: str, args: dict) -> dict:
+def run_plugin(service: str, action: str, args):
     """
     Run a plugin action.
 
     Args:
         service: Service name (e.g., 'gmail')
         action: Action name (e.g., 'forward')
-        args: Arguments to pass to the plugin
+        args: Arguments - dict for single op, list of dicts for batch
 
     Returns:
         Result from the plugin's run() function
@@ -80,9 +80,14 @@ def run_plugin(service: str, action: str, args: dict) -> dict:
 
     # Validate required args
     required = plugin.get('required_args', [])
-    missing = [arg for arg in required if arg not in args]
-    if missing:
-        raise ValueError(f"Missing required arguments: {', '.join(missing)}")
+
+    # Handle both single dict and list of dicts
+    items_to_validate = args if isinstance(args, list) else [args]
+    for i, item in enumerate(items_to_validate):
+        missing = [arg for arg in required if arg not in item]
+        if missing:
+            prefix = f"Item {i}: " if isinstance(args, list) else ""
+            raise ValueError(f"{prefix}Missing required arguments: {', '.join(missing)}")
 
     # Import and run the plugin module
     module_path = plugin['module']
