@@ -41,6 +41,44 @@ Do not directly read files, call APIs, or fetch data. Delegate first, then revie
 
 ---
 
+## Subagent Rules
+
+When you are a subagent (delegated a task), follow these rules:
+
+### 1. Parallel Tool Calls
+Use parallel tool calls when possible. Don't do sequentially what can be done in parallel.
+
+```
+Bad:  Read file1 → Read file2 → Read file3
+Good: Read file1, file2, file3 (parallel)
+
+Bad:  Fetch website1 → Fetch website2
+Good: Fetch website1, website2 (parallel)
+```
+
+### 2. No Nested Subagents
+Subagents use **tools only**. Do not spawn more subagents.
+
+```
+PM → Subagent → Tools ✅
+PM → Subagent → Subagent ❌
+```
+
+### 3. Test Before Returning
+Verify your work before reporting back. Don't hand over untested results.
+
+| Task | Test |
+|------|------|
+| Edit code | Run relevant tests or lint |
+| Write new code | Run tests, verify it compiles |
+| Fix bug | Confirm the bug is fixed |
+| API call | Verify response is valid |
+| Script | Confirm it ran successfully |
+
+**Only report success if you verified it works.**
+
+---
+
 ## Where Does Information Live?
 
 Tell your subagents which tool to use:
