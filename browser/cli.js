@@ -43,6 +43,9 @@ let SESSION_PATH = '';
 let DEBUG_MODE = false;      // Headed browser (visible window)
 let KEYLESS_MODE = false;    // Use profile copy instead of cookie injection
 
+// Claude session ID for port assignment (one browser per Claude session)
+const CLAUDE_SESSION_ID = process.env.CLAUDE_SESSION_ID || 'default';
+
 // Ensure directories exist
 fs.mkdirSync(DATA_DIR, { recursive: true });
 fs.mkdirSync(SESSIONS_DIR, { recursive: true });
@@ -159,7 +162,8 @@ function isSessionInUse(session) {
 
   if (!entry) return null;
 
-  const [, port, pid, startTime] = entry.split(':');
+  // Format: session:port:pid:startTime:mode
+  const [, port, pid, startTime, mode] = entry.split(':');
 
   // Verify process is still running
   if (!isProcessRunning(parseInt(pid, 10))) {
@@ -174,7 +178,12 @@ function isSessionInUse(session) {
     return null;
   }
 
-  return { port: parseInt(port, 10), pid: parseInt(pid, 10), startTime: parseInt(startTime, 10) };
+  return {
+    port: parseInt(port, 10),
+    pid: parseInt(pid, 10),
+    startTime: parseInt(startTime, 10),
+    mode: mode || 'headless'  // Default to headless for old entries
+  };
 }
 
 function assignPortForSession(session) {
@@ -334,14 +343,30 @@ async function ensureChromeRunning() {
     console.log(`Cleaned up ${staleEntries.length} stale session(s): ${staleEntries.map(e => e.session).join(', ')}`);
   }
 
-  // Determine session name for port assignment
-  const sessionName = ACCOUNT || 'default';
+  // Use Claude session ID for port assignment (one browser per Claude session)
+  const sessionName = CLAUDE_SESSION_ID;
   const preferredPort = getSessionPort(sessionName);
 
   // Check if session already has a registered port (and browser is still running)
   const existingSession = isSessionInUse(sessionName);
   if (existingSession) {
     CDP_PORT = existingSession.port;
+
+    // Check if Chrome is already running on our port
+    if (await cdpIsRunning()) {
+      // Mode is sticky - only change if --debug is explicitly passed AND different
+      const isHeadless = await cdpIsHeadless();
+
+      if (DEBUG_MODE && isHeadless) {
+        // User explicitly wants headed but we have headless - restart Chrome
+        console.log('Restarting Chrome in headed mode...');
+        await closeChromeInstance();
+        await new Promise(r => setTimeout(r, 1000));
+      } else {
+        // Keep existing mode (sticky) - don't restart for missing --debug
+        return true;
+      }
+    }
   } else {
     // Check if preferred port is owned by a different session (collision)
     const portOwner = getPortOwner(preferredPort);
@@ -357,29 +382,6 @@ async function ensureChromeRunning() {
       }
     } else {
       CDP_PORT = preferredPort;
-    }
-    // Note: Registry is updated after Chrome starts (with Chrome's PID)
-  }
-
-  // Check if Chrome is already running on our port
-  if (await cdpIsRunning()) {
-    // Check if mode matches (headless vs headed)
-    const isHeadless = await cdpIsHeadless();
-    const wantHeadless = !DEBUG_MODE;  // Headless unless --debug
-
-    if (DEBUG_MODE && isHeadless) {
-      // User wants headed but we have headless - restart Chrome
-      console.log('Restarting Chrome in headed mode...');
-      await closeChromeInstance();
-      await new Promise(r => setTimeout(r, 1000));
-    } else if (wantHeadless && !isHeadless) {
-      // User wants headless but we have headed - restart Chrome
-      console.log('Restarting Chrome in headless mode...');
-      await closeChromeInstance();
-      await new Promise(r => setTimeout(r, 1000));
-    } else {
-      // Mode matches, use existing instance
-      return true;
     }
   }
 
@@ -437,12 +439,14 @@ async function ensureChromeRunning() {
     process.exit(1);
   }
 
-  // Register session with Chrome's PID (not node's process.pid)
-  const registrySession = ACCOUNT || 'default';
+  // Register session with Chrome's PID and mode
+  const registrySession = CLAUDE_SESSION_ID;
   const startTime = Math.floor(Date.now() / 1000);
+  const mode = DEBUG_MODE ? 'headed' : 'headless';
   // Remove any existing entry for this session first
   releaseSession(registrySession);
-  fs.appendFileSync(PORT_REGISTRY, `${registrySession}:${CDP_PORT}:${chrome.pid}:${startTime}\n`);
+  // Format: session:port:pid:startTime:mode
+  fs.appendFileSync(PORT_REGISTRY, `${registrySession}:${CDP_PORT}:${chrome.pid}:${startTime}:${mode}\n`);
 
   return true;
 }

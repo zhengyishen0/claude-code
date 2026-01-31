@@ -10,6 +10,10 @@
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/claude/log-agent-start.sh"
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/claude/browser-cleanup.sh"
           }
         ]
       }
