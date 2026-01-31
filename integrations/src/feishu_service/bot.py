@@ -17,6 +17,10 @@ Usage:
 
     handler = create_event_handler(my_handler)
     start_bot(event_handler=handler)
+
+    # With CC integration (auto-responds via Claude Code)
+    from feishu_service.bot import start_bot_with_cc
+    start_bot_with_cc()
 """
 
 import json
@@ -27,11 +31,37 @@ import lark_oapi as lark
 from lark_oapi.api.im.v1 import P2ImMessageReceiveV1
 
 from .auth import get_credentials, AuthError, CREDENTIALS_PATH
+from .api import call_api
+from .bot_handler import handle_message
 
 
 class BotError(Exception):
     """Bot configuration or runtime error"""
     pass
+
+
+def send_message(chat_id: str, text: str) -> dict:
+    """
+    Send a text message to a chat.
+
+    Args:
+        chat_id: The chat ID to send the message to
+        text: The message text to send
+
+    Returns:
+        API response dict
+    """
+    body = {
+        "receive_id": chat_id,
+        "msg_type": "text",
+        "content": json.dumps({"text": text})
+    }
+    return call_api(
+        "im",
+        "v1/messages",
+        params={"receive_id_type": "chat_id"},
+        body=body
+    )
 
 
 def default_message_handler(data: P2ImMessageReceiveV1) -> None:
@@ -76,6 +106,41 @@ def default_message_handler(data: P2ImMessageReceiveV1) -> None:
         print(f"Error processing message: {e}")
         # Print raw data for debugging
         print(f"Raw event data: {data}")
+
+
+def cc_message_handler(data: P2ImMessageReceiveV1) -> None:
+    """
+    Message handler that integrates with Claude Code CLI.
+
+    - DM: Always respond
+    - Group: Only respond when @mentioned, stores all messages
+    - Uses cc --resume for persistent conversations per chat
+
+    Args:
+        data: The message receive event data
+    """
+    try:
+        event = data.event
+        message = event.message
+        chat_id = message.chat_id
+
+        # Process message and get response
+        response = handle_message(event)
+
+        if response:
+            # Send response via Feishu API
+            result = send_message(chat_id, response)
+            if result.get('error'):
+                print(f"Failed to send message: {result.get('msg')}")
+            else:
+                print(f"Sent response to {chat_id}")
+        else:
+            print(f"Message stored (no response needed) for {chat_id}")
+
+    except Exception as e:
+        print(f"Error in cc_message_handler: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 def create_event_handler(
@@ -226,3 +291,37 @@ def cli_start(verbose: bool = False) -> None:
 def cli_status() -> dict:
     """CLI command to check bot status."""
     return get_bot_status()
+
+
+def start_bot_with_cc(
+    log_level: lark.LogLevel = lark.LogLevel.INFO,
+    auto_reconnect: bool = True,
+) -> None:
+    """
+    Start the bot with Claude Code integration.
+
+    Messages are processed by cc_message_handler which:
+    - Stores all messages in chat history
+    - Responds via `cc --resume` for DMs and @mentions
+    - Maintains persistent sessions per chat
+
+    Args:
+        log_level: Logging level (DEBUG, INFO, WARNING, ERROR)
+        auto_reconnect: Whether to auto-reconnect on connection loss
+    """
+    handler = create_event_handler(message_handler=cc_message_handler)
+    print("\n  [CC Mode] Claude Code integration enabled")
+    start_bot(event_handler=handler, log_level=log_level, auto_reconnect=auto_reconnect)
+
+
+def cli_start_cc(verbose: bool = False) -> None:
+    """CLI command to start the bot with CC integration."""
+    log_level = lark.LogLevel.DEBUG if verbose else lark.LogLevel.INFO
+    try:
+        start_bot_with_cc(log_level=log_level)
+    except BotError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"Connection error: {e}", file=sys.stderr)
+        sys.exit(1)
