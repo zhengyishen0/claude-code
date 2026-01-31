@@ -223,6 +223,51 @@ function releaseSession(session) {
   fs.writeFileSync(PORT_REGISTRY, filtered.join('\n') + (filtered.length ? '\n' : ''));
 }
 
+function getPortOwner(port) {
+  initRegistry();
+
+  const lines = fs.readFileSync(PORT_REGISTRY, 'utf8').split('\n').filter(Boolean);
+  for (const line of lines) {
+    const [session, p, pid] = line.split(':');
+    if (parseInt(p, 10) === port) {
+      // Verify process is still alive
+      if (!isProcessRunning(parseInt(pid, 10))) {
+        releaseSession(session);
+        return null;
+      }
+      return { session, pid: parseInt(pid, 10) };
+    }
+  }
+  return null;
+}
+
+function cleanupStaleEntries() {
+  initRegistry();
+
+  const lines = fs.readFileSync(PORT_REGISTRY, 'utf8').split('\n').filter(Boolean);
+  const validLines = [];
+  const staleEntries = [];
+
+  for (const line of lines) {
+    const [session, port, pid] = line.split(':');
+    const pidNum = parseInt(pid, 10);
+    const portNum = parseInt(port, 10);
+
+    // Keep only if process is running AND port is in use
+    if (isProcessRunning(pidNum) && isPortInUse(portNum)) {
+      validLines.push(line);
+    } else {
+      staleEntries.push({ session, port: portNum, pid: pidNum });
+    }
+  }
+
+  if (staleEntries.length > 0) {
+    fs.writeFileSync(PORT_REGISTRY, validLines.join('\n') + (validLines.length ? '\n' : ''));
+  }
+
+  return staleEntries;
+}
+
 // ============================================================================
 // CDP Connection Management
 // ============================================================================
@@ -283,9 +328,38 @@ async function waitForCdp(timeout = 30) {
 }
 
 async function ensureChromeRunning() {
+  // Clean up stale registry entries first
+  const staleEntries = cleanupStaleEntries();
+  if (staleEntries.length > 0) {
+    console.log(`Cleaned up ${staleEntries.length} stale session(s): ${staleEntries.map(e => e.session).join(', ')}`);
+  }
+
   // Determine session name for port assignment
   const sessionName = ACCOUNT || 'default';
-  CDP_PORT = getSessionPort(sessionName);
+  const preferredPort = getSessionPort(sessionName);
+
+  // Check if session already has a registered port (and browser is still running)
+  const existingSession = isSessionInUse(sessionName);
+  if (existingSession) {
+    CDP_PORT = existingSession.port;
+  } else {
+    // Check if preferred port is owned by a different session (collision)
+    const portOwner = getPortOwner(preferredPort);
+    if (portOwner && portOwner.session !== sessionName) {
+      console.log(`Port ${preferredPort} in use by session '${portOwner.session}', finding alternative...`);
+      // Find next available port
+      for (let port = 9222; port <= 9299; port++) {
+        if (!isPortInUse(port) && !getPortOwner(port)) {
+          CDP_PORT = port;
+          console.log(`Using port ${port} for session '${sessionName}'`);
+          break;
+        }
+      }
+    } else {
+      CDP_PORT = preferredPort;
+    }
+    // Note: Registry is updated after Chrome starts (with Chrome's PID)
+  }
 
   // Check if Chrome is already running on our port
   if (await cdpIsRunning()) {
@@ -362,6 +436,14 @@ async function ensureChromeRunning() {
     console.error(`ERROR: Browser failed to start (CDP not available on port ${CDP_PORT})`);
     process.exit(1);
   }
+
+  // Register session with Chrome's PID (not node's process.pid)
+  const registrySession = ACCOUNT || 'default';
+  const startTime = Math.floor(Date.now() / 1000);
+  // Remove any existing entry for this session first
+  releaseSession(registrySession);
+  fs.appendFileSync(PORT_REGISTRY, `${registrySession}:${CDP_PORT}:${chrome.pid}:${startTime}\n`);
+
   return true;
 }
 
