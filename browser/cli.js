@@ -1932,7 +1932,7 @@ function detectChromeAccounts(profilePath, targetService) {
 // Accounts Command - Lists all accounts from Chrome (auto-discovery)
 // ============================================================================
 
-function cmdAccounts(showAll = false) {
+function cmdAccounts(showAll = false, filterTerm = null) {
   // Get Chrome encryption key for account detection
   const chromeKey = getBrowserEncryptionKey('chrome');
 
@@ -1954,56 +1954,50 @@ function cmdAccounts(showAll = false) {
   for (const profileName of chromeProfiles) {
     const profilePath = path.join(CHROME_APP_DIR, profileName);
 
-    // Print profile header
-    console.log(`Chrome Profile: ${profileName}`);
-    console.log('\u2501'.repeat(24));
-    console.log();
-
     // Discover all accounts
     const { loggedIn, visited } = discoverAllAccounts(profilePath, chromeKey, showAll);
 
-    if (loggedIn.length === 0) {
-      console.log('No logged-in services detected.\n');
-    } else {
-      console.log(`Logged-in Services (${loggedIn.length}):\n`);
+    // Sort by recency (most recent first)
+    loggedIn.sort((a, b) => a.secondsAgo - b.secondsAgo);
 
-      for (const entry of loggedIn) {
-        // Service name with subdomain count
-        let serviceLine = `  ${capitalize(entry.service)}`;
-        if (entry.subdomains > 0) {
-          serviceLine += ` (${entry.subdomains + 1} subdomains)`;
-        }
-        console.log(serviceLine);
-
-        // Account name
-        if (entry.account) {
-          console.log(`    Account: ${entry.account}`);
-        } else {
-          console.log(`    Account: (detected)`);
-        }
-
-        console.log();
-      }
+    // Apply fuzzy filter if provided
+    let filtered = loggedIn;
+    if (filterTerm) {
+      const term = filterTerm.toLowerCase();
+      filtered = loggedIn.filter(entry =>
+        entry.service.toLowerCase().includes(term) ||
+        entry.domain.toLowerCase().includes(term) ||
+        (entry.account && entry.account.toLowerCase().includes(term))
+      );
     }
 
-    // Show visited sites count
-    if (visited.length > 0 && !showAll) {
-      console.log(`[Use --all to show ${visited.length} other visited sites]\n`);
-    } else if (showAll && visited.length > 0) {
-      console.log(`Other Visited Sites (${visited.length}):\n`);
-      for (const entry of visited.slice(0, 50)) { // Limit to 50
-        console.log(`  ${entry.service} (${entry.domain})`);
-      }
-      if (visited.length > 50) {
-        console.log(`  ... and ${visited.length - 50} more`);
+    // Determine display list
+    const totalCount = filtered.length;
+    const displayLimit = 25;
+    const displayList = showAll ? filtered : filtered.slice(0, displayLimit);
+
+    // Print profile header
+    console.log(`\nRecent Accounts (Chrome: ${profileName})\n`);
+
+    if (displayList.length === 0) {
+      console.log('  No accounts found.\n');
+    } else {
+      // Calculate column widths
+      const maxDomain = Math.max(...displayList.map(e => e.domain.length));
+
+      for (const entry of displayList) {
+        const domain = entry.domain.padEnd(maxDomain + 2);
+        const account = entry.account || '(active)';
+        console.log(`  ${domain}${account}`);
       }
       console.log();
     }
-  }
 
-  // Show usage
-  console.log(`Usage: ${TOOL_NAME} --account <service> open <url>`);
-  console.log(`   eg: ${TOOL_NAME} --account github open https://github.com\n`);
+    // Show count summary if not showing all
+    if (!showAll && totalCount > displayLimit) {
+      console.log(`Showing ${displayLimit} of ${totalCount}. Use --all for complete list.\n`);
+    }
+  }
 }
 
 // Legacy alias for backward compatibility
@@ -2350,9 +2344,12 @@ async function main() {
       case 'close':
         await cmdClose();
         break;
-      case 'accounts':
-        cmdAccounts(restArgs.includes('--all'));
+      case 'accounts': {
+        const showAll = restArgs.includes('--all');
+        const filterTerm = restArgs.find(arg => arg && !arg.startsWith('--'));
+        cmdAccounts(showAll, filterTerm);
         break;
+      }
       case 'profile':
         cmdProfile();
         break;
