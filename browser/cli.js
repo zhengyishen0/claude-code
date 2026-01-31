@@ -723,6 +723,120 @@ async function cmdSnapshot(clientOrFull, forceFull = false) {
   }
 }
 
+async function cmdSnapshotSelectors() {
+  const client = await connectCDP();
+  const { Runtime } = client;
+
+  try {
+    // JavaScript to extract all interactive elements with their selectors
+    const extractJs = `
+      (function() {
+        const INTERACTIVE_SELECTORS = [
+          'button', 'a', 'input', 'textarea', 'select',
+          '[role="button"]', '[role="tab"]', '[role="link"]',
+          '[role="menuitem"]', '[role="checkbox"]', '[onclick]'
+        ];
+
+        function isVisible(el) {
+          const rect = el.getBoundingClientRect();
+          const styles = window.getComputedStyle(el);
+          return rect.width > 0 && rect.height > 0 &&
+                 styles.display !== 'none' && styles.visibility !== 'hidden';
+        }
+
+        function getSelector(el) {
+          // Build a unique selector for the element
+          if (el.id) return '#' + el.id;
+
+          // Try data-testid
+          if (el.dataset.testid) return '[data-testid="' + el.dataset.testid + '"]';
+
+          // Try aria-label
+          const ariaLabel = el.getAttribute('aria-label');
+          if (ariaLabel) return '[aria-label="' + ariaLabel.replace(/"/g, '\\\\"') + '"]';
+
+          // Try unique class
+          if (el.className && typeof el.className === 'string') {
+            const classes = el.className.trim().split(/\\s+/).filter(c => c && !c.includes('.'));
+            if (classes.length > 0) {
+              // Use first few classes that are valid CSS identifiers
+              const validClasses = classes.filter(c => /^[a-zA-Z_-][a-zA-Z0-9_-]*$/.test(c)).slice(0, 3);
+              if (validClasses.length > 0) {
+                const selector = el.tagName.toLowerCase() + '.' + validClasses.join('.');
+                try {
+                  const matches = document.querySelectorAll(selector);
+                  if (matches.length === 1) return selector;
+                } catch(e) {}
+              }
+            }
+          }
+
+          // Fallback: tag + nth-child
+          const tag = el.tagName.toLowerCase();
+          const parent = el.parentElement;
+          if (parent) {
+            const siblings = Array.from(parent.children).filter(c => c.tagName === el.tagName);
+            if (siblings.length > 1) {
+              const idx = siblings.indexOf(el) + 1;
+              return tag + ':nth-of-type(' + idx + ')';
+            }
+          }
+          return tag;
+        }
+
+        const elements = document.querySelectorAll(INTERACTIVE_SELECTORS.join(','));
+        const results = [];
+
+        elements.forEach(el => {
+          if (!isVisible(el)) return;
+
+          const tag = el.tagName.toLowerCase();
+          const text = (el.innerText || '').trim().substring(0, 40);
+          const selector = getSelector(el);
+          const type = el.type || el.getAttribute('role') || tag;
+
+          results.push({ selector, tag, type, text });
+        });
+
+        return JSON.stringify(results);
+      })()
+    `;
+
+    const result = await Runtime.evaluate({ expression: extractJs, returnByValue: true });
+    const elements = JSON.parse(result.result.value);
+
+    console.log('Interactive Elements\n' + '='.repeat(60) + '\n');
+
+    if (elements.length === 0) {
+      console.log('No interactive elements found.\n');
+    } else {
+      // Group by type
+      const grouped = {};
+      elements.forEach(el => {
+        const key = el.type || el.tag;
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(el);
+      });
+
+      for (const [type, els] of Object.entries(grouped)) {
+        console.log(`${type.toUpperCase()} (${els.length})`);
+        els.slice(0, 20).forEach(el => {
+          const text = el.text ? ` "${el.text}"` : '';
+          console.log(`  ${el.selector}${text}`);
+        });
+        if (els.length > 20) {
+          console.log(`  ... and ${els.length - 20} more`);
+        }
+        console.log();
+      }
+    }
+
+    console.log(`Total: ${elements.length} interactive elements`);
+  } finally {
+    await client.close();
+  }
+}
+
 // ============================================================================
 // Commands
 // ============================================================================
@@ -2336,6 +2450,7 @@ COMMANDS:
   Navigation:
     open URL              Navigate to URL and show page state
     snapshot [--full]     Show page state (smart diff by default)
+    snapshot --selectors  List all interactive elements with CSS selectors
     inspect               Discover URL parameters from page
 
   Interaction:
@@ -2436,7 +2551,11 @@ async function main() {
         await cmdOpen(restArgs[0]);
         break;
       case 'snapshot':
-        await cmdSnapshot(restArgs.includes('--full'));
+        if (restArgs.includes('--selectors')) {
+          await cmdSnapshotSelectors();
+        } else {
+          await cmdSnapshot(restArgs.includes('--full'));
+        }
         break;
       case 'inspect':
         await cmdInspect();

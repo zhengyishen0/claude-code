@@ -93,14 +93,19 @@ function generateSelector(el) {
     return '#' + el.id;
   }
 
-  // Prefer unique class combination
+  // Prefer unique class combination (wrapped in try-catch for invalid selectors like Tailwind's text-3.5)
   if (el.className && typeof el.className === 'string') {
     const classes = el.className.trim().split(/\s+/).filter(c => c.length > 0);
     if (classes.length > 0) {
       const selector = '.' + classes.join('.');
-      const matches = document.querySelectorAll(selector);
-      if (matches.length === 1) {
-        return selector;
+      try {
+        const matches = document.querySelectorAll(selector);
+        if (matches.length === 1) {
+          return selector;
+        }
+      } catch (e) {
+        // Invalid selector (e.g., Tailwind classes with dots like text-3.5)
+        // Fall through to other methods
       }
     }
   }
@@ -186,13 +191,37 @@ function findInteractiveElements(selector) {
 // Actions
 // ============================================================================
 
+function findClickableElement(el) {
+  // If element has click method, use it directly
+  if (typeof el.click === 'function') {
+    return el;
+  }
+
+  // For SVG and other elements without click(), find closest clickable parent
+  const clickableParent = el.closest('button, a, [role="button"], span, div');
+  if (clickableParent && typeof clickableParent.click === 'function') {
+    return clickableParent;
+  }
+
+  // Last resort: try the parent element
+  if (el.parentElement && typeof el.parentElement.click === 'function') {
+    return el.parentElement;
+  }
+
+  return el;
+}
+
 function clickElement(el) {
   try {
-    const stateBefore = getElementState(el);
-    const contextBefore = getCaptureContext(el);
+    // Find clickable element (handles SVG and other non-clickable elements)
+    const clickTarget = findClickableElement(el);
+    const wasRedirected = clickTarget !== el;
+
+    const stateBefore = getElementState(clickTarget);
+    const contextBefore = getCaptureContext(clickTarget);
 
     // Only scroll if element is not in viewport
-    const rect = el.getBoundingClientRect();
+    const rect = clickTarget.getBoundingClientRect();
     const isVisible = (
       rect.top >= 0 &&
       rect.left >= 0 &&
@@ -201,19 +230,23 @@ function clickElement(el) {
     );
 
     if (!isVisible) {
-      el.scrollIntoView({block: 'center', behavior: 'instant'});
+      clickTarget.scrollIntoView({block: 'center', behavior: 'instant'});
     }
 
-    el.click();
+    clickTarget.click();
 
-    const stateAfter = getElementState(el);
+    const stateAfter = getElementState(clickTarget);
     const stateChange = stateBefore && stateAfter && stateBefore !== stateAfter
       ? ' (' + stateBefore + ' → ' + stateAfter + ')'
       : '';
 
+    const redirectNote = wasRedirected
+      ? ' (via ' + clickTarget.tagName.toLowerCase() + ')'
+      : '';
+
     return JSON.stringify({
       status: 'OK',
-      message: 'clicked ' + getElementDescription(el) + stateChange,
+      message: 'clicked ' + getElementDescription(clickTarget) + stateChange + redirectNote,
       context: contextBefore
     });
   } catch (e) {
