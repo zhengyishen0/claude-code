@@ -165,12 +165,19 @@ api google gmail reply '{"id": "msg_id", "body": "Thanks!", "reply_all": true}'
 
 # Batch reply (parallel)
 api google gmail reply '[{"id": "x", "body": "Got it"}, {"id": "y", "body": "Thanks"}]'
+
+# Send new email(s)
+api google gmail send '{"to": "a@b.com", "subject": "Hello", "body": "Message here"}'
+
+# Batch send (parallel)
+api google gmail send '[{"to": "a@b.com", "subject": "Hi", "body": "Msg 1"}, {"to": "c@d.com", "subject": "Hey", "body": "Msg 2"}]'
 ```
 
 | Command | Required | Optional |
 |---------|----------|----------|
 | `forward` | `id`, `to` | `cc`, `note` |
 | `reply` | `id`, `body` | `reply_all` |
+| `send` | `to`, `subject`, `body` | `cc`, `bcc`, `html` |
 
 ## Setup
 

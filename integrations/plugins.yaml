@@ -36,3 +36,15 @@ gmail:
       - body
     optional_args:
       - reply_all
+
+  send:
+    description: Compose and send new email(s)
+    module: gmail.send
+    required_args:
+      - to
+      - subject
+      - body
+    optional_args:
+      - cc
+      - bcc
+      - html
