@@ -1,6 +1,6 @@
 # Claude Code
 
-Agent orchestration framework with browser automation, knowledge persistence, and supervision.
+Agent orchestration framework with browser automation, knowledge persistence, and background agents.
 
 ## Quick Decision Guide
 
@@ -11,8 +11,8 @@ Agent orchestration framework with browser automation, knowledge persistence, an
 | See what's on screen (any app) | `screenshot` |
 | Recall how something was done before | `memory search` |
 | Call external APIs (Google, etc.) | `api` (service) |
-| Run background agents on tasks | `world spawn` + `supervisor` |
-| Manage long-running processes | `daemon` |
+| Run background agents | `world spawn` |
+| Manage persistent services | `daemon` |
 
 ## Workflow
 
@@ -99,25 +99,17 @@ api google drive files.list q="name contains 'report'"
 
 ---
 
-### world + supervisor — Background agents
+### world — Background agents and event log
 
-**When:** Running multiple tasks in parallel, or tasks that take a long time.
+**When:** Running agents in parallel, or tracking system events.
 
-**Why:** Spawn agents in isolated worktrees, track progress, verify results.
+**Why:** Spawn agents in isolated worktrees, monitor progress via event log.
 
 ```bash
-# Create and spawn a background task
-task create "Refactor auth module"
-world spawn <task-id>           # Starts agent in its own worktree
-
-# Monitor
 world                           # Recent events
 world ps                        # Running agents
-
-# Quality control
-supervisor verify <task-id>     # Mark verified after review
-supervisor cancel <task-id>     # Stop a task
-supervisor retry <task-id>      # Retry failed task
+world spawn <task-id>           # Start agent in its own worktree
+world record <type> <msg>       # Log an event
 ```
 
 ---
@@ -148,29 +140,6 @@ daemon <name> status            # Check if running
 daemon <name> log               # View logs
 ```
 
----
-
-### proxy — Network proxy
-
-**When:** Behind a firewall or need to route traffic through proxy.
-
-```bash
-proxy status                    # Current proxy state
-proxy check                     # Test connectivity
-```
-
----
-
-### task — Work items
-
-**When:** Tracking multi-step work, especially with `world spawn`.
-
-```bash
-task create "title"             # Create task
-task list                       # See all tasks
-task show <id>                  # Details
-```
-
 ## Setup
 
 ```bash
@@ -182,6 +151,5 @@ task show <id>                  # Details
 ## Architecture
 
 - **world.log** — Append-only event log (source of truth)
-- **task/data/** — Task state as markdown + YAML frontmatter
 - **~/.worktrees/** — Isolated feature worktrees
 - **~/.claude/memory-index.tsv** — Session search index
