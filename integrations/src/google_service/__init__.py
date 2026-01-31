@@ -212,25 +212,51 @@ def create_service_command(service_name: str):
         # Import cleaner for response filtering
         from cleaner import clean_response
 
-        # List methods
+        # Import plugin system
+        from .plugins import get_plugin, list_plugins, run_plugin
+
+        # List methods (include plugins)
         if list_mth or method is None:
-            click.echo(f"Methods for {svc_name}:")
+            # Show plugins first if any
+            plugins = list_plugins(svc_name)
+            if plugins:
+                click.echo(f"Actions for {svc_name} (high-level plugins):")
+                for name, desc in plugins:
+                    click.echo(f"  {name:<20} {desc}")
+                click.echo()
+
+            click.echo(f"Methods for {svc_name} (raw API):")
             click.echo(f"(Use --help-method for details: api google {svc_name} <method> --help-method)\n")
             try:
                 methods = list_methods(svc_name)
                 for m in methods:
                     click.echo(f"  {m['name']}")
             except Exception as e:
-                click.echo(f"❌ Error listing methods: {e}", err=True)
+                click.echo(f"Error listing methods: {e}", err=True)
             return
 
         # Help for specific method
         if help_mth:
+            # Check if it's a plugin first
+            plugin = get_plugin(svc_name, method)
+            if plugin:
+                click.echo(f"Plugin: {svc_name} {method}")
+                click.echo(f"Description: {plugin.get('description', 'No description')}")
+                click.echo(f"\nRequired arguments:")
+                for arg in plugin.get('required_args', []):
+                    click.echo(f"  {arg}")
+                optional = plugin.get('optional_args', [])
+                if optional:
+                    click.echo(f"\nOptional arguments:")
+                    for arg in optional:
+                        click.echo(f"  {arg}")
+                return
+
             try:
                 info = get_method_help(svc_name, method)
                 click.echo(json.dumps(info, indent=2))
             except Exception as e:
-                click.echo(f"❌ Error getting method help: {e}", err=True)
+                click.echo(f"Error getting method help: {e}", err=True)
             return
 
         # Parse params: "userId=me" "q=is:unread" → {"userId": "me", "q": "is:unread"}
@@ -245,13 +271,31 @@ def create_service_command(service_name: str):
                     pass
                 param_dict[k] = v
 
+        # Check if method is a plugin action
+        plugin = get_plugin(svc_name, method)
+        if plugin:
+            try:
+                result = run_plugin(svc_name, method, param_dict)
+                click.echo(json.dumps(result, indent=2, ensure_ascii=False))
+            except ValueError as e:
+                click.echo(f"Error: {e}", err=True)
+                # Show usage hint
+                required = plugin.get('required_args', [])
+                click.echo(f"\nUsage: api google {svc_name} {method} " +
+                          ' '.join(f"{arg}=<value>" for arg in required))
+                sys.exit(1)
+            except Exception as e:
+                click.echo(f"Plugin error: {e}", err=True)
+                sys.exit(1)
+            return
+
         # Parse body
         body_dict = None
         if body:
             try:
                 body_dict = json.loads(body)
             except json.JSONDecodeError as e:
-                click.echo(f"❌ Invalid JSON body: {e}", err=True)
+                click.echo(f"Invalid JSON body: {e}", err=True)
                 return
 
         # Check if this is a media download method
@@ -263,7 +307,7 @@ def create_service_command(service_name: str):
                 result = call_api_media(svc_name, method, param_dict)
                 with open(output, 'wb') as f:
                     f.write(result)
-                click.echo(f"✅ Saved to {output}")
+                click.echo(f"Saved to {output}")
             else:
                 result = call_api(svc_name, method, param_dict, body_dict)
                 # Clean response by default, unless --raw is specified
@@ -271,7 +315,7 @@ def create_service_command(service_name: str):
                     result = clean_response(result)
                 click.echo(json.dumps(result, indent=2, ensure_ascii=False))
         except Exception as e:
-            click.echo(f"❌ API Error: {e}", err=True)
+            click.echo(f"API Error: {e}", err=True)
             sys.exit(1)
 
     # Set the docstring dynamically
@@ -282,6 +326,11 @@ def create_service_command(service_name: str):
         api google {service_name} --list-methods
         api google {service_name} <method> --help-method
         api google {service_name} <method> [key=value ...]
+
+    \b
+    High-level actions (plugins):
+        api google {service_name} forward message_id=xxx to=email
+        api google {service_name} reply message_id=xxx body="text"
     """
 
     google_cli.add_command(service_cmd)
@@ -290,3 +339,9 @@ def create_service_command(service_name: str):
 # Register all service commands
 import sys
 register_service_commands()
+
+
+# Note: Gmail forward/reply functionality moved to plugins
+# See: integrations/src/google_service/plugins/gmail/
+# Usage: api google gmail forward message_id=xxx to=email
+#        api google gmail reply message_id=xxx body="text"
