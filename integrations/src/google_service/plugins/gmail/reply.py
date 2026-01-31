@@ -1,7 +1,6 @@
 """Gmail reply plugin - Reply to emails with proper threading"""
 
 import base64
-import re
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formatdate, make_msgid
@@ -25,85 +24,6 @@ def get_header(headers: list, name: str) -> Optional[str]:
         if header['name'].lower() == name.lower():
             return header['value']
     return None
-
-
-def strip_html_to_text(html: str) -> str:
-    """Convert HTML to plain text, removing scripts, styles, and tags"""
-    # Remove style tags with their contents
-    text = re.sub(r'<style[^>]*>.*?</style>', '', html, flags=re.IGNORECASE | re.DOTALL)
-    # Remove script tags with their contents
-    text = re.sub(r'<script[^>]*>.*?</script>', '', text, flags=re.IGNORECASE | re.DOTALL)
-    # Remove HTML comments
-    text = re.sub(r'<!--.*?-->', '', text, flags=re.DOTALL)
-    # Remove all remaining tags
-    text = re.sub(r'<[^>]+>', '', text)
-    # Decode common HTML entities
-    text = text.replace('&nbsp;', ' ').replace('&amp;', '&')
-    text = text.replace('&lt;', '<').replace('&gt;', '>')
-    text = text.replace('&quot;', '"').replace('&#39;', "'")
-    # Normalize whitespace
-    text = re.sub(r'\s+', ' ', text)
-    return text.strip()
-
-
-def extract_text_from_payload(payload: dict) -> str:
-    """
-    Extract plain text content from a Gmail message payload
-
-    Handles both simple messages and multipart messages
-    """
-    mime_type = payload.get('mimeType', '')
-
-    # Simple text message
-    if mime_type == 'text/plain':
-        body = payload.get('body', {})
-        data = body.get('data', '')
-        if data:
-            return base64.urlsafe_b64decode(data).decode('utf-8', errors='replace')
-        return ''
-
-    # Simple HTML message - convert to text
-    if mime_type == 'text/html':
-        body = payload.get('body', {})
-        data = body.get('data', '')
-        if data:
-            html = base64.urlsafe_b64decode(data).decode('utf-8', errors='replace')
-            return strip_html_to_text(html)
-        return ''
-
-    # Multipart message - look for text/plain first, fall back to text/html
-    if mime_type.startswith('multipart/'):
-        parts = payload.get('parts', [])
-        html_content = None
-
-        for part in parts:
-            part_type = part.get('mimeType', '')
-
-            # Found plain text - prefer this
-            if part_type == 'text/plain':
-                body = part.get('body', {})
-                data = body.get('data', '')
-                if data:
-                    return base64.urlsafe_b64decode(data).decode('utf-8', errors='replace')
-
-            # Remember HTML as fallback
-            if part_type == 'text/html':
-                body = part.get('body', {})
-                data = body.get('data', '')
-                if data:
-                    html_content = base64.urlsafe_b64decode(data).decode('utf-8', errors='replace')
-
-            # Nested multipart - recurse
-            if part_type.startswith('multipart/'):
-                text = extract_text_from_payload(part)
-                if text and text != '(no text content)':
-                    return text
-
-        # No plain text found, use HTML fallback
-        if html_content:
-            return strip_html_to_text(html_content)
-
-    return '(no text content)'
 
 
 def reply_email(
@@ -134,7 +54,6 @@ def reply_email(
     original_cc = get_header(headers, 'Cc') or ''
     original_message_id = get_header(headers, 'Message-ID') or ''
     original_references = get_header(headers, 'References') or ''
-    original_date = get_header(headers, 'Date') or ''
 
     # Get sender's email
     profile = call_api('gmail', 'users.getProfile', {'userId': 'me'})
@@ -201,35 +120,12 @@ def reply_email(
     if references:
         msg['References'] = references
 
-    # Build the reply body with quoted original
-    # Extract plain text from original message
-    original_text = extract_text_from_payload(original.get('payload', {}))
-
-    # Quote the original message
-    quoted_lines = ['> ' + line for line in original_text.split('\n')]
-    quoted_original = '\n'.join(quoted_lines)
-
-    full_body = f"""{reply_body}
-
-On {original_date}, {original_from} wrote:
-{quoted_original}
-"""
-
-    text_part = MIMEText(full_body, 'plain', 'utf-8')
+    # Just send the reply body (no quoted original)
+    text_part = MIMEText(reply_body, 'plain', 'utf-8')
     msg.attach(text_part)
 
-    # Also create an HTML version for better formatting
-    html_body = f"""<div dir="ltr">
-{reply_body.replace(chr(10), '<br>')}
-<br><br>
-<div class="gmail_quote">
-<div dir="ltr" class="gmail_attr">On {original_date}, {original_from} wrote:<br></div>
-<blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex">
-{original_text.replace(chr(10), '<br>')}
-</blockquote>
-</div>
-</div>"""
-
+    # HTML version
+    html_body = f"<div dir=\"ltr\">{reply_body.replace(chr(10), '<br>')}</div>"
     html_part = MIMEText(html_body, 'html', 'utf-8')
     msg.attach(html_part)
 
