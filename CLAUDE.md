@@ -2,121 +2,186 @@
 
 Agent orchestration framework with browser automation, knowledge persistence, and supervision.
 
+## Quick Decision Guide
+
+| Need to... | Use |
+|------------|-----|
+| Make any code changes | `worktree create` first (main is protected) |
+| Automate a website / fill forms / click buttons | `browser` |
+| See what's on screen (any app) | `screenshot` |
+| Recall how something was done before | `memory search` |
+| Call external APIs (Google, etc.) | `api` (service) |
+| Run background agents on tasks | `world spawn` + `supervisor` |
+| Manage long-running processes | `daemon` |
+
 ## Workflow
 
-Main branch is protected. Use worktrees for all changes:
+**Always use worktrees** — main branch is protected to prevent accidents.
 
 ```bash
-worktree create feature-name     # Create branch + worktree
-# ... make changes using absolute paths ...
-worktree merge feature-name      # Merge to main, archive, delete branch
+worktree create feature-name     # Before ANY file changes
+# ... work using absolute paths to worktree ...
+worktree merge feature-name      # When done: merge, archive, cleanup
+worktree abandon feature-name    # If you want to discard instead
 ```
 
-Keep the tree clean:
-- Temp files in `tmp/` (gitignored)
-- Stage promptly, revert unwanted changes
-- Commit at logical checkpoints
+Keep clean: temp files in `tmp/`, stage changes promptly, commit at checkpoints.
 
 ## Tools
 
 Run any tool without arguments for help.
 
-### worktree — Git worktree management
+---
+
+### browser — Web automation
+
+**When:** Interacting with websites — login, form filling, clicking, scraping, testing.
+
+**Why browser vs screenshot:** Browser *controls* the page (clicks, inputs). Screenshot only *sees* native apps.
+
+**Key insight:** URL params are 10x faster than form filling. Check `browser inspect` first.
+
 ```bash
-worktree                    # List worktrees with status
-worktree create <name>      # Create worktree and branch
-worktree merge <name>       # Merge to main and archive
-worktree abandon <name>     # Archive without merging
+browser open <url>              # Navigate and discover page structure
+browser click <selector|x,y>    # Click by CSS selector or coordinates
+browser input <selector> <val>  # Fill input (React-aware, triggers state)
+browser snapshot [--full]       # See page state + diff from last snapshot
+browser screenshot              # Capture for vision analysis
+browser sendkey <key>           # esc, enter, tab, arrows
+browser inspect                 # Discover URL params and form fields
 ```
 
-### browser — Web automation with React/SPA support
-```bash
-browser open <url>              # Navigate and discover page
-browser click <selector|x,y>    # Click element or coordinates
-browser input <selector> <val>  # Set input (React-aware)
-browser snapshot [--full]       # Capture page state with diff
-browser screenshot              # Vision-based capture
-browser sendkey <key>           # Keyboard input (esc, enter, tab)
-browser tabs                    # Manage tabs
-```
-Options: `--account SERVICE[:USER]` (Chrome cookies), `--keyless` (profile copy), `--debug` (headed)
+Options: `--account SERVICE[:USER]` (inject Chrome cookies), `--debug` (headed mode)
 
-### memory — Cross-session knowledge search
+---
+
+### screenshot — Native app capture
+
+**When:** Need to see what's on screen in *any* macOS app (not just browser).
+
+**Why screenshot vs browser screenshot:** This captures *any window* (Finder, Slack, VSCode). Browser screenshot only captures the automated browser.
+
 ```bash
-memory search "keywords"                    # Search all sessions (OR-based)
-memory search "keywords" --recall "question"  # Search then ask deeper
-memory recall <session-id> "question"       # Query specific session
+screenshot                    # List available windows
+screenshot <app-name>         # Capture by app (fuzzy match)
+screenshot <window-id>        # Capture specific window
 ```
 
-### world — Agent coordination and event log
+---
+
+### memory — Past session knowledge
+
+**When:** Stuck on a problem, or need to recall how something was done before.
+
+**Why:** Your past sessions contain solutions. Search before reinventing.
+
 ```bash
-world                   # Show recent events
-world ps                # List running task agents
-world record <type> <msg>  # Record event
-world spawn <task-id>   # Start agent in worktree
-world watch             # Run polling daemon
+memory search "error handling api"           # Find relevant sessions
+memory search "oauth" --recall "how did we handle refresh tokens?"
+memory recall <session-id> "summarize the approach"
 ```
 
-### supervisor — L2 quality assurance
-```bash
-supervisor verify <task-id>   # Mark task verified
-supervisor cancel <task-id>   # Cancel execution
-supervisor retry <task-id>    # Retry from archive
-```
+---
 
-### service (api) — Universal API interface
+### api (service) — External APIs
+
+**When:** Need to interact with Google (Gmail, Calendar, Drive), or other services.
+
+**Why api vs browser:** Direct API calls are faster, more reliable, and don't require UI navigation.
+
 ```bash
-api <service> admin     # One-time credential setup
-api <service> auth      # User authentication
-api <service> status    # Check auth state
-# Google examples:
+api google admin                              # First-time setup
+api google auth                               # Login
 api google gmail users.messages.list userId=me
 api google calendar events.list calendarId=primary
 api google drive files.list q="name contains 'report'"
 ```
 
-### screenshot — macOS window capture for vision
+---
+
+### world + supervisor — Background agents
+
+**When:** Running multiple tasks in parallel, or tasks that take a long time.
+
+**Why:** Spawn agents in isolated worktrees, track progress, verify results.
+
 ```bash
-screenshot              # List available windows
-screenshot <app-name>   # Capture by app (fuzzy match)
-screenshot <window-id>  # Capture by ID
+# Create and spawn a background task
+task create "Refactor auth module"
+world spawn <task-id>           # Starts agent in its own worktree
+
+# Monitor
+world                           # Recent events
+world ps                        # Running agents
+
+# Quality control
+supervisor verify <task-id>     # Mark verified after review
+supervisor cancel <task-id>     # Stop a task
+supervisor retry <task-id>      # Retry failed task
 ```
 
-### proxy — Proxy management
+---
+
+### worktree — Git isolation
+
+**When:** Always, before making any code changes.
+
+**Why:** Protects main branch. Each feature gets isolated workspace. Easy to abandon failed experiments.
+
 ```bash
-proxy status    # Show proxy status
-proxy check     # Test reachability
-proxy config    # Manage config file
+worktree                        # List all worktrees
+worktree create <name>          # Create branch + worktree
+worktree merge <name>           # Merge to main, archive, delete branch
+worktree abandon <name>         # Archive without merging
 ```
 
-## Supporting Tools
+---
 
-### task — Work item management
+### daemon — Background services
+
+**When:** Need persistent processes (watchers, pollers) that survive terminal close.
+
 ```bash
-task create <title>     # Create task
-task list               # List all tasks
-task show <id>          # Show details
+daemon list                     # Available daemons
+daemon <name> install           # Install and start
+daemon <name> status            # Check if running
+daemon <name> log               # View logs
 ```
 
-### daemon — macOS LaunchAgent manager
+---
+
+### proxy — Network proxy
+
+**When:** Behind a firewall or need to route traffic through proxy.
+
 ```bash
-daemon list                 # List available daemons
-daemon <name> install       # Install and start
-daemon <name> status        # Check status
-daemon <name> log           # Tail log
+proxy status                    # Current proxy state
+proxy check                     # Test connectivity
+```
+
+---
+
+### task — Work items
+
+**When:** Tracking multi-step work, especially with `world spawn`.
+
+```bash
+task create "title"             # Create task
+task list                       # See all tasks
+task show <id>                  # Details
 ```
 
 ## Setup
 
 ```bash
-./setup          # Show installation status
-./setup all      # Install everything
-./setup shell    # Add to ~/.zshrc
+./setup              # Show status
+./setup all          # Install everything
+./setup shell        # Add to ~/.zshrc
 ```
 
 ## Architecture
 
 - **world.log** — Append-only event log (source of truth)
-- **task/data/** — Per-task markdown with YAML frontmatter
+- **task/data/** — Task state as markdown + YAML frontmatter
 - **~/.worktrees/** — Isolated feature worktrees
 - **~/.claude/memory-index.tsv** — Session search index
