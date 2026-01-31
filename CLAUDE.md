@@ -149,6 +149,29 @@ api google drive files.list q="name contains 'X'"
 api google sheets spreadsheets.get spreadsheetId=<id>
 ```
 
+### gmail plugins
+
+Custom actions for Gmail (supports batch via JSON array):
+
+```bash
+# Forward email(s)
+api google gmail forward '{"id": "msg_id", "to": "a@b.com", "cc": "c@d.com", "note": "FYI"}'
+
+# Batch forward (parallel)
+api google gmail forward '[{"id": "x", "to": "a@b.com"}, {"id": "y", "to": "c@d.com"}]'
+
+# Reply to email(s)
+api google gmail reply '{"id": "msg_id", "body": "Thanks!", "reply_all": true}'
+
+# Batch reply (parallel)
+api google gmail reply '[{"id": "x", "body": "Got it"}, {"id": "y", "body": "Thanks"}]'
+```
+
+| Command | Required | Optional |
+|---------|----------|----------|
+| `forward` | `id`, `to` | `cc`, `note` |
+| `reply` | `id`, `body` | `reply_all` |
+
 ## Setup
 
 ```bash
