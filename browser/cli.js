@@ -1336,6 +1336,346 @@ function getChromeProfiles() {
   });
 }
 
+// Get all Chrome profiles with details (skips System Profile, Guest Profile)
+function getAllChromeProfiles() {
+  if (!fs.existsSync(CHROME_APP_DIR)) return [];
+
+  const skipProfiles = ['System Profile', 'Guest Profile', 'Crashpad', 'Crowd Deny',
+                        'FileTypePolicies', 'GrShaderCache', 'MEIPreload', 'OnDeviceHeadSuggestModel',
+                        'OptimizationGuidePredictionModels', 'SafetyTips', 'ShaderCache',
+                        'TrustTokenKeyCommitments', 'ZxcvbnData', 'hyphen-data', 'pnacl'];
+
+  return fs.readdirSync(CHROME_APP_DIR).filter(name => {
+    // Skip known non-profile directories
+    if (skipProfiles.includes(name)) return false;
+    // Only consider Default and Profile N directories
+    if (name !== 'Default' && !/^Profile \d+$/.test(name)) return false;
+    const fullPath = path.join(CHROME_APP_DIR, name);
+    try {
+      // Must be a directory with Cookies database
+      return fs.statSync(fullPath).isDirectory() &&
+             fs.existsSync(path.join(fullPath, 'Cookies'));
+    } catch {
+      return false;
+    }
+  });
+}
+
+// Get registrable domain (strip subdomains)
+function getRegistrableDomain(domain) {
+  // Remove leading dot
+  domain = domain.replace(/^\./, '');
+
+  // Common multi-part TLDs
+  const multiPartTlds = ['.co.uk', '.co.jp', '.com.au', '.com.br', '.co.nz'];
+  for (const tld of multiPartTlds) {
+    if (domain.endsWith(tld)) {
+      const parts = domain.slice(0, -tld.length).split('.');
+      return parts[parts.length - 1] + tld;
+    }
+  }
+
+  // Standard TLD
+  const parts = domain.split('.');
+  if (parts.length >= 2) {
+    return parts.slice(-2).join('.');
+  }
+  return domain;
+}
+
+// Score a cookie to detect if it's an auth/login cookie
+function scoreCookieForAuth(cookieName, cookieValue) {
+  let score = 0;
+
+  // Check against known auth cookies
+  for (const [service, cookieNames] of Object.entries(ACCOUNT_COOKIES)) {
+    if (cookieNames.includes(cookieName)) {
+      score += 10; // High confidence for known cookies
+      break;
+    }
+  }
+
+  // Check against auth patterns
+  for (const pattern of AUTH_PATTERNS) {
+    if (pattern.test(cookieName)) {
+      score += 5;
+      break;
+    }
+  }
+
+  // Common auth cookie names
+  const authNames = ['token', 'auth', 'session', 'logged', 'user', 'account', 'sid', 'ssid'];
+  const lowerName = cookieName.toLowerCase();
+  for (const name of authNames) {
+    if (lowerName.includes(name)) {
+      score += 2;
+      break;
+    }
+  }
+
+  // Value looks like a token (long alphanumeric string)
+  if (cookieValue && cookieValue.length > 20 && /^[a-zA-Z0-9_-]+$/.test(cookieValue)) {
+    score += 1;
+  }
+
+  return score;
+}
+
+// Extract account name from cookie value based on service
+function extractAccountName(service, cookieName, cookieValue, profilePath) {
+  // GitHub: dotcom_user contains username directly
+  if (service === 'github' && cookieName === 'dotcom_user') {
+    return cookieValue;
+  }
+
+  // Google services: get email from Chrome Preferences
+  if (service && service.startsWith('google') || service === 'gmail') {
+    const email = getGoogleEmailFromPreferences(profilePath);
+    if (email) return email;
+  }
+
+  // Twitter: twid format is "u=1234567890"
+  if (cookieName === 'twid') {
+    const match = cookieValue.match(/u=(\d+)/);
+    if (match) return `user:${match[1]}`;
+  }
+
+  // Facebook/Instagram: numeric user ID
+  if (cookieName === 'c_user' || cookieName === 'ds_user_id') {
+    return `user:${cookieValue}`;
+  }
+
+  // Cloudflare: curr-account is the account ID (may be JSON or plain ID, possibly URL-encoded)
+  if (cookieName === 'curr-account' && cookieValue) {
+    let value = cookieValue;
+    // URL decode if needed
+    if (value.includes('%')) {
+      try {
+        value = decodeURIComponent(value);
+      } catch {
+        // Keep original
+      }
+    }
+    // Check if it's JSON
+    if (value.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(value);
+        if (parsed.id) return parsed.id.substring(0, 12) + '...';
+        if (parsed.account_id) return parsed.account_id.substring(0, 12) + '...';
+        // Look for first key that looks like an account ID
+        for (const key of Object.keys(parsed)) {
+          if (/^[a-f0-9]{32}$/i.test(key)) {
+            return key.substring(0, 12) + '...';
+          }
+        }
+      } catch {
+        // Not valid JSON, don't show partial JSON
+        return null;
+      }
+    }
+    // Plain value or fallback
+    if (value.length > 16) {
+      return value.substring(0, 12) + '...';
+    }
+    return value;
+  }
+
+  // Feishu: try to decode QXV0aHpDb250ZXh0 (AuthzContext)
+  if (cookieName === 'QXV0aHpDb250ZXh0' && cookieValue) {
+    try {
+      const decoded = Buffer.from(cookieValue, 'base64').toString('utf8');
+      // Look for email or username in decoded JSON
+      const emailMatch = decoded.match(/"email"\s*:\s*"([^"]+)"/);
+      if (emailMatch) return emailMatch[1];
+      const userMatch = decoded.match(/"user(?:name|_name)"\s*:\s*"([^"]+)"/);
+      if (userMatch) return userMatch[1];
+    } catch {
+      // Ignore decode errors
+    }
+  }
+
+  // Claude/Anthropic: ajs_user_id might contain readable ID
+  if (cookieName === 'ajs_user_id' && cookieValue) {
+    // Check if it looks like a readable ID
+    if (cookieValue.length < 40 && !cookieValue.includes('-')) {
+      return cookieValue;
+    }
+  }
+
+  return null; // No account name extracted
+}
+
+// Discover all logged-in accounts from Chrome's cookies
+function discoverAllAccounts(profilePath, chromeKey, showAll = false) {
+  const cookiesDb = path.join(profilePath, 'Cookies');
+  if (!fs.existsSync(cookiesDb)) return { loggedIn: [], visited: [] };
+
+  // Load domain mappings
+  const mappingsFile = path.join(SCRIPT_DIR, 'domain-mappings.json');
+  let mappings = {};
+  if (fs.existsSync(mappingsFile)) {
+    mappings = JSON.parse(fs.readFileSync(mappingsFile, 'utf8'));
+  }
+
+  // Create reverse mapping
+  const domainToService = { ...mappings };
+  // Add entries for registrable domains
+  for (const [domain, service] of Object.entries(mappings)) {
+    const registrable = getRegistrableDomain(domain);
+    if (!domainToService[registrable]) {
+      domainToService[registrable] = service;
+    }
+  }
+
+  // Chrome time epoch
+  const CHROME_EPOCH_OFFSET = 11644473600000000n;
+  const nowChrome = BigInt(Date.now()) * 1000n + CHROME_EPOCH_OFFSET;
+
+  // Query ALL cookies from database
+  const query = `
+    SELECT host_key, name, hex(encrypted_value), last_access_utc, expires_utc
+    FROM cookies
+    WHERE last_access_utc > 0
+    ORDER BY last_access_utc DESC
+  `;
+
+  let result;
+  try {
+    result = execSync(`sqlite3 -separator '|' "${cookiesDb}" "${query}"`, {
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+      maxBuffer: 50 * 1024 * 1024
+    });
+  } catch (err) {
+    return { loggedIn: [], visited: [] };
+  }
+
+  // Group cookies by registrable domain
+  const domainCookies = {}; // registrableDomain -> {cookies: [], subdomains: Set, lastAccess}
+
+  for (const line of result.trim().split('\n')) {
+    if (!line) continue;
+    const parts = line.split('|');
+    if (parts.length < 5) continue;
+
+    const [rawDomain, cookieName, encHex, lastAccessStr, expiresStr] = parts;
+    const domain = rawDomain.replace(/^\./, '');
+    const registrable = getRegistrableDomain(domain);
+
+    // Initialize domain entry
+    if (!domainCookies[registrable]) {
+      domainCookies[registrable] = {
+        cookies: [],
+        subdomains: new Set(),
+        lastAccess: 0n,
+        authScore: 0
+      };
+    }
+
+    // Track subdomains
+    if (domain !== registrable) {
+      domainCookies[registrable].subdomains.add(domain);
+    }
+
+    // Update last access
+    try {
+      const lastAccess = BigInt(lastAccessStr);
+      if (lastAccess > domainCookies[registrable].lastAccess) {
+        domainCookies[registrable].lastAccess = lastAccess;
+      }
+    } catch {
+      // Invalid last access value, skip
+    }
+
+    // Decrypt cookie value
+    let value = null;
+    if (chromeKey && encHex) {
+      try {
+        const encrypted = Buffer.from(encHex, 'hex');
+        const decrypted = decryptCookieValue(encrypted, chromeKey);
+        if (decrypted) {
+          value = decrypted.length > 32 ?
+            decrypted.slice(32).toString('utf8') :
+            decrypted.toString('utf8');
+        }
+      } catch {
+        // Ignore decryption errors
+      }
+    }
+
+    // Score this cookie for auth detection
+    const score = scoreCookieForAuth(cookieName, value);
+    domainCookies[registrable].authScore += score;
+
+    // Store cookie info
+    let expired = false;
+    try {
+      expired = BigInt(expiresStr) < nowChrome;
+    } catch {
+      // Invalid expires value, assume not expired
+    }
+    domainCookies[registrable].cookies.push({
+      name: cookieName,
+      value,
+      domain,
+      score,
+      expired
+    });
+  }
+
+  // Process domains and categorize
+  const loggedIn = [];
+  const visited = [];
+
+  for (const [registrable, info] of Object.entries(domainCookies)) {
+    // Get service name
+    let service = domainToService[registrable];
+    if (!service) {
+      // Try to derive from domain
+      service = registrable
+        .replace(/\.(com|org|net|io|co|app|dev)$/, '')
+        .replace(/\./g, '-');
+    }
+
+    // Check if logged in (auth score > 5 indicates likely logged in)
+    const isLoggedIn = info.authScore >= 5 && info.cookies.some(c => !c.expired && c.score > 0);
+
+    // Try to extract account name
+    let accountName = null;
+    for (const cookie of info.cookies.sort((a, b) => b.score - a.score)) {
+      if (cookie.score > 0 && cookie.value) {
+        accountName = extractAccountName(service, cookie.name, cookie.value, profilePath);
+        if (accountName) break;
+      }
+    }
+
+    const secondsAgo = Number((nowChrome - info.lastAccess) / 1000000n);
+
+    const entry = {
+      service,
+      domain: registrable,
+      subdomains: info.subdomains.size,
+      account: accountName,
+      score: info.authScore,
+      isLoggedIn,
+      timeAgo: formatTimeAgo(secondsAgo),
+      secondsAgo
+    };
+
+    if (isLoggedIn) {
+      loggedIn.push(entry);
+    } else {
+      visited.push(entry);
+    }
+  }
+
+  // Sort by score (highest first), then by recency
+  loggedIn.sort((a, b) => b.score - a.score || a.secondsAgo - b.secondsAgo);
+  visited.sort((a, b) => a.secondsAgo - b.secondsAgo);
+
+  return { loggedIn, visited };
+}
+
 // Read Google account email from Chrome Preferences file
 function getGoogleEmailFromPreferences(profilePath) {
   const prefsFile = path.join(profilePath, 'Preferences');
@@ -1374,8 +1714,21 @@ const ACCOUNT_COOKIES = {
   'linkedin': ['li_at'],      // Session token (no username, but indicates logged in)
   'amazon': ['at-main'],      // Auth token (no username)
   'facebook': ['c_user'],     // User ID
-  'instagram': ['ds_user_id'] // User ID
+  'instagram': ['ds_user_id'], // User ID
+  // New services
+  'feishu': ['session', 'QXV0aHpDb250ZXh0'],  // AuthzContext base64
+  'claude': ['ajs_user_id', 'sessionKey'],
+  'anthropic': ['ajs_user_id', 'sessionKey'],
+  'cloudflare': ['curr-account', '__cf_logged_in']
 };
+
+// Auth cookie patterns for auto-discovery
+const AUTH_PATTERNS = [
+  /^(session|auth|access)[-_]?(token|id)?$/i,
+  /^(user|member|account)[-_]?(id|token|session)?$/i,
+  /^logged[-_]?in$/i,
+  /^(sid|ssid|_session|_auth)$/i
+];
 
 function detectChromeAccountsWithDetails(profilePath, chromeKey, targetService = null) {
   const cookiesDb = path.join(profilePath, 'Cookies');
@@ -1568,10 +1921,10 @@ function detectChromeAccounts(profilePath, targetService) {
 }
 
 // ============================================================================
-// Profile Command - Lists all accounts from Chrome
+// Accounts Command - Lists all accounts from Chrome (auto-discovery)
 // ============================================================================
 
-function cmdProfile() {
+function cmdAccounts(showAll = false) {
   // Get Chrome encryption key for account detection
   const chromeKey = getBrowserEncryptionKey('chrome');
 
@@ -1581,82 +1934,79 @@ function cmdProfile() {
     return;
   }
 
-  // Detect all accounts from Chrome, grouped by Chrome profile
-  const chromeProfiles = getChromeProfiles();
-  const profileAccounts = {}; // chromeProfile -> [{service, account}]
+  // Get all Chrome profiles
+  const chromeProfiles = getAllChromeProfiles();
 
-  for (const profileName of chromeProfiles) {
-    const profilePath = path.join(CHROME_APP_DIR, profileName);
-    const detected = detectChromeAccountsWithDetails(profilePath, chromeKey);
-
-    if (Object.keys(detected).length > 0) {
-      profileAccounts[profileName] = [];
-
-      for (const [service, accounts] of Object.entries(detected)) {
-        for (const acc of accounts) {
-          profileAccounts[profileName].push({
-            service,
-            account: acc.account,
-            timeAgo: acc.timeAgo
-          });
-        }
-      }
-
-      // Sort accounts within profile by service name
-      profileAccounts[profileName].sort((a, b) => a.service.localeCompare(b.service));
-    }
-  }
-
-  const profilesWithAccounts = Object.keys(profileAccounts);
-
-  if (profilesWithAccounts.length === 0) {
-    console.log('No accounts found in Chrome.\n');
+  if (chromeProfiles.length === 0) {
+    console.log('No Chrome profiles found.\n');
     return;
   }
 
-  // Determine if we need profile prefixes (multiple profiles or not Default)
-  const needsProfilePrefix = profilesWithAccounts.length > 1 ||
-    (profilesWithAccounts.length === 1 && profilesWithAccounts[0] !== 'Default');
+  // Process each profile
+  for (const profileName of chromeProfiles) {
+    const profilePath = path.join(CHROME_APP_DIR, profileName);
 
-  console.log('Accounts in Chrome:\n');
+    // Print profile header
+    console.log(`Chrome Profile: ${profileName}`);
+    console.log('\u2501'.repeat(24));
+    console.log();
 
-  for (const profileName of profilesWithAccounts) {
-    const accounts = profileAccounts[profileName];
+    // Discover all accounts
+    const { loggedIn, visited } = discoverAllAccounts(profilePath, chromeKey, showAll);
 
-    if (needsProfilePrefix) {
-      console.log(`  ${profileName}:`);
+    if (loggedIn.length === 0) {
+      console.log('No logged-in services detected.\n');
+    } else {
+      console.log(`Logged-in Services (${loggedIn.length}):\n`);
+
+      for (const entry of loggedIn) {
+        // Service name with subdomain count
+        let serviceLine = `  ${capitalize(entry.service)}`;
+        if (entry.subdomains > 0) {
+          serviceLine += ` (${entry.subdomains + 1} subdomains)`;
+        }
+        console.log(serviceLine);
+
+        // Account name
+        if (entry.account) {
+          console.log(`    Account: ${entry.account}`);
+        } else {
+          console.log(`    Account: (detected)`);
+        }
+
+        console.log();
+      }
     }
 
-    for (const acc of accounts) {
-      const indent = needsProfilePrefix ? '    ' : '  ';
-      let accountStr;
-
-      if (acc.account && acc.account !== '(logged in)') {
-        accountStr = `${acc.service}:${acc.account}`;
-      } else {
-        accountStr = acc.service;
+    // Show visited sites count
+    if (visited.length > 0 && !showAll) {
+      console.log(`[Use --all to show ${visited.length} other visited sites]\n`);
+    } else if (showAll && visited.length > 0) {
+      console.log(`Other Visited Sites (${visited.length}):\n`);
+      for (const entry of visited.slice(0, 50)) { // Limit to 50
+        console.log(`  ${entry.service} (${entry.domain})`);
       }
-
-      // Include profile prefix in usage hint when multiple profiles
-      if (needsProfilePrefix) {
-        console.log(`${indent}${accountStr}`);
-      } else {
-        console.log(`${indent}${accountStr}`);
+      if (visited.length > 50) {
+        console.log(`  ... and ${visited.length - 50} more`);
       }
-    }
-
-    if (needsProfilePrefix) {
-      console.log('');
+      console.log();
     }
   }
 
-  // Show usage example
-  if (needsProfilePrefix) {
-    console.log(`Usage: ${TOOL_NAME} --account "<Profile>/<service>" open <url>`);
-    console.log(`   eg: ${TOOL_NAME} --account "Default/github" open https://github.com\n`);
-  } else {
-    console.log(`\nUsage: ${TOOL_NAME} --account <name> open <url>\n`);
-  }
+  // Show usage
+  console.log(`Usage: ${TOOL_NAME} --account <service> open <url>`);
+  console.log(`   eg: ${TOOL_NAME} --account github open https://github.com\n`);
+}
+
+// Legacy alias for backward compatibility
+function cmdProfile() {
+  cmdAccounts(false);
+}
+
+// Capitalize first letter
+function capitalize(str) {
+  if (!str) return str;
+  return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
 // ============================================================================
@@ -1800,7 +2150,8 @@ COMMANDS:
     close                 Close browser instance
 
   Accounts:
-    profile               List all accounts from Chrome
+    accounts [--all]      List all logged-in accounts from Chrome (auto-discovery)
+    profile               Alias for 'accounts' (backward compatible)
 
   Options:
     --index N             Select Nth match when multiple elements found
@@ -1913,6 +2264,9 @@ async function main() {
         break;
       case 'close':
         await cmdClose();
+        break;
+      case 'accounts':
+        cmdAccounts(restArgs.includes('--all'));
         break;
       case 'profile':
         cmdProfile();
