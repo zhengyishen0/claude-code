@@ -30,9 +30,9 @@ def feishu_cli(ctx):
     \b
     Examples:
         service feishu domains                    # List available domains
-        service feishu im v1/messages ...         # Send message
-        service feishu calendar v4/calendars ...  # Calendar operations
-        service feishu contact v3/users ...       # Contact operations
+        service feishu im messages ...         # Send message
+        service feishu calendar calendars ...  # Calendar operations
+        service feishu contact users ...       # Contact operations
     """
     if ctx.invoked_subcommand is None:
         click.echo(ctx.get_help())
@@ -122,7 +122,7 @@ def domains():
     click.echo("Usage: service feishu <domain> <api-path> [params...]")
     click.echo()
     click.echo("Example:")
-    click.echo("  service feishu im v1/messages receive_id_type=chat_id --body '{...}'")
+    click.echo("  service feishu im messages receive_id_type=chat_id --body '{...}'")
 
 
 # Dynamic command for each domain
@@ -232,7 +232,7 @@ def create_domain_command(domain_name: str, domain_info: dict):
                 sys.exit(1)
 
         # Build full path
-        full_path = f"{dom}/{api_path}"
+        full_path = f"{dom}/{version}/{api_path}"
 
         try:
             result = call_api_by_path(full_path, param_dict, body_dict)
@@ -248,11 +248,11 @@ def create_domain_command(domain_name: str, domain_info: dict):
     domain_cmd.__doc__ = f"""{domain_info['description']}
 
     \b
-    API_PATH: Path after /{domain_name}/, e.g., '{domain_info['version']}/...'
+    API_PATH: Resource path, e.g., 'calendars', 'messages', 'users'
 
     \b
     Example:
-        service feishu {domain_name} {domain_info['version']}/... [params...]
+        service feishu {domain_name} <resource> [params...]
     """
 
     return domain_cmd
