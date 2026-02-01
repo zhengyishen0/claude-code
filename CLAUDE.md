@@ -93,7 +93,7 @@ Tell your subagents which tool to use:
 | How/why we did something | `memory --recall` | "OAuth approach", "progress on X" |
 | What's on screen (any app) | `screenshot` | "Figma", "Terminal" |
 | Interact with websites | `browser` | "buy VPS", "book flight" |
-| Code changes | `jj new` first | "fix bug", "add feature" |
+| Code changes | `jj workspace` first | "fix bug", "add feature" |
 
 ## Quick Rules
 
@@ -101,34 +101,59 @@ Tell your subagents which tool to use:
 2. **"Updates on..."** → Gmail (notifications come via email)
 3. **"What was the [fact]"** → `memory search`
 4. **"How did we..."** → `memory --recall`
-5. **Code changes** → `jj new main` first
+5. **Code changes** → Create workspace first
 
 ## Workflow
 
-Main branch is protected. Use jj (Jujutsu) for version control:
+Main branch is protected. **Must work in a jj workspace** (not default).
 
+### Start work
 ```bash
-jj new main -m "feature-name"    # Before ANY file changes
-jj squash --into main            # When done (merge to main)
-jj abandon                       # To discard current change
+jj workspace add --name <task> ../.workspaces/claude-code/<task>
+cd ../.workspaces/claude-code/<task>
+jj new main -m "<task description>"
+# Now you can edit files
 ```
 
-For filesystem isolation (parallel work):
+### Finish work (from workspace)
 ```bash
-jj workspace add --name foo ../foo   # Create isolated workspace
-jj workspace forget foo              # Remove workspace
+jj describe -m "final: <summary>"     # Ensure good description
+```
+
+### Merge to main (from main repo)
+```bash
+cd /path/to/main/repo
+jj new main <change-id> -m "merge: <description>"  # Creates merge commit
+jj squash                                           # Squash into main
+jj workspace forget <task>                          # Cleanup workspace
+rm -rf ../.workspaces/claude-code/<task>           # Cleanup files
+```
+
+### Abandon work
+```bash
+jj abandon                            # Discard current change
+jj workspace forget <task>            # Remove workspace
 ```
 
 ## Tools Reference (for subagents)
 
 ### jj (version control)
 ```bash
-jj new main -m "description"     # Start new change
-jj log                           # See history
-jj status                        # See current changes
-jj describe -m "message"         # Update description
-jj squash --into main            # Merge into main
-jj abandon                       # Discard change
+# Workspace (required for edits)
+jj workspace add --name <n> <path>   # Create workspace
+jj workspace list                     # List workspaces
+jj workspace forget <name>            # Remove workspace
+
+# Changes
+jj new main -m "description"          # Start new change from main
+jj log                                # See history
+jj status                             # See current changes
+jj describe -m "message"              # Update description
+jj abandon                            # Discard change
+
+# Merging
+jj new main <change> -m "merge: X"    # Merge change into main (creates merge commit)
+jj squash                             # Squash working copy into parent
 ```
 
 ### browser
