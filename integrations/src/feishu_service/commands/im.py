@@ -1,20 +1,20 @@
 """IM (Instant Messaging) CLI commands.
 
-Send messages, manage chats, and get bot information.
+Send messages, manage chats, and reply in threads.
 
 Actions:
-    send        Send a text message
-    send_card   Send an interactive card message
-    reply       Reply to a message
-    list_chats  List chats the bot is in
-    bot_info    Get bot information
+    send              Send a text message
+    send_card         Send an interactive card message
+    reply             Reply to a message
+    reply_in_thread   Reply in a thread/topic (creates or continues a thread)
+    list_chats        List chats the bot is in
 
 Examples:
     service feishu im send chat_id=oc_XXX text="Hello world"
     service feishu im send_card chat_id=oc_XXX card='{"config":{},"elements":[...]}'
     service feishu im reply message_id=om_XXX text="Thanks!"
+    service feishu im reply_in_thread message_id=om_XXX text="Thread reply"
     service feishu im list_chats
-    service feishu im bot_info
 """
 
 import json
@@ -28,8 +28,8 @@ ACTIONS = {
     'send': 'Send a text message to a chat',
     'send_card': 'Send an interactive card message',
     'reply': 'Reply to a specific message',
+    'reply_in_thread': 'Reply in a thread/topic (creates or continues a thread)',
     'list_chats': 'List chats the bot is a member of',
-    'bot_info': 'Get information about the bot',
 }
 
 
@@ -58,10 +58,10 @@ def run_action(action: str, params: dict[str, Any]) -> dict:
         return _send_card(params)
     elif action == 'reply':
         return _reply_message(params)
+    elif action == 'reply_in_thread':
+        return _reply_in_thread(params)
     elif action == 'list_chats':
         return _list_chats(params)
-    elif action == 'bot_info':
-        return _bot_info(params)
     else:
         raise ValueError(f"Unknown action: {action}")
 
@@ -133,6 +133,23 @@ def _reply_message(params: dict) -> dict:
     )
 
 
+def _reply_in_thread(params: dict) -> dict:
+    """Reply in a thread/topic (creates or continues a thread)."""
+    _require_params(params, 'message_id', 'text')
+
+    content = json.dumps({'text': params['text']})
+
+    return call_api(
+        domain='im',
+        method_path=f"im/v1/messages/{params['message_id']}/reply",
+        body={
+            'msg_type': 'text',
+            'content': content,
+            'reply_in_thread': True,
+        },
+    )
+
+
 def _list_chats(params: dict) -> dict:
     """List chats the bot is a member of."""
     return call_api(
@@ -145,9 +162,3 @@ def _list_chats(params: dict) -> dict:
     )
 
 
-def _bot_info(params: dict) -> dict:
-    """Get information about the bot."""
-    return call_api(
-        domain='im',
-        method_path='im/v1/bots/me',
-    )
