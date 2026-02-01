@@ -171,6 +171,43 @@ api google gmail users.messages.list userId=me q="query"
 api google drive files.list q="name contains 'X'"
 ```
 
+### feishu service
+
+Feishu (Lark) API commands for bitable and instant messaging.
+
+```bash
+# Bitable (多维表格)
+service feishu bitable list_tables app_token=bascnXXX
+service feishu bitable list_fields app_token=bascnXXX table_id=tblXXX
+service feishu bitable list_records app_token=bascnXXX table_id=tblXXX
+service feishu bitable get_record app_token=bascnXXX table_id=tblXXX record_id=recXXX
+service feishu bitable create_record app_token=bascnXXX table_id=tblXXX data='{"fields":{"Name":"Test"}}'
+service feishu bitable update_record app_token=bascnXXX table_id=tblXXX record_id=recXXX data='{"fields":{"Name":"Updated"}}'
+service feishu bitable delete_record app_token=bascnXXX table_id=tblXXX record_id=recXXX
+
+# IM (Instant Messaging)
+service feishu im send chat_id=oc_XXX text="Hello world"
+service feishu im send_card chat_id=oc_XXX card='{"config":{},"elements":[...]}'
+service feishu im reply message_id=om_XXX text="Thanks!"
+service feishu im reply_in_thread message_id=om_XXX text="Thread reply"
+service feishu im list_chats
+```
+
+| Command | Required | Optional |
+|---------|----------|----------|
+| `bitable list_tables` | `app_token` | `page_size`, `page_token` |
+| `bitable list_fields` | `app_token`, `table_id` | `page_size`, `page_token` |
+| `bitable list_records` | `app_token`, `table_id` | `page_size`, `page_token`, `view_id`, `filter` |
+| `bitable get_record` | `app_token`, `table_id`, `record_id` | |
+| `bitable create_record` | `app_token`, `table_id`, `data` | |
+| `bitable update_record` | `app_token`, `table_id`, `record_id`, `data` | |
+| `bitable delete_record` | `app_token`, `table_id`, `record_id` | |
+| `im send` | `chat_id`, `text` | |
+| `im send_card` | `chat_id`, `card` | |
+| `im reply` | `message_id`, `text` | |
+| `im reply_in_thread` | `message_id`, `text` | |
+| `im list_chats` | | `page_size`, `page_token` |
+
 ## Setup
 
 ```bash
