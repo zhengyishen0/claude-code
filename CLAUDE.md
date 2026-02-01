@@ -131,6 +131,7 @@ jj log -r 'description(substring:"(f123ecda)")'     # By session
 jj workspace add --name <n> <path>
 jj workspace list
 jj workspace forget <name>
+jj workspace rename <new-name>  # Only changes internal tracking, not directory path
 
 # Changes
 jj new main -m "description"
