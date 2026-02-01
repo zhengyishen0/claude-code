@@ -13,7 +13,7 @@ from .auth import (
     CREDENTIALS_PATH,
 )
 from .api import call_api, list_domains, SERVICE_DOMAINS
-from .bot import cli_start as bot_start, cli_status as bot_status, BotError
+from .bot import cli_start as bot_start, cli_start_cc as bot_start_cc, cli_status as bot_status, BotError
 
 
 @click.group(invoke_without_command=True)
@@ -305,8 +305,9 @@ def bot_status_cmd():
 
 
 @bot.command('start')
+@click.option('--cc', is_flag=True, help='Enable Claude Code integration')
 @click.option('--verbose', '-v', is_flag=True, help='Enable debug logging')
-def bot_start_cmd(verbose):
+def bot_start_cmd(cc, verbose):
     """Start the bot listener (WebSocket long connection)
 
     \b
@@ -331,6 +332,10 @@ def bot_start_cmd(verbose):
     \b
     Example:
         service feishu bot start
+        service feishu bot start --cc
         service feishu bot start --verbose
     """
-    bot_start(verbose=verbose)
+    if cc:
+        bot_start_cc(verbose=verbose)
+    else:
+        bot_start(verbose=verbose)
