@@ -57,11 +57,10 @@ Main branch is protected. **Must work in a jj workspace with PDSD commits.**
 
 ### PDSD Cycle
 ```
-[task] → [plan] → [try] → [learn] → [done|adjust|pivot|drop]
-                    ↑                      │ │
-                    └──────────────────────┘ │ (adjust/pivot → new plan)
-                                             ↓
-                                      merge to main
+[task] → [plan] → [try] → [reflect] → [done|adjust|pivot|drop]
+            ↑       ↑                        │ │
+            │       └────────────────────────┘ │ (adjust/pivot → new plan)
+            └──────────────────────────────────┘
 ```
 
 ### Commit Types
@@ -70,16 +69,18 @@ Main branch is protected. **Must work in a jj workspace with PDSD commits.**
 |------|---------|------|
 | `[task]` | Define what needs to be done | → `[plan]` |
 | `[plan]` | Hypothesis + approach | → `[try]` |
-| `[try]` | Execute, log progress | → `[try]` or `[learn]` |
-| `[learn]` | Analyze results, reflect | → decide |
+| `[try]` | Execute (edits happen here) | → `[try]` or `[reflect]` |
+| `[reflect]` | Analyze results, reflect | → decide |
 | `[done]` | Success, ready to merge | → merge to main |
 | `[adjust]` | Refine approach, same direction | → `[plan]` |
 | `[pivot]` | Different approach entirely | → `[plan]` |
-| `[drop]` | Abandon task | → cleanup |
+| `[drop]` | Abandon task (only from reflect) | → cleanup |
 
 **adjust vs pivot:**
 - `[adjust]` = "right direction, needs refinement"
 - `[pivot]` = "wrong direction, try something else"
+
+**Note:** `[drop]` only allowed from `[reflect]` - must reflect before abandoning.
 
 ### Message Format
 ```
@@ -110,21 +111,23 @@ jj new -m "[plan] <hypothesis + approach> (${SESSION_ID})"
 - How will you test it? (specific steps)
 - What does success look like?
 
-**[try]** - Execute
+**[try]** - Execute (edits happen here)
 ```bash
 jj new -m "[try] <what you did> (${SESSION_ID})"
 ```
+- Edits require [task] + [plan] first
 - Parallelize independent tool calls
 - Chain bash commands with `&&` when no intermediate output needed
 - Create multiple `[try]` commits as you progress
 
-**[learn]** - Reflect
+**[reflect]** - Reflect before deciding
 ```bash
-jj new -m "[learn] <what you learned> (${SESSION_ID})"
+jj new -m "[reflect] <what you learned> (${SESSION_ID})"
 ```
 - What worked? What didn't?
 - Root cause of failures?
 - What would you do differently?
+- Must reflect before [drop] - no shortcuts
 
 **Decide:**
 ```bash

@@ -1,9 +1,18 @@
 #!/bin/bash
 # PreToolUse hook: PDSD enforcement
-# 1. Block Edit/Write unless in workspace with [task]
+# 1. Block Edit/Write unless in workspace with [task] and [plan]
 # 2. Validate jj commit message format and state transitions
 #
-# Types: [task] [plan] [try] [learn] [done] [adjust] [pivot] [drop]
+# Types: [task] [plan] [try] [reflect] [done] [adjust] [pivot] [drop]
+#
+# State machine:
+#   [task]   → [plan]
+#   [plan]   → [try]
+#   [try]    → [try], [reflect]
+#   [reflect] → [done], [adjust], [pivot], [drop]
+#   [adjust] → [plan]
+#   [pivot]  → [plan]
+#
 # Exit code 2 = block, exit 0 = allow
 
 set -eo pipefail
@@ -12,7 +21,7 @@ input=$(cat)
 tool_name=$(echo "$input" | jq -r '.tool_name')
 
 # =============================================================================
-# Part 1: Edit/Write guard - must be in workspace with [task]
+# Part 1: Edit/Write guard - must be in workspace with [task] and [plan]
 # =============================================================================
 if [[ "$tool_name" == "Edit" || "$tool_name" == "Write" ]]; then
     file_path=$(echo "$input" | jq -r '.tool_input.file_path // ""')
@@ -24,14 +33,28 @@ if [[ "$tool_name" == "Edit" || "$tool_name" == "Write" ]]; then
 
         # Check if in workspace directory
         if [[ "$jj_root" == *"/.workspaces/"* ]]; then
-            # In workspace - check for [task] commit
-            has_task=$(jj log -r 'ancestors(@)' --no-graph -T 'description ++ "\n"' -R "$target_dir" 2>/dev/null | grep -c '^\[task\]' || echo "0")
+            history=$(jj log -r 'ancestors(@)' --no-graph -T 'description ++ "\n"' -R "$target_dir" 2>/dev/null || echo "")
+
+            # Check for [task]
+            has_task=$(echo "$history" | grep -c '^\[task\]' || echo "0")
             if [[ "$has_task" -eq 0 ]]; then
                 echo "" >&2
                 echo "Error: Cannot $tool_name without [task] commit." >&2
                 echo "" >&2
                 echo "Create a task first:" >&2
                 echo "  jj new main -m '[task] description (session-id)'" >&2
+                echo "" >&2
+                exit 2
+            fi
+
+            # Check for [plan]
+            has_plan=$(echo "$history" | grep -c '^\[plan\]' || echo "0")
+            if [[ "$has_plan" -eq 0 ]]; then
+                echo "" >&2
+                echo "Error: Cannot $tool_name without [plan] commit." >&2
+                echo "" >&2
+                echo "Create a plan first:" >&2
+                echo "  jj new -m '[plan] hypothesis + approach (session-id)'" >&2
                 echo "" >&2
                 exit 2
             fi
@@ -44,6 +67,7 @@ if [[ "$tool_name" == "Edit" || "$tool_name" == "Write" ]]; then
             echo "  jj workspace add --name <task>-<session-id> ../.workspaces/claude-code/<name>" >&2
             echo "  cd ../.workspaces/claude-code/<name>" >&2
             echo "  jj new main -m '[task] description (session-id)'" >&2
+            echo "  jj new -m '[plan] hypothesis (session-id)'" >&2
             echo "" >&2
             exit 2
         fi
@@ -53,8 +77,6 @@ if [[ "$tool_name" == "Edit" || "$tool_name" == "Write" ]]; then
         if [[ "$current_bookmarks" == *"main"* ]]; then
             echo "" >&2
             echo "Error: Cannot $tool_name on main bookmark." >&2
-            echo "" >&2
-            echo "Create a new change: jj new main -m '[task] description'" >&2
             echo "" >&2
             exit 2
         fi
@@ -93,17 +115,17 @@ if [[ "$tool_name" == "Bash" ]]; then
         else
             echo "" >&2
             echo "Error: Commit message must start with [type]" >&2
-            echo "Valid types: [task] [plan] [try] [learn] [done] [adjust] [pivot] [drop]" >&2
+            echo "Valid types: [task] [plan] [try] [reflect] [done] [adjust] [pivot] [drop]" >&2
             echo "" >&2
             exit 2
         fi
 
         # Validate type
-        valid_types="task plan try learn done adjust pivot drop"
+        valid_types="task plan try reflect done adjust pivot drop"
         if [[ ! " $valid_types " =~ " $new_type " ]]; then
             echo "" >&2
             echo "Error: Invalid type [$new_type]" >&2
-            echo "Valid types: [task] [plan] [try] [learn] [done] [adjust] [pivot] [drop]" >&2
+            echo "Valid types: [task] [plan] [try] [reflect] [done] [adjust] [pivot] [drop]" >&2
             echo "" >&2
             exit 2
         fi
@@ -122,14 +144,14 @@ if [[ "$tool_name" == "Bash" ]]; then
         last_type=$(jj log -r 'ancestors(@)' --no-graph -T 'description ++ "\n"' 2>/dev/null | \
             grep -E '^\[[a-z]+\]' | head -1 | grep -oE '^\[[a-z]+\]' | tr -d '[]' || echo "")
 
-        # State machine validation
+        # State machine validation (simplified - only reflect can drop)
         valid_transition=false
         case "$last_type" in
             "") [[ "$new_type" == "task" ]] && valid_transition=true ;;
-            "task") [[ "$new_type" =~ ^(plan|drop)$ ]] && valid_transition=true ;;
-            "plan") [[ "$new_type" =~ ^(try|drop)$ ]] && valid_transition=true ;;
-            "try") [[ "$new_type" =~ ^(try|learn|drop)$ ]] && valid_transition=true ;;
-            "learn") [[ "$new_type" =~ ^(done|adjust|pivot|drop)$ ]] && valid_transition=true ;;
+            "task") [[ "$new_type" == "plan" ]] && valid_transition=true ;;
+            "plan") [[ "$new_type" == "try" ]] && valid_transition=true ;;
+            "try") [[ "$new_type" =~ ^(try|reflect)$ ]] && valid_transition=true ;;
+            "reflect") [[ "$new_type" =~ ^(done|adjust|pivot|drop)$ ]] && valid_transition=true ;;
             "adjust"|"pivot") [[ "$new_type" == "plan" ]] && valid_transition=true ;;
             "done"|"drop")
                 echo "" >&2
@@ -144,12 +166,12 @@ if [[ "$tool_name" == "Bash" ]]; then
             echo "Error: Invalid transition [$last_type] → [$new_type]" >&2
             echo "" >&2
             echo "Valid transitions:" >&2
-            echo "  [task]   → [plan], [drop]" >&2
-            echo "  [plan]   → [try], [drop]" >&2
-            echo "  [try]    → [try], [learn], [drop]" >&2
-            echo "  [learn]  → [done], [adjust], [pivot], [drop]" >&2
-            echo "  [adjust] → [plan]" >&2
-            echo "  [pivot]  → [plan]" >&2
+            echo "  [task]    → [plan]" >&2
+            echo "  [plan]    → [try]" >&2
+            echo "  [try]     → [try], [reflect]" >&2
+            echo "  [reflect] → [done], [adjust], [pivot], [drop]" >&2
+            echo "  [adjust]  → [plan]" >&2
+            echo "  [pivot]   → [plan]" >&2
             echo "" >&2
             exit 2
         fi
