@@ -1,4 +1,13 @@
-"""Feishu/Lark API service for the service tool"""
+"""Feishu/Lark API service for the service tool
+
+CLI Structure:
+    service feishu admin [setup|status|logout]
+    service feishu bot [start|stop|status]
+    service feishu bitable <action> [args]
+    service feishu im <action> [args]
+    service feishu calendar <action> [args]
+    service feishu vc <action> [args]
+"""
 
 import click
 import json
@@ -14,6 +23,7 @@ from .auth import (
 )
 from .api import call_api, list_domains, SERVICE_DOMAINS
 from .bot import cli_start as bot_start, cli_start_cc as bot_start_cc, cli_status as bot_status, BotError
+from .commands import bitable, im, calendar, vc
 
 
 @click.group(invoke_without_command=True)
@@ -334,3 +344,229 @@ def bot_start_cmd(debug):
         service feishu bot start --debug
     """
     bot_start_cc(verbose=debug)
+
+
+# =============================================================================
+# High-level command groups: bitable, im, calendar, vc
+# =============================================================================
+
+def _create_action_command(module, group_name: str):
+    """Create a Click command group for a module with actions."""
+
+    @click.command(name=group_name)
+    @click.argument('action', required=False)
+    @click.argument('params', nargs=-1)
+    @click.pass_context
+    def action_cmd(ctx, action, params):
+        # Get the module from the context
+        mod = ctx.obj
+
+        # If no action, show help
+        if not action:
+            click.echo(f"Available {group_name} actions:\n")
+            for name, desc in mod.get_actions().items():
+                click.echo(f"  {name:<20} {desc}")
+            click.echo()
+            click.echo(f"Usage: service feishu {group_name} <action> [key=value ...]")
+            click.echo()
+            click.echo(f"Example: service feishu {group_name} {list(mod.get_actions().keys())[0]} ...")
+            return
+
+        # Check if action exists
+        actions = mod.get_actions()
+        if action not in actions:
+            click.echo(f"Unknown action: {action}", err=True)
+            click.echo(f"\nAvailable actions: {', '.join(actions.keys())}")
+            sys.exit(1)
+
+        # Parse params: key=value pairs
+        param_dict = {}
+        for p in params:
+            if '=' in p:
+                k, v = p.split('=', 1)
+                # Try to parse as JSON for complex values
+                try:
+                    v = json.loads(v)
+                except (json.JSONDecodeError, ValueError):
+                    pass
+                param_dict[k] = v
+            else:
+                click.echo(f"Invalid parameter format: {p}", err=True)
+                click.echo("Parameters must be in key=value format")
+                sys.exit(1)
+
+        # Run the action
+        try:
+            result = mod.run_action(action, param_dict)
+            click.echo(json.dumps(result, indent=2, ensure_ascii=False))
+        except ValueError as e:
+            click.echo(f"Error: {e}", err=True)
+            sys.exit(1)
+        except AuthError as e:
+            click.echo(f"Auth Error: {e}", err=True)
+            sys.exit(1)
+        except Exception as e:
+            click.echo(f"Error: {e}", err=True)
+            sys.exit(1)
+
+    return action_cmd
+
+
+@feishu_cli.command('bitable')
+@click.argument('action', required=False)
+@click.argument('params', nargs=-1)
+def bitable_cmd(action, params):
+    """Bitable (Base) - database tables and records
+
+    \b
+    Bitable is Feishu's database product, similar to Airtable.
+    Manage tables, fields, and records programmatically.
+
+    \b
+    Actions:
+        list_tables     List all tables in a base
+        list_fields     List all fields (columns) in a table
+        list_records    List records with optional filtering
+        get_record      Get a single record by ID
+        create_record   Create a new record
+        update_record   Update an existing record
+        delete_record   Delete a record
+
+    \b
+    Examples:
+        service feishu bitable list_tables app_token=bascnXXX
+        service feishu bitable list_fields app_token=bascnXXX table_id=tblXXX
+        service feishu bitable list_records app_token=bascnXXX table_id=tblXXX
+        service feishu bitable get_record app_token=bascnXXX table_id=tblXXX record_id=recXXX
+    """
+    _run_action_command(bitable, 'bitable', action, params)
+
+
+@feishu_cli.command('im')
+@click.argument('action', required=False)
+@click.argument('params', nargs=-1)
+def im_cmd(action, params):
+    """IM - instant messaging
+
+    \b
+    Send messages, manage chats, and interact with users.
+
+    \b
+    Actions:
+        send        Send a text message to a chat
+        send_card   Send an interactive card message
+        reply       Reply to a specific message
+        list_chats  List chats the bot is in
+        bot_info    Get bot information
+
+    \b
+    Examples:
+        service feishu im send chat_id=oc_XXX text="Hello!"
+        service feishu im reply message_id=om_XXX text="Thanks!"
+        service feishu im list_chats
+        service feishu im bot_info
+    """
+    _run_action_command(im, 'im', action, params)
+
+
+@feishu_cli.command('calendar')
+@click.argument('action', required=False)
+@click.argument('params', nargs=-1)
+def calendar_cmd(action, params):
+    """Calendar - events and scheduling
+
+    \b
+    Manage calendars and events in Feishu Calendar.
+
+    \b
+    Actions:
+        list_calendars  List all calendars
+        list_events     List events in a calendar
+        get_event       Get a single event by ID
+        create_event    Create a new event
+        update_event    Update an existing event
+        delete_event    Delete an event
+
+    \b
+    Examples:
+        service feishu calendar list_calendars
+        service feishu calendar list_events calendar_id=primary
+        service feishu calendar get_event calendar_id=primary event_id=xxx
+    """
+    _run_action_command(calendar, 'calendar', action, params)
+
+
+@feishu_cli.command('vc')
+@click.argument('action', required=False)
+@click.argument('params', nargs=-1)
+def vc_cmd(action, params):
+    """VC - video conference statistics
+
+    \b
+    Get video conference statistics and meeting information.
+
+    \b
+    Actions:
+        top_users       Get top users by meeting time
+        meeting_stats   Get aggregate meeting statistics
+
+    \b
+    Examples:
+        service feishu vc top_users
+        service feishu vc top_users days=30 limit=10
+        service feishu vc meeting_stats days=7
+    """
+    _run_action_command(vc, 'vc', action, params)
+
+
+def _run_action_command(module, group_name: str, action: str, params: tuple):
+    """Run an action from a command module."""
+    # If no action, show help
+    if not action:
+        click.echo(f"Available {group_name} actions:\n")
+        for name, desc in module.get_actions().items():
+            click.echo(f"  {name:<20} {desc}")
+        click.echo()
+        click.echo(f"Usage: service feishu {group_name} <action> [key=value ...]")
+        click.echo()
+        actions_list = list(module.get_actions().keys())
+        if actions_list:
+            click.echo(f"Example: service feishu {group_name} {actions_list[0]} ...")
+        return
+
+    # Check if action exists
+    actions = module.get_actions()
+    if action not in actions:
+        click.echo(f"Unknown action: {action}", err=True)
+        click.echo(f"\nAvailable actions: {', '.join(actions.keys())}")
+        sys.exit(1)
+
+    # Parse params: key=value pairs
+    param_dict = {}
+    for p in params:
+        if '=' in p:
+            k, v = p.split('=', 1)
+            # Try to parse as JSON for complex values
+            try:
+                v = json.loads(v)
+            except (json.JSONDecodeError, ValueError):
+                pass
+            param_dict[k] = v
+        else:
+            click.echo(f"Invalid parameter format: {p}", err=True)
+            click.echo("Parameters must be in key=value format")
+            sys.exit(1)
+
+    # Run the action
+    try:
+        result = module.run_action(action, param_dict)
+        click.echo(json.dumps(result, indent=2, ensure_ascii=False))
+    except ValueError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+    except AuthError as e:
+        click.echo(f"Auth Error: {e}", err=True)
+        sys.exit(1)
+    except Exception as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)

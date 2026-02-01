@@ -31,10 +31,16 @@ from typing import Callable, Optional
 
 import lark_oapi as lark
 from lark_oapi.api.im.v1 import P2ImMessageReceiveV1
+from lark_oapi.event.callback.model.p2_card_action_trigger import (
+    P2CardActionTrigger,
+    P2CardActionTriggerResponse,
+    CallBackCard,
+)
 
 from .auth import get_credentials, AuthError, CREDENTIALS_PATH
 from .api import call_api
 from .bot_handler import handle_message, is_bot_mentioned
+from .approval import handle_card_callback
 
 
 # Message deduplication cache (LRU-style, max 1000 messages)
@@ -259,13 +265,80 @@ def cc_message_handler(data: P2ImMessageReceiveV1) -> None:
 
 
 
+def card_action_handler(data: P2CardActionTrigger) -> P2CardActionTriggerResponse:
+    """
+    Handle card action callbacks (button clicks on interactive cards).
+
+    Args:
+        data: The card action trigger event data containing:
+            - event.action: Action info with value dict
+            - event.operator: User who clicked the button
+
+    Returns:
+        P2CardActionTriggerResponse with updated card to replace the original
+    """
+    try:
+        event = data.event
+
+        # Extract callback data in the format expected by handle_card_callback
+        callback_data = {
+            "action": {
+                "value": event.action.value if event.action else {},
+                "tag": event.action.tag if event.action else "",
+            },
+            "operator": {
+                "user_id": event.operator.user_id if event.operator else "",
+                "open_id": event.operator.open_id if event.operator else "",
+                "union_id": event.operator.union_id if event.operator else "",
+            },
+        }
+
+        # Call the approval handler to process the action
+        updated_card = handle_card_callback(callback_data)
+
+        # Build the response with the updated card
+        response = P2CardActionTriggerResponse()
+        response.card = CallBackCard()
+        response.card.type = "raw"
+        response.card.data = updated_card
+
+        return response
+
+    except Exception as e:
+        print(f"Error in card_action_handler: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+
+        # Return an error card
+        response = P2CardActionTriggerResponse()
+        response.card = CallBackCard()
+        response.card.type = "raw"
+        response.card.data = {
+            "config": {"wide_screen_mode": True},
+            "header": {
+                "title": {"tag": "plain_text", "content": "Error"},
+                "template": "red"
+            },
+            "elements": [
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": f"An error occurred: {str(e)}"
+                    }
+                }
+            ]
+        }
+        return response
+
+
 def create_event_handler(
     message_handler: Callable[[P2ImMessageReceiveV1], None] = None,
     encrypt_key: str = "",
     verification_token: str = "",
 ) -> lark.EventDispatcherHandler:
     """
-    Create an event dispatcher handler with message callback.
+    Create an event dispatcher handler with message and card action callbacks.
 
     Args:
         message_handler: Callback function for im.message.receive_v1 events.
@@ -280,6 +353,7 @@ def create_event_handler(
 
     return lark.EventDispatcherHandler.builder(encrypt_key, verification_token) \
         .register_p2_im_message_receive_v1(handler) \
+        .register_p2_card_action_trigger(card_action_handler) \
         .build()
 
 
