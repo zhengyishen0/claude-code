@@ -17,8 +17,18 @@ from typing import Optional
 # Storage directory
 CHATS_DIR = Path.home() / '.config' / 'api' / 'feishu' / 'chats'
 
+# System prompt file path
+SYSTEM_PROMPT_FILE = Path(__file__).parent / 'system_prompt.md'
+
 # Namespace for deterministic UUID generation
 NAMESPACE = uuid.UUID('f1e2d3c4-b5a6-4789-8901-234567890abc')
+
+
+def load_system_prompt() -> str:
+    """Load system prompt from file"""
+    if SYSTEM_PROMPT_FILE.exists():
+        return SYSTEM_PROMPT_FILE.read_text()
+    return ""
 
 
 def get_session_uuid(chat_id: str) -> str:
@@ -110,11 +120,23 @@ def call_cc(session_uuid: str, prompt: str) -> str:
     
     For new sessions: uses --session-id to create session with the UUID
     For existing sessions: uses --resume to continue the conversation
+    
+    System prompt is included via --system-prompt flag.
     """
+    system_prompt = load_system_prompt()
+    
     try:
+        # Build base command
+        base_cmd = ['claude', '--dangerously-skip-permissions']
+        
+        # Add system prompt if available
+        if system_prompt:
+            base_cmd.extend(['--system-prompt', system_prompt])
+        
         # First, try to resume existing session
+        resume_cmd = base_cmd + ['--resume', session_uuid, '--print', '-p', prompt]
         result = subprocess.run(
-            ['claude', '--dangerously-skip-permissions', '--resume', session_uuid, '--print', '-p', prompt],
+            resume_cmd,
             capture_output=True,
             text=True,
             timeout=120  # 2 minute timeout
@@ -123,8 +145,9 @@ def call_cc(session_uuid: str, prompt: str) -> str:
         # Check if session doesn't exist (need to create new one)
         if "No conversation found" in result.stdout or "No conversation found" in result.stderr:
             # Create new session with this UUID
+            new_cmd = base_cmd + ['--session-id', session_uuid, '--print', '-p', prompt]
             result = subprocess.run(
-                ['claude', '--dangerously-skip-permissions', '--session-id', session_uuid, '--print', '-p', prompt],
+                new_cmd,
                 capture_output=True,
                 text=True,
                 timeout=120  # 2 minute timeout
