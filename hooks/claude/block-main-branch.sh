@@ -1,6 +1,6 @@
 #!/bin/bash
-# PreToolUse hook: Block Edit/Write unless in a jj workspace
-# Hard block - forces workspace usage for isolation
+# PreToolUse hook: Block Edit/Write unless in a jj workspace with [task]
+# Enforces: 1. Must be in workspace 2. Must have [task] commit first
 #
 # Exit code 2 = block, exit 0 = allow
 
@@ -22,8 +22,17 @@ if jj root -R "$target_dir" &>/dev/null; then
     # Check if target is in a workspace directory (not the main repo)
     # Workspaces are in .workspaces/ directory
     if [[ "$jj_root" == *"/.workspaces/"* ]]; then
-        # Target is in a workspace directory - allow
-        :
+        # Target is in a workspace directory - check for [task] commit
+        has_task=$(jj log -r 'ancestors(@)' --no-graph -T 'description ++ "\n"' -R "$target_dir" 2>/dev/null | grep -c '^\[task\]' || echo "0")
+        if [[ "$has_task" -eq 0 ]]; then
+            echo "" >&2
+            echo "Warning: Cannot $tool_name without a [task] commit." >&2
+            echo "" >&2
+            echo "Create a task first:" >&2
+            echo "  jj new main -m '[task] description (session-id)'" >&2
+            echo "" >&2
+            exit 2
+        fi
     else
         # Target is in main repo - check if in default workspace
         workspace_info=$(jj workspace list -R "$target_dir" 2>/dev/null || echo "")
