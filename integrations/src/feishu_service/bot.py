@@ -32,7 +32,7 @@ from lark_oapi.api.im.v1 import P2ImMessageReceiveV1
 
 from .auth import get_credentials, AuthError, CREDENTIALS_PATH
 from .api import call_api
-from .bot_handler import handle_message
+from .bot_handler import handle_message, is_bot_mentioned
 
 
 class BotError(Exception):
@@ -110,6 +110,7 @@ def cc_message_handler(data: P2ImMessageReceiveV1) -> None:
     - DM: Always respond
     - Group: Only respond when @mentioned, stores all messages
     - Uses cc --resume for persistent conversations per chat
+    - Sends instant "thinking" indicator before processing
 
     Args:
         data: The message receive event data
@@ -118,6 +119,14 @@ def cc_message_handler(data: P2ImMessageReceiveV1) -> None:
         event = data.event
         message = event.message
         chat_id = message.chat_id
+        chat_type = message.chat_type  # "p2p" for DM, "group" for group
+
+        # Determine if we should respond (DM or @mentioned in group)
+        should_respond = chat_type == "p2p" or is_bot_mentioned(event)
+
+        # Send instant "thinking" indicator if we're going to respond
+        if should_respond:
+            send_message(chat_id, "🤔")
 
         # Process message and get response
         response = handle_message(event)
