@@ -305,22 +305,21 @@ def bot_status_cmd():
 
 
 @bot.command('start')
-@click.option('--cc', is_flag=True, help='Enable Claude Code integration')
-@click.option('--verbose', '-v', is_flag=True, help='Enable debug logging')
-def bot_start_cmd(cc, verbose):
+@click.option('--debug', is_flag=True, help='Enable debug logging')
+def bot_start_cmd(debug):
     """Start the bot listener (WebSocket long connection)
 
-    \b
+    
     This starts a WebSocket connection to Feishu and listens for
     im.message.receive_v1 events (messages sent to your bot).
 
-    \b
+    
     The connection will:
     - Auto-reconnect on disconnection
     - Print received messages to stdout
     - Keep running until Ctrl+C
 
-    \b
+    
     Prerequisites:
         1. Configure credentials: service feishu admin
         2. In Feishu Open Platform console:
@@ -329,13 +328,9 @@ def bot_start_cmd(cc, verbose):
            - Add 'im.message.receive_v1' event
            - Grant 'im:message' permission
 
-    \b
+    
     Example:
         service feishu bot start
-        service feishu bot start --cc
-        service feishu bot start --verbose
+        service feishu bot start --debug
     """
-    if cc:
-        bot_start_cc(verbose=verbose)
-    else:
-        bot_start(verbose=verbose)
+    bot_start_cc(verbose=debug)
