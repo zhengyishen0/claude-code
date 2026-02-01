@@ -29,7 +29,7 @@ alias wechat="$PROJECT_DIR/wechat/bin/wechat"
 # ============================================================
 alias claude-ps='pgrep -fl "^claude"'
 alias claude-kill='pkill -9 "^claude"'
-alias cc="COLUMNS=200 claude --dangerously-skip-permissions"
+alias cc="$PROJECT_DIR/utils/cc.sh"
 
 # ============================================================
 # Daemon shortcuts (for convenience)
