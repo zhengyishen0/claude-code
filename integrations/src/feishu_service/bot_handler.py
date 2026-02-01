@@ -54,14 +54,22 @@ def is_bot_mentioned(event) -> bool:
     mentions = getattr(event.message, 'mentions', None)
     if mentions:
         for mention in mentions:
+            # Get mention name (bot's display name)
+            mention_name = getattr(mention, 'name', '').lower()
+            mention_key = getattr(mention, 'key', '')
+
             # Check if it's the bot being mentioned
-            if getattr(mention, 'id', {}).get('open_id') == 'bot' or \
-               getattr(mention, 'key', '') == '@_all' or \
-               getattr(mention, 'name', '').lower() in ['cc', 'bot', '有谱', 'yep']:
+            if mention_name in ['cc', 'bot', '有谱', 'yep']:
                 return True
-    # Also check content for @_ pattern (bot mention marker)
+            if mention_key == '@_all':
+                return True
+            # Check if mention key starts with @_user_ (bot mention marker)
+            if mention_key.startswith('@_user_'):
+                return True
+
+    # Also check content for direct @mentions
     content = parse_message_content(event.message.content)
-    return '@_user_' in content or '@CC' in content or '@cc' in content or '@有谱' in content
+    return '@CC' in content or '@cc' in content or '@有谱' in content
 
 
 def call_cc(session_uuid: str, prompt: str, is_new_topic: bool = True) -> str:
