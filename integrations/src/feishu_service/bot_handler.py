@@ -103,7 +103,7 @@ def call_cc(session_uuid: str, prompt: str) -> str:
     """Call cc --resume with the given prompt"""
     try:
         result = subprocess.run(
-            ['cc', '--resume', session_uuid, '--print', '-p', prompt],
+            ['claude', '--dangerously-skip-permissions', '--resume', session_uuid, '--print', '-p', prompt],
             capture_output=True,
             text=True,
             timeout=120  # 2 minute timeout
