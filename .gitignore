@@ -25,3 +25,4 @@ pretrained_models/
 # Editor
 *.swp
 *~
+.jj/

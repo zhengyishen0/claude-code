@@ -143,12 +143,10 @@ def handle_message(event, topic_root_id: str, is_new_topic: bool) -> Optional[st
         Response text to send, or None if no response needed.
     """
     message = event.message
-    chat_type = message.chat_type  # "p2p" for DM, "group" for group
     content = parse_message_content(message.content)
 
-    # Group chat: only respond if @mentioned
-    if chat_type == "group" and not is_bot_mentioned(event):
-        return None  # Silent - don't respond
+    # Note: Decision to respond is already made in bot.py
+    # This function just processes the message and returns response
 
     # Get session UUID based on topic root
     session_uuid = get_topic_session_uuid(topic_root_id)

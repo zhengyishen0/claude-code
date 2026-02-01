@@ -93,7 +93,7 @@ Tell your subagents which tool to use:
 | How/why we did something | `memory --recall` | "OAuth approach", "progress on X" |
 | What's on screen (any app) | `screenshot` | "Figma", "Terminal" |
 | Interact with websites | `browser` | "buy VPS", "book flight" |
-| Code changes | `worktree` first | "fix bug", "add feature" |
+| Code changes | `jj new` first | "fix bug", "add feature" |
 
 ## Quick Rules
 
@@ -101,25 +101,34 @@ Tell your subagents which tool to use:
 2. **"Updates on..."** → Gmail (notifications come via email)
 3. **"What was the [fact]"** → `memory search`
 4. **"How did we..."** → `memory --recall`
-5. **Code changes** → `worktree create` first
+5. **Code changes** → `jj new main` first
 
 ## Workflow
 
-Main branch is protected. Subagents use worktrees:
+Main branch is protected. Use jj (Jujutsu) for version control:
 
 ```bash
-worktree create feature-name     # Before ANY file changes
-worktree merge feature-name      # When done
-worktree abandon feature-name    # To discard
+jj new main -m "feature-name"    # Before ANY file changes
+jj squash --into main            # When done (merge to main)
+jj abandon                       # To discard current change
+```
+
+For filesystem isolation (parallel work):
+```bash
+jj workspace add --name foo ../foo   # Create isolated workspace
+jj workspace forget foo              # Remove workspace
 ```
 
 ## Tools Reference (for subagents)
 
-### worktree
+### jj (version control)
 ```bash
-worktree create <name>
-worktree merge <name>
-worktree abandon <name>
+jj new main -m "description"     # Start new change
+jj log                           # See history
+jj status                        # See current changes
+jj describe -m "message"         # Update description
+jj squash --into main            # Merge into main
+jj abandon                       # Discard change
 ```
 
 ### browser
