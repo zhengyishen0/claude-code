@@ -199,8 +199,19 @@ def cc_message_handler(data: P2ImMessageReceiveV1) -> None:
         topic_root_id = root_id if root_id else user_message_id
         print(f"[TOPIC] root_id={topic_root_id}, is_new={is_new_topic}", flush=True)
 
-        # Determine if we should respond (DM or @mentioned in group)
-        should_respond = chat_type == "p2p" or is_bot_mentioned(event)
+        # Determine if we should respond:
+        # - DM: always respond
+        # - Group with @mention: respond (start new topic)
+        # - Group reply in thread (has root_id): respond (continue conversation)
+        # - Group without @mention and not in thread: ignore
+        if chat_type == "p2p":
+            should_respond = True
+        elif root_id:
+            # Reply in existing thread - continue conversation
+            should_respond = True
+        else:
+            # New message in group - only respond if @mentioned
+            should_respond = is_bot_mentioned(event)
 
         thinking_message_id = None
 
