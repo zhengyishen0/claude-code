@@ -195,6 +195,12 @@ def cc_message_handler(data: P2ImMessageReceiveV1) -> None:
             print(f"[DEDUP] Skipping duplicate message: {user_message_id}", flush=True)
             return
 
+        # Skip messages from bots (including ourselves) to prevent self-reply loops
+        sender = event.sender
+        if sender and sender.sender_type == "app":
+            print(f"[SKIP] Ignoring message from bot/app", flush=True)
+            return
+
         # Check message create_time vs now
         msg_create_time = int(message.create_time) / 1000  # ms to seconds
         print(f"[TIMING] Message created: {msg_create_time:.3f}, Received: {t0:.3f}, Delay: {(t0 - msg_create_time):.3f}s", flush=True)
