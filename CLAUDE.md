@@ -51,75 +51,109 @@ Do not directly read files, call APIs, or fetch data. Delegate first, then revie
 
 ---
 
-## Workflow: jj Version Control
+## Workflow: PDSD (Plan-Do-Study-Decide)
 
-Main branch is protected. **Must work in a jj workspace.**
+Main branch is protected. **Must work in a jj workspace with PDSD commits.**
 
-### Session ID
+### PDSD Cycle
+```
+[task] → [plan] → [try] → [learn] → [done|adjust|pivot|drop]
+                    ↑                      │ │
+                    └──────────────────────┘ │ (adjust/pivot → new plan)
+                                             ↓
+                                      merge to main
+```
 
-Use first 8 chars of `$CLAUDE_SESSION_ID` (e.g., `f123ecda`).
+### Commit Types
+
+| Type | Purpose | Next |
+|------|---------|------|
+| `[task]` | Define what needs to be done | → `[plan]` |
+| `[plan]` | Hypothesis + approach | → `[try]` |
+| `[try]` | Execute, log progress | → `[try]` or `[learn]` |
+| `[learn]` | Analyze results, reflect | → decide |
+| `[done]` | Success, ready to merge | → merge to main |
+| `[adjust]` | Refine approach, same direction | → `[plan]` |
+| `[pivot]` | Different approach entirely | → `[plan]` |
+| `[drop]` | Abandon task | → cleanup |
+
+**adjust vs pivot:**
+- `[adjust]` = "right direction, needs refinement"
+- `[pivot]` = "wrong direction, try something else"
+
+### Message Format
+```
+[type] description (session-id)
+```
 
 ### Workspace Naming
 ```
 <task-name>-<session-id>
 ```
-- `task-name`: Short kebab-case description
-- `session-id`: First 8 chars of `$CLAUDE_SESSION_ID`
-
 Example: `fix-login-bug-f123ecda`
-
-### Change Description Format
-```
-[type] description (session-id)
-```
-
-| Type | When |
-|------|------|
-| `[task]` | Starting new task |
-| `[checkpoint]` | Major progress step |
-| `[complete]` | Task finished |
-| `[merge]` | Merging to main |
 
 ### Start Work
 ```bash
-SESSION_ID="${CLAUDE_SESSION_ID:0:8}"  # First 8 chars
+SESSION_ID="${CLAUDE_SESSION_ID:0:8}"
 jj workspace add --name "<task>-${SESSION_ID}" ../.workspaces/claude-code/"<task>-${SESSION_ID}"
 cd ../.workspaces/claude-code/"<task>-${SESSION_ID}"
-jj new main -m "[task] <description> (${SESSION_ID})"
+jj new main -m "[task] <what needs to be done> (${SESSION_ID})"
 ```
 
-### Track Progress (every major step)
+### PDSD Steps
+
+**[plan]** - Form hypothesis
 ```bash
-jj new -m "[checkpoint] <what was done> (${SESSION_ID})"
+jj new -m "[plan] <hypothesis + approach> (${SESSION_ID})"
 ```
+- What's your hypothesis? (testable prediction)
+- How will you test it? (specific steps)
+- What does success look like?
 
-### Finish Work
+**[try]** - Execute
 ```bash
-jj describe -m "[complete] <summary> (${SESSION_ID})"
+jj new -m "[try] <what you did> (${SESSION_ID})"
+```
+- Parallelize independent tool calls
+- Chain bash commands with `&&` when no intermediate output needed
+- Create multiple `[try]` commits as you progress
+
+**[learn]** - Reflect
+```bash
+jj new -m "[learn] <what you learned> (${SESSION_ID})"
+```
+- What worked? What didn't?
+- Root cause of failures?
+- What would you do differently?
+
+**Decide:**
+```bash
+jj new -m "[done] <summary> (${SESSION_ID})"    # Success
+jj new -m "[adjust] <refinement> (${SESSION_ID})" # Refine → [plan]
+jj new -m "[pivot] <new direction> (${SESSION_ID})" # Change → [plan]
+jj new -m "[drop] <why abandoned> (${SESSION_ID})" # Give up
 ```
 
-### Merge to Main (from main repo)
+### Merge to Main
 ```bash
 cd /path/to/main/repo
-jj new main <change-id> -m "[merge] <description> (${SESSION_ID})"
+jj new main <change-id> -m "[done] <description> (${SESSION_ID})"
 jj bookmark set main -r @
 jj workspace forget <task>-${SESSION_ID}
-jj abandon 'heads(all()) ~ @ ~ main ~ immutable()'  # Clean up orphans
-# Keep workspace files on disk for reference
+jj abandon 'heads(all()) ~ @ ~ main ~ immutable()'
 ```
 
-**DO NOT use `jj squash`.** Always use `jj new main <change>` to merge. This preserves the branch visual in the graph showing parallel work.
+**DO NOT use `jj squash`.** Use `jj new main <change>` to preserve branch visual.
 
 ### Resume Session
 ```bash
 cc --continue f123    # Fuzzy match session ID
-cc -c f123            # Short form
 ```
 
 ### Query Progress
 ```bash
-jj log -r 'description(substring:"[checkpoint]")'   # All checkpoints
-jj log -r 'description(substring:"(f123ecda)")'     # By session
+jj log -r 'description(substring:"[plan]")'       # All plans
+jj log -r 'description(substring:"(f123ecda)")'   # By session
 ```
 
 ---
