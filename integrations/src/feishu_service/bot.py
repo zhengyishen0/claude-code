@@ -56,12 +56,7 @@ def send_message(chat_id: str, text: str) -> dict:
         "msg_type": "text",
         "content": json.dumps({"text": text})
     }
-    return call_api(
-        "im",
-        "v1/messages",
-        params={"receive_id_type": "chat_id"},
-        body=body
-    )
+    return call_api("im", "im/v1/messages", {"receive_id_type": "chat_id"}, body)
 
 
 def default_message_handler(data: P2ImMessageReceiveV1) -> None:
