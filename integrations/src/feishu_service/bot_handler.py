@@ -99,23 +99,48 @@ def is_bot_mentioned(event) -> bool:
     return '@_user_' in content or '@CC' in content or '@cc' in content
 
 
+def ensure_session(chat_id: str) -> str:
+    """Ensure a cc session exists for this chat"""
+    chat = load_chat(chat_id)
+    return chat["cc_session"]
+
+
 def call_cc(session_uuid: str, prompt: str) -> str:
-    """Call cc --resume with the given prompt"""
+    """Call claude with the given prompt, handling new vs existing sessions.
+    
+    For new sessions: uses --session-id to create session with the UUID
+    For existing sessions: uses --resume to continue the conversation
+    """
     try:
+        # First, try to resume existing session
         result = subprocess.run(
             ['claude', '--dangerously-skip-permissions', '--resume', session_uuid, '--print', '-p', prompt],
             capture_output=True,
             text=True,
             timeout=120  # 2 minute timeout
         )
-        if result.returncode == 0:
+        
+        # Check if session doesn't exist (need to create new one)
+        if "No conversation found" in result.stdout or "No conversation found" in result.stderr:
+            # Create new session with this UUID
+            result = subprocess.run(
+                ['claude', '--dangerously-skip-permissions', '--session-id', session_uuid, '--print', '-p', prompt],
+                capture_output=True,
+                text=True,
+                timeout=120  # 2 minute timeout
+            )
+            if result.returncode == 0:
+                return result.stdout.strip()
+            else:
+                return f"Error: {result.stderr.strip()}"
+        elif result.returncode == 0:
             return result.stdout.strip()
         else:
             return f"Error: {result.stderr.strip()}"
     except subprocess.TimeoutExpired:
         return "Response timed out"
     except FileNotFoundError:
-        return "cc command not found"
+        return "claude command not found"
     except Exception as e:
         return f"Error: {str(e)}"
 
