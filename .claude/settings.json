@@ -9,10 +9,6 @@
           },
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/claude/log-agent-start.sh"
-          },
-          {
-            "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/claude/browser-cleanup.sh"
           }
         ]
@@ -28,27 +24,22 @@
         ]
       }
     ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/claude/commit-checkpoint.sh"
-          }
-        ]
-      }
-    ],
     "PreToolUse": [
       {
         "matcher": "Edit|Write",
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/claude/warn-unstaged.sh"
-          },
+            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/claude/pdsd-guard.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash(jj *)",
+        "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/claude/block-main-branch.sh"
+            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/claude/pdsd-state.sh"
           }
         ]
       }
@@ -60,6 +51,15 @@
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/claude/post-edit-diagnose.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash(jj *)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/claude/pdsd-prompt.sh"
           }
         ]
       }
