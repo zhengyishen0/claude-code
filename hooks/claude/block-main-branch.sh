@@ -16,21 +16,31 @@ target_dir=$(dirname "$file_path")
 
 # Check if using jj
 if jj root -R "$target_dir" &>/dev/null; then
-    # Get workspace info from target directory
-    workspace_info=$(jj workspace list -R "$target_dir" 2>/dev/null || echo "")
-    current_workspace=$(echo "$workspace_info" | grep ' @ ' | awk -F: '{print $1}' || echo "default")
-    
-    # If workspace is "default", block (must use named workspace)
-    if [[ "$current_workspace" == "default" ]]; then
-        echo "" >&2
-        echo "Warning: Cannot $tool_name in default workspace." >&2
-        echo "" >&2
-        echo "Create a workspace first:" >&2
-        echo "  jj workspace add --name <task> ../.workspaces/claude-code/<task>" >&2
-        echo "  cd ../.workspaces/claude-code/<task>" >&2
-        echo "  jj new main -m '<task description>'" >&2
-        echo "" >&2
-        exit 2
+    # Get the jj root for the target directory
+    jj_root=$(jj root -R "$target_dir" 2>/dev/null || echo "")
+
+    # Check if target is in a workspace directory (not the main repo)
+    # Workspaces are in .workspaces/ directory
+    if [[ "$jj_root" == *"/.workspaces/"* ]]; then
+        # Target is in a workspace directory - allow
+        :
+    else
+        # Target is in main repo - check if in default workspace
+        workspace_info=$(jj workspace list -R "$target_dir" 2>/dev/null || echo "")
+        # In jj 0.37+, workspace list shows "name: change..." but doesn't mark current with @
+        # If we're in the main repo root, we're in default workspace
+        main_repo_root=$(jj root -R "$target_dir" 2>/dev/null || echo "")
+        if [[ "$main_repo_root" == "$CLAUDE_PROJECT_DIR" ]] || [[ ! "$jj_root" == *"/.workspaces/"* ]]; then
+            echo "" >&2
+            echo "Warning: Cannot $tool_name in default workspace." >&2
+            echo "" >&2
+            echo "Create a workspace first:" >&2
+            echo "  jj workspace add --name <task> ../.workspaces/claude-code/<task>" >&2
+            echo "  cd ../.workspaces/claude-code/<task>" >&2
+            echo "  jj new main -m '<task description>'" >&2
+            echo "" >&2
+            exit 2
+        fi
     fi
     
     # Also block if @ has main bookmark (extra safety)

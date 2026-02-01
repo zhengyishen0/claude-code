@@ -27,32 +27,13 @@ You are a **coordinator**. You think, delegate, and review. You do not do.
 
 Do not directly read files, call APIs, or fetch data. Delegate first, then review the subagent's report.
 
-### Examples
-
-| User request | You do |
-|--------------|--------|
-| "What's in config.json?" | Delegate: "Read config.json and report the contents" |
-| "What meetings do I have tomorrow?" | Delegate: "Check calendar for tomorrow's meetings" |
-| "Fix the login bug" | Delegate: "Investigate and fix the login bug" |
-| "How does the auth module work?" | Delegate: "Research the auth module and explain how it works" |
-| "What's showing in Terminal?" | Delegate: "Take a screenshot of Terminal and describe it" |
-| "Plan the migration" | **Direct**: Think and plan (no external data needed) |
-| "Summarize what we did" | **Direct**: Synthesize from subagent reports you already have |
-
 ---
 
 ## Subagent Rules
 
-When you are a subagent (delegated a task), follow these rules:
-
-### 1. Parallel Tool Calls
-Use parallel tool calls when possible. Don't do sequentially what can be done in parallel.
-
-### 2. No Nested Subagents
-Subagents use **tools only**. Do not spawn more subagents.
-
-### 3. Test Before Returning
-Verify your work before reporting back. Don't hand over untested results.
+1. **Parallel Tool Calls** - Don't do sequentially what can be done in parallel
+2. **No Nested Subagents** - Subagents use tools only, no spawning more subagents
+3. **Test Before Returning** - Verify your work before reporting back
 
 ---
 
@@ -68,28 +49,25 @@ Verify your work before reporting back. Don't hand over untested results.
 | Interact with websites | `browser` | "buy VPS", "book flight" |
 | Code changes | `jj workspace` first | "fix bug", "add feature" |
 
-## Quick Rules
-
-1. **"What did I do..."** → Calendar, not memory
-2. **"Updates on..."** → Gmail (notifications come via email)
-3. **"What was the [fact]"** → `memory search`
-4. **Code changes** → Create workspace first
-
 ---
 
 ## Workflow: jj Version Control
 
 Main branch is protected. **Must work in a jj workspace.**
 
+### Session ID
+
+Use first 8 chars of `$CLAUDE_SESSION_ID` (e.g., `f123ecda`).
+
 ### Workspace Naming
 ```
-<agent-id>-<task-name>
+<session-id>-<task-name>
 ```
-Example: `f1a2b3c-fix-login-bug`
+Example: `f123ecda-fix-login-bug`
 
 ### Change Description Format
 ```
-[type] description (agent-id)
+[type] description (session-id)
 ```
 
 | Type | When |
@@ -98,45 +76,44 @@ Example: `f1a2b3c-fix-login-bug`
 | `[checkpoint]` | Major progress step |
 | `[complete]` | Task finished |
 | `[merge]` | Merging to main |
-| `[abandon]` | Discarding work |
 
 ### Start Work
 ```bash
-jj workspace add --name <agent-id>-<task> ../.workspaces/claude-code/<agent-id>-<task>
-cd ../.workspaces/claude-code/<agent-id>-<task>
-jj new main -m "[task] <description> (<agent-id>)"
+SESSION_ID="${CLAUDE_SESSION_ID:0:8}"  # First 8 chars
+jj workspace add --name "${SESSION_ID}-<task>" ../.workspaces/claude-code/"${SESSION_ID}-<task>"
+cd ../.workspaces/claude-code/"${SESSION_ID}-<task>"
+jj new main -m "[task] <description> (${SESSION_ID})"
 ```
 
 ### Track Progress (every major step)
 ```bash
-jj new -m "[checkpoint] <what was done> (<agent-id>)"
+jj new -m "[checkpoint] <what was done> (${SESSION_ID})"
 ```
 
 ### Finish Work
 ```bash
-jj describe -m "[complete] <summary> (<agent-id>)"
+jj describe -m "[complete] <summary> (${SESSION_ID})"
 ```
 
 ### Merge to Main (from main repo)
 ```bash
 cd /path/to/main/repo
-jj new main <change-id> -m "[merge] <description> (<agent-id>)"
+jj new main <change-id> -m "[merge] <description> (${SESSION_ID})"
 jj bookmark set main -r @
 jj workspace forget <workspace-name>
 rm -rf ../.workspaces/claude-code/<workspace-name>
 ```
 
-### Abandon Work
+### Resume Session
 ```bash
-jj abandon
-jj workspace forget <workspace-name>
+cc --continue f123    # Fuzzy match session ID
+cc -c f123            # Short form
 ```
 
 ### Query Progress
 ```bash
 jj log -r 'description(substring:"[checkpoint]")'   # All checkpoints
-jj log -r 'description(substring:"[complete]")'     # All completed
-jj log -r 'description(substring:"f1a2b3c")'        # By agent
+jj log -r 'description(substring:"(f123ecda)")'     # By session
 ```
 
 ---
