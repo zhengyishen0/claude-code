@@ -61,9 +61,12 @@ Use first 8 chars of `$CLAUDE_SESSION_ID` (e.g., `f123ecda`).
 
 ### Workspace Naming
 ```
-<session-id>-<task-name>
+<task-name>-<session-id>
 ```
-Example: `f123ecda-fix-login-bug`
+- `task-name`: Short kebab-case description
+- `session-id`: First 8 chars of `$CLAUDE_SESSION_ID`
+
+Example: `fix-login-bug-f123ecda`
 
 ### Change Description Format
 ```
@@ -80,8 +83,8 @@ Example: `f123ecda-fix-login-bug`
 ### Start Work
 ```bash
 SESSION_ID="${CLAUDE_SESSION_ID:0:8}"  # First 8 chars
-jj workspace add --name "${SESSION_ID}-<task>" ../.workspaces/claude-code/"${SESSION_ID}-<task>"
-cd ../.workspaces/claude-code/"${SESSION_ID}-<task>"
+jj workspace add --name "<task>-${SESSION_ID}" ../.workspaces/claude-code/"<task>-${SESSION_ID}"
+cd ../.workspaces/claude-code/"<task>-${SESSION_ID}"
 jj new main -m "[task] <description> (${SESSION_ID})"
 ```
 
@@ -100,9 +103,11 @@ jj describe -m "[complete] <summary> (${SESSION_ID})"
 cd /path/to/main/repo
 jj new main <change-id> -m "[merge] <description> (${SESSION_ID})"
 jj bookmark set main -r @
-jj workspace forget <workspace-name>
-rm -rf ../.workspaces/claude-code/<workspace-name>
+jj workspace forget <task>-${SESSION_ID}
+rm -rf ../.workspaces/claude-code/<task>-${SESSION_ID}
 ```
+
+**DO NOT use `jj squash`.** Always use `jj new main <change>` to merge. This preserves the branch visual in the graph showing parallel work.
 
 ### Resume Session
 ```bash

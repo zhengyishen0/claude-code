@@ -41,6 +41,7 @@ from .auth import get_credentials, AuthError, CREDENTIALS_PATH
 from .api import call_api
 from .bot_handler import handle_message, is_bot_mentioned
 from .approval import handle_card_callback
+from .thread_tracker import track_thread
 
 
 # Message deduplication cache (LRU-style, max 1000 messages)
@@ -204,6 +205,26 @@ def cc_message_handler(data: P2ImMessageReceiveV1) -> None:
         is_new_topic = root_id is None
         topic_root_id = root_id if root_id else user_message_id
         print(f"[TOPIC] root_id={topic_root_id}, is_new={is_new_topic}", flush=True)
+
+        # Track thread for later retrieval
+        # Extract message text for title (first message becomes title)
+        msg_title = None
+        if is_new_topic:
+            try:
+                content_obj = json.loads(message.content) if message.content else {}
+                msg_title = content_obj.get('text', '')[:100]
+            except (json.JSONDecodeError, AttributeError):
+                pass
+
+        sender_id = event.sender.sender_id.open_id if event.sender and event.sender.sender_id else None
+        track_thread(
+            thread_id=topic_root_id,
+            chat_id=chat_id,
+            chat_type=chat_type,
+            title=msg_title,
+            sender_id=sender_id,
+        )
+        print(f"[THREAD] Tracked thread {topic_root_id}", flush=True)
 
         # Determine if we should respond:
         # - DM: always respond

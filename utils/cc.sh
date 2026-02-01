@@ -64,5 +64,5 @@ if [[ "${1:-}" == "--continue" || "${1:-}" == "-c" ]]; then
     exec claude --continue "$session_id" "$@"
 else
     # Pass through to claude
-    exec COLUMNS=200 claude --dangerously-skip-permissions "$@"
+    COLUMNS=200 exec claude --dangerously-skip-permissions "$@"
 fi
