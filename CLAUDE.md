@@ -104,7 +104,8 @@ cd /path/to/main/repo
 jj new main <change-id> -m "[merge] <description> (${SESSION_ID})"
 jj bookmark set main -r @
 jj workspace forget <task>-${SESSION_ID}
-rm -rf ../.workspaces/claude-code/<task>-${SESSION_ID}
+jj abandon 'heads(all()) ~ @ ~ main'  # Clean up orphan commits
+# Keep workspace files on disk for reference
 ```
 
 **DO NOT use `jj squash`.** Always use `jj new main <change>` to merge. This preserves the branch visual in the graph showing parallel work.
