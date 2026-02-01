@@ -2,20 +2,17 @@
 Feishu Bot Handler - Message processing with Claude Code integration
 
 Handles:
-- DM: Always respond
-- Group: Only respond when @mentioned, but include full history
-- Persistence: cc --resume with deterministic UUID per chat
+- Each topic/thread has its own fresh Claude session
+- DM: Each user message creates a new topic with fresh context
+- Group: Each thread has its own session
+- Session ID based on topic root message ID (not chat_id)
 """
 
 import json
 import subprocess
 import uuid
 from pathlib import Path
-from datetime import datetime
 from typing import Optional
-
-# Storage directory
-CHATS_DIR = Path.home() / '.config' / 'api' / 'feishu' / 'chats'
 
 # System prompt file path
 SYSTEM_PROMPT_FILE = Path(__file__).parent / 'system_prompt.md'
@@ -31,54 +28,12 @@ def load_system_prompt() -> str:
     return ""
 
 
-def get_session_uuid(chat_id: str) -> str:
-    """Generate deterministic UUID from Feishu chat_id"""
-    return str(uuid.uuid5(NAMESPACE, chat_id))
+def get_topic_session_uuid(topic_root_id: str) -> str:
+    """Generate deterministic UUID from topic root message ID.
 
-
-def get_chat_file(chat_id: str) -> Path:
-    """Get path to chat history file"""
-    CHATS_DIR.mkdir(parents=True, exist_ok=True)
-    return CHATS_DIR / f"{chat_id}.json"
-
-
-def load_chat(chat_id: str) -> dict:
-    """Load chat history from file"""
-    chat_file = get_chat_file(chat_id)
-    if chat_file.exists():
-        return json.loads(chat_file.read_text())
-    return {
-        "chat_id": chat_id,
-        "cc_session": get_session_uuid(chat_id),
-        "messages": []
-    }
-
-
-def save_chat(chat_id: str, chat_data: dict):
-    """Save chat history to file"""
-    chat_file = get_chat_file(chat_id)
-    chat_file.write_text(json.dumps(chat_data, indent=2, ensure_ascii=False))
-
-
-def store_message(chat_id: str, user: str, content: str, is_bot: bool = False):
-    """Store a message in chat history"""
-    chat = load_chat(chat_id)
-    chat["messages"].append({
-        "user": user,
-        "content": content,
-        "timestamp": datetime.now().isoformat(),
-        "is_bot": is_bot
-    })
-    save_chat(chat_id, chat)
-
-
-def format_history_for_cc(chat_data: dict) -> str:
-    """Format chat history as text for CC"""
-    lines = []
-    for msg in chat_data["messages"]:
-        prefix = "[Bot]" if msg.get("is_bot") else msg["user"]
-        lines.append(f"{prefix}: {msg['content']}")
-    return "\n".join(lines)
+    Each topic (thread) gets its own fresh Claude session.
+    """
+    return str(uuid.uuid5(NAMESPACE, topic_root_id))
 
 
 def parse_message_content(content_json: str) -> str:
@@ -102,64 +57,63 @@ def is_bot_mentioned(event) -> bool:
             # Check if it's the bot being mentioned
             if getattr(mention, 'id', {}).get('open_id') == 'bot' or \
                getattr(mention, 'key', '') == '@_all' or \
-               getattr(mention, 'name', '').lower() in ['cc', 'bot']:
+               getattr(mention, 'name', '').lower() in ['cc', 'bot', '有谱', 'yep']:
                 return True
     # Also check content for @_ pattern (bot mention marker)
     content = parse_message_content(event.message.content)
-    return '@_user_' in content or '@CC' in content or '@cc' in content
+    return '@_user_' in content or '@CC' in content or '@cc' in content or '@有谱' in content
 
 
-def ensure_session(chat_id: str) -> str:
-    """Ensure a cc session exists for this chat"""
-    chat = load_chat(chat_id)
-    return chat["cc_session"]
+def call_cc(session_uuid: str, prompt: str, is_new_topic: bool = True) -> str:
+    """Call claude with the given prompt.
 
+    Args:
+        session_uuid: The session UUID for this topic
+        prompt: The user's message
+        is_new_topic: If True, creates new session. If False, resumes existing.
 
-def call_cc(session_uuid: str, prompt: str) -> str:
-    """Call claude with the given prompt, handling new vs existing sessions.
-    
-    For new sessions: uses --session-id to create session with the UUID
-    For existing sessions: uses --resume to continue the conversation
-    
-    System prompt is included via --system-prompt flag.
+    Returns:
+        Claude's response text
     """
     system_prompt = load_system_prompt()
-    
+
     try:
         # Build base command
         base_cmd = ['claude', '--dangerously-skip-permissions']
-        
+
         # Add system prompt if available
         if system_prompt:
             base_cmd.extend(['--system-prompt', system_prompt])
-        
-        # First, try to resume existing session
-        resume_cmd = base_cmd + ['--resume', session_uuid, '--print', '-p', prompt]
+
+        if is_new_topic:
+            # New topic = new session
+            cmd = base_cmd + ['--session-id', session_uuid, '--print', '-p', prompt]
+        else:
+            # Continue existing topic session
+            cmd = base_cmd + ['--resume', session_uuid, '--print', '-p', prompt]
+
         result = subprocess.run(
-            resume_cmd,
+            cmd,
             capture_output=True,
             text=True,
             timeout=120  # 2 minute timeout
         )
-        
-        # Check if session doesn't exist (need to create new one)
-        if "No conversation found" in result.stdout or "No conversation found" in result.stderr:
-            # Create new session with this UUID
-            new_cmd = base_cmd + ['--session-id', session_uuid, '--print', '-p', prompt]
+
+        # If resume failed (session not found), try creating new
+        if not is_new_topic and ("No conversation found" in result.stdout or "No conversation found" in result.stderr):
+            cmd = base_cmd + ['--session-id', session_uuid, '--print', '-p', prompt]
             result = subprocess.run(
-                new_cmd,
+                cmd,
                 capture_output=True,
                 text=True,
-                timeout=120  # 2 minute timeout
+                timeout=120
             )
-            if result.returncode == 0:
-                return result.stdout.strip()
-            else:
-                return f"Error: {result.stderr.strip()}"
-        elif result.returncode == 0:
+
+        if result.returncode == 0:
             return result.stdout.strip()
         else:
             return f"Error: {result.stderr.strip()}"
+
     except subprocess.TimeoutExpired:
         return "Response timed out"
     except FileNotFoundError:
@@ -168,60 +122,30 @@ def call_cc(session_uuid: str, prompt: str) -> str:
         return f"Error: {str(e)}"
 
 
-# User nickname cache
-_nickname_cache = {}
-
-
-def get_nickname(open_id: str, default: str = "User") -> str:
-    """Get user nickname from cache or return default"""
-    # TODO: Implement Feishu API call to resolve nickname
-    # For now, use cache or default
-    return _nickname_cache.get(open_id, default)
-
-
-def set_nickname(open_id: str, nickname: str):
-    """Cache a user's nickname"""
-    _nickname_cache[open_id] = nickname
-
-
-def handle_message(event) -> Optional[str]:
+def handle_message(event, topic_root_id: str, is_new_topic: bool) -> Optional[str]:
     """
-    Main message handler.
+    Main message handler with per-topic fresh context.
 
-    Returns response text to send, or None if no response needed.
+    Args:
+        event: The Feishu message event
+        topic_root_id: The root message ID of the topic (for session UUID)
+        is_new_topic: Whether this is a new topic (fresh context) or continuation
+
+    Returns:
+        Response text to send, or None if no response needed.
     """
     message = event.message
-    chat_id = message.chat_id
     chat_type = message.chat_type  # "p2p" for DM, "group" for group
     content = parse_message_content(message.content)
 
-    # Get sender info
-    sender_id = event.sender.sender_id.open_id
-    # Try to get nickname from mentions or use cached
-    sender_name = get_nickname(sender_id, f"User_{sender_id[-4:]}")
-
-    # Try to extract nickname from event if available
-    if hasattr(event.sender, 'sender_id'):
-        # Cache any nickname we can find
-        pass  # TODO: extract from event
-
-    # Store the message
-    store_message(chat_id, sender_name, content)
-
     # Group chat: only respond if @mentioned
     if chat_type == "group" and not is_bot_mentioned(event):
-        return None  # Silent storage
+        return None  # Silent - don't respond
 
-    # Load full history and call CC
-    chat = load_chat(chat_id)
-    history = format_history_for_cc(chat)
-    session_uuid = chat["cc_session"]
+    # Get session UUID based on topic root
+    session_uuid = get_topic_session_uuid(topic_root_id)
 
-    # Call cc with history as context
-    prompt = f"Chat history:\n{history}\n\nRespond to the latest message."
-    response = call_cc(session_uuid, prompt)
-
-    # Store bot response
-    store_message(chat_id, "Bot", response, is_bot=True)
+    # Call Claude with just the current message (fresh context per topic)
+    response = call_cc(session_uuid, content, is_new_topic=is_new_topic)
 
     return response

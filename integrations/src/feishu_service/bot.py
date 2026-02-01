@@ -192,6 +192,13 @@ def cc_message_handler(data: P2ImMessageReceiveV1) -> None:
         msg_create_time = int(message.create_time) / 1000  # ms to seconds
         print(f"[TIMING] Message created: {msg_create_time:.3f}, Received: {t0:.3f}, Delay: {(t0 - msg_create_time):.3f}s", flush=True)
 
+        # Determine topic context
+        # - If root_id exists: user is replying in an existing topic
+        # - If no root_id: user sent a new message, will become topic root
+        is_new_topic = root_id is None
+        topic_root_id = root_id if root_id else user_message_id
+        print(f"[TOPIC] root_id={topic_root_id}, is_new={is_new_topic}", flush=True)
+
         # Determine if we should respond (DM or @mentioned in group)
         should_respond = chat_type == "p2p" or is_bot_mentioned(event)
 
@@ -206,9 +213,9 @@ def cc_message_handler(data: P2ImMessageReceiveV1) -> None:
             t2 = time.time()
             print(f"[TIMING] Sent thinking indicator (thread) in {(t2-t1):.3f}s, msg_id={thinking_message_id}", flush=True)
 
-        # Process message and get response
+        # Process message with per-topic fresh context
         t3 = time.time()
-        response = handle_message(event)
+        response = handle_message(event, topic_root_id, is_new_topic)
         t4 = time.time()
         print(f"[TIMING] Claude processing took {(t4-t3):.3f}s", flush=True)
 
