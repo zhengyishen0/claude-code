@@ -104,7 +104,7 @@ cd /path/to/main/repo
 jj new main <change-id> -m "[merge] <description> (${SESSION_ID})"
 jj bookmark set main -r @
 jj workspace forget <task>-${SESSION_ID}
-jj abandon 'heads(all()) ~ @ ~ main'  # Clean up orphan commits
+jj abandon 'heads(all()) ~ @ ~ main ~ immutable()'  # Clean up orphans
 # Keep workspace files on disk for reference
 ```
 
