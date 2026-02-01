@@ -50,7 +50,7 @@ def send_message(chat_id: str, text: str) -> dict:
         text: The message text to send
 
     Returns:
-        API response dict
+        API response dict with message_id
     """
     body = {
         "receive_id": chat_id,
@@ -58,6 +58,44 @@ def send_message(chat_id: str, text: str) -> dict:
         "content": json.dumps({"text": text})
     }
     return call_api("im", "im/v1/messages", {"receive_id_type": "chat_id"}, body)
+
+
+def edit_message(message_id: str, text: str) -> dict:
+    """
+    Edit an existing message.
+
+    Args:
+        message_id: The message ID to edit (om_xxx format)
+        text: The new message text
+
+    Returns:
+        API response dict
+    """
+    from .api import call_api_with_method
+    body = {
+        "msg_type": "text",
+        "content": json.dumps({"text": text})
+    }
+    return call_api_with_method("PUT", f"im/v1/messages/{message_id}", None, body)
+
+
+def reply_in_thread(parent_message_id: str, text: str) -> dict:
+    """
+    Reply to a message in a thread/topic.
+
+    Args:
+        parent_message_id: The message ID to reply to (creates thread)
+        text: The reply text
+
+    Returns:
+        API response dict with message_id
+    """
+    body = {
+        "msg_type": "text",
+        "content": json.dumps({"text": text}),
+        "reply_in_thread": True
+    }
+    return call_api("im", f"im/v1/messages/{parent_message_id}/reply", None, body)
 
 
 def default_message_handler(data: P2ImMessageReceiveV1) -> None:
@@ -108,10 +146,9 @@ def cc_message_handler(data: P2ImMessageReceiveV1) -> None:
     """
     Message handler that integrates with Claude Code CLI.
 
-    - DM: Always respond
+    - DM: Reply in thread (topic) with thinking indicator, then edit with response
     - Group: Only respond when @mentioned, stores all messages
     - Uses cc --resume for persistent conversations per chat
-    - Sends instant "thinking" indicator before processing
 
     Args:
         data: The message receive event data
@@ -124,6 +161,8 @@ def cc_message_handler(data: P2ImMessageReceiveV1) -> None:
         message = event.message
         chat_id = message.chat_id
         chat_type = message.chat_type  # "p2p" for DM, "group" for group
+        user_message_id = message.message_id
+        root_id = getattr(message, 'root_id', None)  # If already in a thread
 
         # Check message create_time vs now
         msg_create_time = int(message.create_time) / 1000  # ms to seconds
@@ -132,12 +171,16 @@ def cc_message_handler(data: P2ImMessageReceiveV1) -> None:
         # Determine if we should respond (DM or @mentioned in group)
         should_respond = chat_type == "p2p" or is_bot_mentioned(event)
 
-        # Send instant "thinking" indicator if we're going to respond
+        thinking_message_id = None
+
+        # Send instant "thinking" indicator in a thread
         if should_respond:
             t1 = time.time()
-            send_message(chat_id, "🤔")
+            # Reply in thread to user's message (creates topic in DM)
+            result = reply_in_thread(user_message_id, "让我思考一下...")
+            thinking_message_id = result.get('message_id')
             t2 = time.time()
-            print(f"[TIMING] Sent thinking indicator in {(t2-t1):.3f}s", flush=True)
+            print(f"[TIMING] Sent thinking indicator (thread) in {(t2-t1):.3f}s, msg_id={thinking_message_id}", flush=True)
 
         # Process message and get response
         t3 = time.time()
@@ -146,16 +189,23 @@ def cc_message_handler(data: P2ImMessageReceiveV1) -> None:
         print(f"[TIMING] Claude processing took {(t4-t3):.3f}s", flush=True)
 
         if response:
-            # Send response via Feishu API
             t5 = time.time()
-            result = send_message(chat_id, response)
-            t6 = time.time()
-            print(f"[TIMING] Sent response in {(t6-t5):.3f}s", flush=True)
+            if thinking_message_id:
+                # Edit the thinking message with actual response
+                result = edit_message(thinking_message_id, response)
+                t6 = time.time()
+                print(f"[TIMING] Edited message in {(t6-t5):.3f}s", flush=True)
+            else:
+                # Fallback: send new message if no thinking message
+                result = send_message(chat_id, response)
+                t6 = time.time()
+                print(f"[TIMING] Sent response in {(t6-t5):.3f}s", flush=True)
+
             print(f"[TIMING] Total end-to-end: {(t6-t0):.3f}s", flush=True)
             if result.get('error'):
-                print(f"Failed to send message: {result.get('msg')}", flush=True)
+                print(f"Failed to send/edit message: {result.get('msg')}", flush=True)
             else:
-                print(f"Sent response to {chat_id}", flush=True)
+                print(f"Response delivered to {chat_id}", flush=True)
         else:
             print(f"Message stored (no response needed) for {chat_id}", flush=True)
             print(f"[TIMING] Total (no response): {(time.time()-t0):.3f}s", flush=True)

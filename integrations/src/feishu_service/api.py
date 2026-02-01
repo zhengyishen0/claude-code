@@ -77,6 +77,78 @@ SERVICE_DOMAINS = {
 }
 
 
+def call_api_with_method(
+    http_method: str,
+    method_path: str,
+    params: Optional[dict] = None,
+    body: Optional[dict] = None,
+) -> dict:
+    """
+    Call Feishu API with explicit HTTP method.
+
+    Args:
+        http_method: HTTP method (GET, POST, PUT, PATCH, DELETE)
+        method_path: API path like 'im/v1/messages/om_xxx'
+        params: Query parameters
+        body: Request body
+
+    Returns:
+        API response as dict
+    """
+    client = get_client()
+
+    # Map string to HttpMethod enum
+    method_map = {
+        'GET': lark.HttpMethod.GET,
+        'POST': lark.HttpMethod.POST,
+        'PUT': lark.HttpMethod.PUT,
+        'PATCH': lark.HttpMethod.PATCH,
+        'DELETE': lark.HttpMethod.DELETE,
+    }
+    method = method_map.get(http_method.upper(), lark.HttpMethod.GET)
+
+    # Build the full URI
+    uri = f"/open-apis/{method_path}"
+
+    # Build query parameters
+    queries = []
+    if params:
+        for k, v in params.items():
+            if v is not None:
+                queries.append((k, str(v)))
+
+    # Build request
+    request_builder = lark.BaseRequest.builder() \
+        .http_method(method) \
+        .uri(uri) \
+        .token_types({lark.AccessTokenType.TENANT})
+
+    if queries:
+        request_builder = request_builder.queries(queries)
+
+    if body:
+        request_builder = request_builder.body(body)
+
+    request = request_builder.build()
+
+    # Execute request
+    response: lark.BaseResponse = client.request(request)
+
+    # Handle response
+    if response.success():
+        if response.raw and response.raw.content:
+            data = json.loads(response.raw.content)
+            return data.get('data', {'success': True})
+        return {'success': True}
+    else:
+        return {
+            'error': True,
+            'code': response.code,
+            'msg': response.msg,
+            'log_id': response.get_log_id(),
+        }
+
+
 def call_api(
     domain: str,
     method_path: str,
