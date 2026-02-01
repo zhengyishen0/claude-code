@@ -71,18 +71,18 @@ EOF
     "try")
         cat >&2 << 'EOF'
 ┌─ PDSD: [try] logged ───────────────────────────────────────────────┐
-│ Continue executing, or move to [learn] when ready to analyze.       │
+│ Continue executing, or move to [reflect] when ready to analyze.       │
 │                                                                     │
-│ Move to [learn] when:                                               │
+│ Move to [reflect] when:                                               │
 │ • You have results (success or failure)                             │
 │ • You've hit an unexpected obstacle                                 │
 │ • You need to reflect before continuing                             │
 └─────────────────────────────────────────────────────────────────────┘
 EOF
         ;;
-    "learn")
+    "reflect")
         cat >&2 << 'EOF'
-┌─ PDSD: [learn] - Time to reflect ──────────────────────────────────┐
+┌─ PDSD: [reflect] - Time to reflect ──────────────────────────────────┐
 │                                                                     │
 │ Answer these questions:                                             │
 │ 1. What worked as expected?                                         │
