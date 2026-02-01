@@ -26,6 +26,7 @@ Usage:
 import json
 import time
 import sys
+from collections import OrderedDict
 from typing import Callable, Optional
 
 import lark_oapi as lark
@@ -34,6 +35,23 @@ from lark_oapi.api.im.v1 import P2ImMessageReceiveV1
 from .auth import get_credentials, AuthError, CREDENTIALS_PATH
 from .api import call_api
 from .bot_handler import handle_message, is_bot_mentioned
+
+
+# Message deduplication cache (LRU-style, max 1000 messages)
+_processed_messages = OrderedDict()
+_MAX_CACHE_SIZE = 1000
+
+
+def _is_duplicate(message_id: str) -> bool:
+    """Check if message was already processed, and mark it as processed."""
+    if message_id in _processed_messages:
+        return True
+    # Add to cache
+    _processed_messages[message_id] = time.time()
+    # Trim cache if too large
+    while len(_processed_messages) > _MAX_CACHE_SIZE:
+        _processed_messages.popitem(last=False)
+    return False
 
 
 class BotError(Exception):
@@ -149,6 +167,7 @@ def cc_message_handler(data: P2ImMessageReceiveV1) -> None:
     - DM: Reply in thread (topic) with thinking indicator, then edit with response
     - Group: Only respond when @mentioned, stores all messages
     - Uses cc --resume for persistent conversations per chat
+    - Deduplicates messages to prevent double-processing
 
     Args:
         data: The message receive event data
@@ -163,6 +182,11 @@ def cc_message_handler(data: P2ImMessageReceiveV1) -> None:
         chat_type = message.chat_type  # "p2p" for DM, "group" for group
         user_message_id = message.message_id
         root_id = getattr(message, 'root_id', None)  # If already in a thread
+
+        # Deduplication check - skip if already processed
+        if _is_duplicate(user_message_id):
+            print(f"[DEDUP] Skipping duplicate message: {user_message_id}", flush=True)
+            return
 
         # Check message create_time vs now
         msg_create_time = int(message.create_time) / 1000  # ms to seconds
