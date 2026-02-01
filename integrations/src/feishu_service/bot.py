@@ -117,7 +117,7 @@ def cc_message_handler(data: P2ImMessageReceiveV1) -> None:
         data: The message receive event data
     """
     t0 = time.time()
-    print(f"\n[TIMING] Message received at {t0:.3f}")
+    print(f"\n[TIMING] Message received at {t0:.3f}", flush=True)
 
     try:
         event = data.event
@@ -127,7 +127,7 @@ def cc_message_handler(data: P2ImMessageReceiveV1) -> None:
 
         # Check message create_time vs now
         msg_create_time = int(message.create_time) / 1000  # ms to seconds
-        print(f"[TIMING] Message created: {msg_create_time:.3f}, Received: {t0:.3f}, Delay: {(t0 - msg_create_time):.3f}s")
+        print(f"[TIMING] Message created: {msg_create_time:.3f}, Received: {t0:.3f}, Delay: {(t0 - msg_create_time):.3f}s", flush=True)
 
         # Determine if we should respond (DM or @mentioned in group)
         should_respond = chat_type == "p2p" or is_bot_mentioned(event)
@@ -137,31 +137,31 @@ def cc_message_handler(data: P2ImMessageReceiveV1) -> None:
             t1 = time.time()
             send_message(chat_id, "🤔")
             t2 = time.time()
-            print(f"[TIMING] Sent thinking indicator in {(t2-t1):.3f}s")
+            print(f"[TIMING] Sent thinking indicator in {(t2-t1):.3f}s", flush=True)
 
         # Process message and get response
         t3 = time.time()
         response = handle_message(event)
         t4 = time.time()
-        print(f"[TIMING] Claude processing took {(t4-t3):.3f}s")
+        print(f"[TIMING] Claude processing took {(t4-t3):.3f}s", flush=True)
 
         if response:
             # Send response via Feishu API
             t5 = time.time()
             result = send_message(chat_id, response)
             t6 = time.time()
-            print(f"[TIMING] Sent response in {(t6-t5):.3f}s")
-            print(f"[TIMING] Total end-to-end: {(t6-t0):.3f}s")
+            print(f"[TIMING] Sent response in {(t6-t5):.3f}s", flush=True)
+            print(f"[TIMING] Total end-to-end: {(t6-t0):.3f}s", flush=True)
             if result.get('error'):
-                print(f"Failed to send message: {result.get('msg')}")
+                print(f"Failed to send message: {result.get('msg')}", flush=True)
             else:
-                print(f"Sent response to {chat_id}")
+                print(f"Sent response to {chat_id}", flush=True)
         else:
-            print(f"Message stored (no response needed) for {chat_id}")
-            print(f"[TIMING] Total (no response): {(time.time()-t0):.3f}s")
+            print(f"Message stored (no response needed) for {chat_id}", flush=True)
+            print(f"[TIMING] Total (no response): {(time.time()-t0):.3f}s", flush=True)
 
     except Exception as e:
-        print(f"Error in cc_message_handler: {e}")
+        print(f"Error in cc_message_handler: {e}", flush=True)
         import traceback
         traceback.print_exc()
 
