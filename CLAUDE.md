@@ -196,6 +196,8 @@ service feishu im send_card chat_id=oc_XXX card='{"config":{},"elements":[...]}'
 service feishu im reply message_id=om_XXX text="Thanks!"
 service feishu im reply_in_thread message_id=om_XXX text="Thread reply"
 service feishu im list_chats
+service feishu im list_threads limit=10 chat_type=p2p
+service feishu im get_thread_messages thread_id=om_XXX
 ```
 
 | Command | Required | Optional |
@@ -212,6 +214,8 @@ service feishu im list_chats
 | `im reply` | `message_id`, `text` | |
 | `im reply_in_thread` | `message_id`, `text` | |
 | `im list_chats` | | `page_size`, `page_token` |
+| `im list_threads` | | `limit`, `chat_id`, `chat_type` |
+| `im get_thread_messages` | `thread_id` | `page_size`, `page_token` |
 
 ## Setup
 
