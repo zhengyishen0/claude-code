@@ -26,7 +26,7 @@ Usage:
 import json
 import time
 import sys
-from collections import OrderedDict
+from pathlib import Path
 from typing import Callable, Optional
 
 import lark_oapi as lark
@@ -44,20 +44,53 @@ from .approval import handle_card_callback
 from .thread_tracker import track_thread
 
 
-# Message deduplication cache (LRU-style, max 1000 messages)
-_processed_messages = OrderedDict()
-_MAX_CACHE_SIZE = 1000
+# Persistent message deduplication
+_DEDUP_PATH = Path.home() / '.config' / 'api' / 'feishu' / 'processed_messages.json'
+_DEDUP_TTL = 24 * 60 * 60  # 24 hours in seconds
+_processed_messages: dict[str, float] = {}
+
+
+def _load_dedup_cache() -> None:
+    """Load dedup cache from disk."""
+    global _processed_messages
+    if _DEDUP_PATH.exists():
+        try:
+            with open(_DEDUP_PATH, 'r') as f:
+                _processed_messages = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            _processed_messages = {}
+    # Clean old entries on load
+    _cleanup_dedup_cache()
+
+
+def _save_dedup_cache() -> None:
+    """Save dedup cache to disk."""
+    _DEDUP_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(_DEDUP_PATH, 'w') as f:
+        json.dump(_processed_messages, f)
+
+
+def _cleanup_dedup_cache() -> None:
+    """Remove entries older than TTL."""
+    global _processed_messages
+    now = time.time()
+    _processed_messages = {
+        msg_id: ts for msg_id, ts in _processed_messages.items()
+        if now - ts < _DEDUP_TTL
+    }
+
+
+# Load cache on module import
+_load_dedup_cache()
 
 
 def _is_duplicate(message_id: str) -> bool:
     """Check if message was already processed, and mark it as processed."""
     if message_id in _processed_messages:
         return True
-    # Add to cache
+    # Add to cache and persist
     _processed_messages[message_id] = time.time()
-    # Trim cache if too large
-    while len(_processed_messages) > _MAX_CACHE_SIZE:
-        _processed_messages.popitem(last=False)
+    _save_dedup_cache()
     return False
 
 
