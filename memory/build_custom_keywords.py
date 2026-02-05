@@ -36,6 +36,11 @@ except ImportError:
 SCRIPT_DIR = Path(__file__).parent
 INDEX_FILE = SCRIPT_DIR / 'data' / 'memory-index.tsv'
 OUTPUT_FILE = SCRIPT_DIR / 'data' / 'custom_keywords.txt'
+ENGLISH_FREQ_FILE = SCRIPT_DIR / 'data' / 'english_freq.txt'
+
+# English frequency data (loaded lazily)
+_english_freq = None
+_english_total = None
 
 # Seed keywords - known domain terms to find co-occurrences with
 SEED_KEYWORDS = {
@@ -192,6 +197,19 @@ def find_cooccurrences(messages):
     return global_counts, cooccurrence
 
 
+_jieba_initialized = False
+
+
+def _init_jieba():
+    """Initialize jieba dictionary (lazy load)."""
+    global _jieba_initialized
+    if _jieba_initialized or not JIEBA_AVAILABLE:
+        return
+    # Force jieba to load its dictionary
+    jieba.lcut("初始化")
+    _jieba_initialized = True
+
+
 def get_jieba_freq(word):
     """Get word frequency from jieba's built-in dictionary.
 
@@ -201,6 +219,7 @@ def get_jieba_freq(word):
     if not JIEBA_AVAILABLE:
         return None
     try:
+        _init_jieba()
         # jieba.dt.FREQ is a dict of word -> frequency
         freq = jieba.dt.FREQ.get(word, 0)
         # Normalize by total (jieba.dt.total is sum of all frequencies)
@@ -209,6 +228,57 @@ def get_jieba_freq(word):
         return None
     except Exception:
         return None
+
+
+def _load_english_freq():
+    """Load English word frequencies from file (once)."""
+    global _english_freq, _english_total
+    if _english_freq is not None:
+        return
+
+    _english_freq = {}
+    _english_total = 0
+
+    if not ENGLISH_FREQ_FILE.exists():
+        return
+
+    try:
+        with open(ENGLISH_FREQ_FILE, 'r', encoding='utf-8') as f:
+            for line in f:
+                parts = line.strip().split()
+                if len(parts) >= 2:
+                    word = parts[0].lower()
+                    try:
+                        freq = int(parts[1])
+                        _english_freq[word] = freq
+                        _english_total += freq
+                    except ValueError:
+                        continue
+    except Exception:
+        pass
+
+
+def get_english_freq(word):
+    """Get word frequency from English frequency file.
+
+    Returns a normalized frequency (0-1) or None if not found.
+    High frequency = common word in general English.
+    """
+    global _english_freq, _english_total
+    _load_english_freq()
+
+    if not _english_freq or _english_total == 0:
+        return None
+
+    freq = _english_freq.get(word.lower(), 0)
+    if freq > 0:
+        return freq / _english_total
+    return None
+
+
+def is_english_word(word):
+    """Check if word is English (ASCII letters only)."""
+    return bool(re.match(r'^[a-zA-Z]+$', word))
 
 
 def score_candidates(global_counts, cooccurrence, total_messages):
@@ -251,14 +321,19 @@ def score_candidates(global_counts, cooccurrence, total_messages):
                 pmi = 0
 
             # Factor 2: Domain specificity
-            # Compare our corpus frequency to jieba's general frequency
-            jieba_freq = get_jieba_freq(word)
-            if jieba_freq is not None and jieba_freq > 0:
+            # Compare our corpus frequency to general frequency
+            # Use English freq for English words, jieba for Chinese
+            if is_english_word(word):
+                general_freq = get_english_freq(word)
+            else:
+                general_freq = get_jieba_freq(word)
+
+            if general_freq is not None and general_freq > 0:
                 our_freq = global_freq / max(total_corpus_words, 1)
                 # If our frequency is 10x higher than general, boost the score
-                domain_boost = min(10, our_freq / jieba_freq) if our_freq > jieba_freq else 0.5
+                domain_boost = min(10, our_freq / general_freq) if our_freq > general_freq else 0.5
             else:
-                # Word not in jieba dict = likely domain-specific or proper noun
+                # Word not in frequency dict = likely domain-specific or proper noun
                 # Give significant boost to these
                 domain_boost = 8 if global_freq >= 10 else 2
 
