@@ -4,6 +4,9 @@
 Handles mixed English/Chinese text. Used by memory hint system to
 automatically generate search queries from user messages.
 
+Custom keywords are loaded from data/custom_keywords.txt (one per line).
+Run build_custom_keywords.py to auto-discover domain keywords via co-occurrence.
+
 Usage:
     python3 hint_keywords.py "help me debug the feishu approval workflow"
     python3 hint_keywords.py "帮我看看飞书审批的问题"
@@ -12,6 +15,7 @@ Usage:
 
 import re
 import sys
+from pathlib import Path
 
 # Try to import jieba for Chinese segmentation
 try:
@@ -20,6 +24,9 @@ try:
     JIEBA_AVAILABLE = True
 except ImportError:
     JIEBA_AVAILABLE = False
+
+SCRIPT_DIR = Path(__file__).parent
+CUSTOM_KEYWORDS_FILE = SCRIPT_DIR / 'data' / 'custom_keywords.txt'
 
 # Minimum word length for English (filters out 'am', 'pc', 're', etc.)
 MIN_ENGLISH_WORD_LENGTH = 3
@@ -130,7 +137,7 @@ STOPWORDS_ZH = {
     '帮', '帮我', '帮忙', '请', '请问',
     '试试', '想想', '看下', '看一下', '弄', '搞', '整',
     '无法', '不对', '不行', '不好', '好像', '可能', '应该',
-    '执行', '添加', '讨论', '使用',  # Common action verbs
+    '执行', '添加', '讨论', '使用',
     # Time references (not useful for keyword search)
     '之前', '之后', '以前', '以后', '上次', '下次', '刚才', '现在', '马上',
     '今天', '明天', '昨天', '时候',
@@ -146,12 +153,34 @@ STOPWORDS_ZH = {
     '好', '行', '可以', '好的', '那', '然后', '接下来',
 }
 
-# Custom words for jieba - technical terms that should not be split
-CUSTOM_WORDS_ZH = [
-    '飞书', '多维表格', '审批流程', '机器人',
-    '浏览器', '自动化',
-    '日历', '同步',
+# Built-in custom words - technical terms that should not be split
+# Additional words come from data/custom_keywords.txt
+BUILTIN_CUSTOM_WORDS = [
+    # Feishu/Lark
+    '飞书', '多维表格', '审批流程', '机器人', '群聊',
+    # Browser automation
+    '浏览器', '自动化', '无头模式',
+    # Calendar/sync
+    '日历', '同步', '日历同步',
+    # Common tech terms
+    '配置文件', '命令行', '接口调用',
 ]
+
+
+def load_custom_keywords():
+    """Load custom keywords from file + built-in list."""
+    keywords = list(BUILTIN_CUSTOM_WORDS)
+    if CUSTOM_KEYWORDS_FILE.exists():
+        try:
+            with open(CUSTOM_KEYWORDS_FILE, 'r', encoding='utf-8') as f:
+                for line in f:
+                    word = line.strip()
+                    if word and not word.startswith('#'):
+                        if word not in keywords:
+                            keywords.append(word)
+        except Exception:
+            pass
+    return keywords
 
 
 def has_cjk(text):
@@ -161,23 +190,32 @@ def has_cjk(text):
 
 def extract_english_keywords(text):
     """Extract keywords from English text."""
+    keywords = []
+
     # Find all word-like sequences (letters only, MIN_ENGLISH_WORD_LENGTH+ chars)
     words = re.findall(rf'\b[a-zA-Z]{{{MIN_ENGLISH_WORD_LENGTH},}}\b', text.lower())
 
     # Filter stopwords
-    keywords = [w for w in words if w not in STOPWORDS_EN]
+    keywords.extend(w for w in words if w not in STOPWORDS_EN)
+
+    # Also extract 3+ digit numbers (like 404, 500, 502)
+    numbers = re.findall(r'\b\d{3,}\b', text)
+    keywords.extend(numbers)
 
     return keywords
 
 
 _jieba_initialized = False
+_custom_keywords = None
+
 
 def _init_jieba():
     """Initialize jieba with custom words (only once)."""
-    global _jieba_initialized
+    global _jieba_initialized, _custom_keywords
     if _jieba_initialized or not JIEBA_AVAILABLE:
         return
-    for word in CUSTOM_WORDS_ZH:
+    _custom_keywords = load_custom_keywords()
+    for word in _custom_keywords:
         jieba.add_word(word)
     _jieba_initialized = True
 
