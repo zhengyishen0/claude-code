@@ -110,6 +110,8 @@ build_full_index() {
 build_nlp_index() {
   echo "Building NLP index..." >&2
   python3 "$SCRIPT_DIR/build_index.py" "$INDEX_FILE" "$NLP_INDEX_FILE"
+  # Auto-discover domain keywords from co-occurrence
+  python3 "$SCRIPT_DIR/build_custom_keywords.py" --write 2>/dev/null || true
 }
 
 # Incremental update
@@ -156,6 +158,8 @@ update_index() {
     cat "$temp_file" >> "$INDEX_FILE"
     # Normalize and append to NLP index
     python3 "$SCRIPT_DIR/build_index.py" "$temp_file" /dev/stdout >> "$NLP_INDEX_FILE"
+    # Auto-discover domain keywords from co-occurrence
+    python3 "$SCRIPT_DIR/build_custom_keywords.py" --write 2>/dev/null || true
   fi
 
   rm -f "$temp_file"
