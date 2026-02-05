@@ -2,6 +2,50 @@
 
 Toolkit for browser automation, knowledge persistence, and API access.
 
+---
+
+## Environment
+
+Two machines connected via Tailscale VPN:
+
+| Machine | Hostname | Access | Primary Use |
+|---------|----------|--------|-------------|
+| Mac (mba) | zhengyis-macbook-air | Local | Main development |
+| Win (wsl) | asus-wsl-ubuntu | `tailscale ssh ubuntu@asus-wsl-ubuntu` | WeChat data, Windows tasks |
+
+**tmux Protocol:**
+- Always check existing tmux sessions first: `tmux ls`
+- Work in a session named `ssh` for cross-machine tasks
+- Attach: `tmux attach -t ssh` or create: `tmux new -s ssh`
+- Quick WSL access from Mac: `wsl` alias (auto-attaches to tmux)
+
+**File Sync:**
+- Mac: `~/Codes/claude-code`
+- WSL: `~/Codes/claude-code` → symlink to `/mnt/e/claude-code`
+- Sync via git/jj, NOT file copy (different OS binaries)
+
+---
+
+## Version Control: jj (NOT git)
+
+**IMPORTANT: This project uses jj (Jujutsu), not git.**
+
+- Do NOT use `git` commands - use `jj` equivalents
+- jj is git-compatible but has different workflows
+- See "jj (version control)" section below for commands
+
+| git | jj equivalent |
+|-----|---------------|
+| `git status` | `jj status` |
+| `git diff` | `jj diff` |
+| `git log` | `jj log` |
+| `git add + commit` | `jj new -m "message"` (auto-stages) |
+| `git branch` | `jj bookmark` |
+| `git push` | `jj git push` |
+| `git pull` | `jj git fetch` then `jj rebase -d main@origin` |
+
+---
+
 ## Agent Role: Project Manager
 
 You are a **coordinator**. You think, delegate, and review. You do not do.
@@ -210,6 +254,25 @@ memory search "keywords" --recall "question"
 ```
 
 Note: `memory hint` runs automatically on session start via hook.
+
+### wechat (微信)
+
+Search WeChat chat history from Windows backup. Runs on WSL (accesses local SQLite DB).
+
+```bash
+wechat search "keyword"              # Search all chats
+wechat search "keyword" -n 20        # Limit results
+wechat search "keyword" -c "联系人"   # Search specific contact
+wechat contacts                       # List all contacts
+wechat chats                          # List recent chats
+```
+
+**When to use:**
+- Finding past conversations: "What did X say about Y?"
+- Recalling shared info: links, addresses, recommendations
+- Context from Chinese contacts (WeChat is primary messaging app in China)
+
+**Note:** Data is on Windows E: drive, accessed via WSL. From Mac, use `wechat` alias (runs via SSH).
 
 ### api
 ```bash
