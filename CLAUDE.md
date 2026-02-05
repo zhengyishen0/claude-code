@@ -204,9 +204,12 @@ screenshot <app-name>
 
 ### memory
 ```bash
-memory search "keywords"
+memory hint "natural language question"  # auto-extracts keywords, shows related sessions
+memory search "keywords"                  # direct keyword search
 memory search "keywords" --recall "question"
 ```
+
+Note: `memory hint` runs automatically on session start via hook.
 
 ### api
 ```bash

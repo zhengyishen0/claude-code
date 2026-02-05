@@ -110,8 +110,8 @@ build_full_index() {
 build_nlp_index() {
   echo "Building NLP index..." >&2
   python3 "$SCRIPT_DIR/build_index.py" "$INDEX_FILE" "$NLP_INDEX_FILE"
-  # Auto-discover domain keywords from co-occurrence
-  python3 "$SCRIPT_DIR/build_custom_keywords.py" --write 2>/dev/null || true
+  # Auto-discover domain keywords from co-occurrence (silent)
+  python3 "$SCRIPT_DIR/build_custom_keywords.py" --write >/dev/null 2>&1 || true
 }
 
 # Incremental update
@@ -158,8 +158,8 @@ update_index() {
     cat "$temp_file" >> "$INDEX_FILE"
     # Normalize and append to NLP index
     python3 "$SCRIPT_DIR/build_index.py" "$temp_file" /dev/stdout >> "$NLP_INDEX_FILE"
-    # Auto-discover domain keywords from co-occurrence
-    python3 "$SCRIPT_DIR/build_custom_keywords.py" --write 2>/dev/null || true
+    # Mark that keywords need refresh (will run after search completes)
+    touch "$DATA_DIR/.keywords_stale"
   fi
 
   rm -f "$temp_file"
@@ -240,4 +240,10 @@ else
   echo "$OUTPUT"
   echo ""
   echo "Tip: If snippets above answer your question, you're done. Otherwise use --recall \"question\" for deeper answers."
+fi
+
+# Background: refresh keywords if stale (runs after output, non-blocking)
+if [ -f "$DATA_DIR/.keywords_stale" ]; then
+  rm -f "$DATA_DIR/.keywords_stale"
+  (python3 "$SCRIPT_DIR/build_custom_keywords.py" --write >/dev/null 2>&1 &)
 fi

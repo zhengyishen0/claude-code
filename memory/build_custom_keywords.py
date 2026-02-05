@@ -166,29 +166,42 @@ def extract_words(text):
 
 
 def find_cooccurrences(messages):
-    """Find words that co-occur with seed keywords."""
-    # Count global word frequency
+    """Find words that co-occur with seed keywords.
+
+    Optimized: Only extract words (expensive jieba) for messages containing seeds.
+    Global counts use fast English-only extraction for all messages.
+    """
+    # Count global word frequency (English only - fast)
     global_counts = Counter()
 
     # Count co-occurrences with each seed keyword
     cooccurrence = defaultdict(Counter)
 
+    # Pre-compute lowercase seeds for faster matching
+    seed_patterns = [(s, s.lower()) for s in SEED_KEYWORDS]
+
     for msg in messages:
         text = msg['text']
-        words = extract_words(text)
+        text_lower = text.lower()
 
-        # Update global counts
-        global_counts.update(words)
+        # Fast global count: English words only (no jieba)
+        en_words = re.findall(r'\b[a-zA-Z]{3,}\b', text_lower)
+        global_counts.update(en_words)
 
         # Check which seed keywords appear in this message
-        text_lower = text.lower()
         matching_seeds = set()
-        for seed in SEED_KEYWORDS:
-            if seed.lower() in text_lower or seed in text:
+        for seed, seed_low in seed_patterns:
+            if seed_low in text_lower or seed in text:
                 matching_seeds.add(seed)
 
-        # Update co-occurrence counts
+        # Only extract full words (with jieba) for messages with seeds
         if matching_seeds:
+            words = extract_words(text)
+            # Also add Chinese words to global counts
+            for w in words:
+                if not w.isascii():
+                    global_counts[w] += 1
+
             for word in words:
                 for seed in matching_seeds:
                     if word.lower() != seed.lower() and word != seed:
