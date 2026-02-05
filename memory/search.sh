@@ -13,12 +13,13 @@ INDEX_FILE="$DATA_DIR/memory-index.tsv"
 NLP_INDEX_FILE="$DATA_DIR/memory-index-nlp.tsv"
 
 # Parse args
-# Debug options (not shown in help): --sessions, --messages, --context
+# Debug options (not shown in help): --sessions, --messages, --context, --topics
 SESSIONS=5
 MESSAGES=5
 CONTEXT=500
 QUERY=""
 RECALL_QUESTION=""
+SHOW_TOPICS=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -37,6 +38,10 @@ while [[ $# -gt 0 ]]; do
     --recall)
       RECALL_QUESTION="$2"
       shift 2
+      ;;
+    --topics)
+      SHOW_TOPICS="--topics"
+      shift
       ;;
     -*)
       echo "Error: Unknown flag '$1'" >&2
@@ -210,7 +215,7 @@ fi
 
 # Format results and capture session IDs from stderr
 TEMP_IDS=$(mktemp)
-OUTPUT=$(echo "$RESULTS" | python3 "$SCRIPT_DIR/format-results.py" "$SESSIONS" "$MESSAGES" "$CONTEXT" "$QUERY" "simple" "$QUERY_NORMALIZED" 2>"$TEMP_IDS")
+OUTPUT=$(echo "$RESULTS" | python3 "$SCRIPT_DIR/format-results.py" "$SESSIONS" "$MESSAGES" "$CONTEXT" "$QUERY" "simple" "$QUERY_NORMALIZED" $SHOW_TOPICS 2>"$TEMP_IDS")
 SESSION_IDS=$(cat "$TEMP_IDS")
 rm -f "$TEMP_IDS"
 

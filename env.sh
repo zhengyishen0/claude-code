@@ -23,6 +23,7 @@ alias screenshot="python3 $PROJECT_DIR/utils/screenshot.py"
 alias service="$PROJECT_DIR/integrations/run.sh"
 alias proxy="$PROJECT_DIR/utils/proxy.sh"
 alias wechat="$PROJECT_DIR/wechat/bin/wechat"
+alias md2pdf="$PROJECT_DIR/utils/md2pdf.sh"
 
 # ============================================================
 # Claude CLI aliases
