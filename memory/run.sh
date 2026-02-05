@@ -17,6 +17,7 @@ USAGE
   memory search "<keywords>"
   memory search "<keywords>" --recall "<question>"
   memory recall <session-id> "<question>"
+  memory hint "<natural language>"
 
 WORKFLOW
   1. Search first to find relevant sessions
@@ -27,11 +28,13 @@ EXAMPLES
   memory search "browser automation"              # broad search
   memory search "browser click"                   # refined search
   memory search "browser click" --recall "how?"   # recall after refining
+  memory hint "help me debug the feishu workflow" # auto-extract keywords
 
 TIPS
   - Search snippets may be enough - don't always use --recall
   - Use underscore for phrases: memory_tool matches "memory tool"
   - Keywords are OR'd together, ranked by match count
+  - Use 'hint' to auto-extract keywords from natural language
 
 EOF
 }
@@ -44,6 +47,10 @@ case "${1:-}" in
   recall)
     shift
     "$SCRIPT_DIR/recall.sh" "$@"
+    ;;
+  hint)
+    shift
+    "$SCRIPT_DIR/hint.sh" "$@"
     ;;
   ""|--help|-h)
     show_help

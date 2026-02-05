@@ -220,18 +220,19 @@ def main():
         kw_parts = ' '.join(f"{kw}[{kw_counts[kw]}]" for kw in keywords if kw in kw_counts)
         print(f"[{short_id}] {kw_parts} ({matches} matches | {date} | {project})")
 
-        sorted_msgs = sorted(s['messages'], key=lambda m: m['keyword_hits'], reverse=True)
-        for msg in sorted_msgs[:messages_limit]:
-            role = "[user]" if msg['type'] == 'user' else "[asst]"
-            text = extract_snippet(
-                msg['text'], msg['text_normalized'], keywords, keywords_normalized, context
-            )
-            print(f"{role} {text}")
+        if messages_limit > 0:
+            sorted_msgs = sorted(s['messages'], key=lambda m: m['keyword_hits'], reverse=True)
+            for msg in sorted_msgs[:messages_limit]:
+                role = "[user]" if msg['type'] == 'user' else "[asst]"
+                text = extract_snippet(
+                    msg['text'], msg['text_normalized'], keywords, keywords_normalized, context
+                )
+                print(f"{role} {text}")
 
-        if matches > messages_limit:
-            print(f"... and {matches - messages_limit} more matches")
+            if matches > messages_limit:
+                print(f"... and {matches - messages_limit} more matches")
 
-        print()
+            print()
 
     if mode == 'simple':
         print(f"\nFound matches in {total_sessions} sessions (searched {total_keywords} keywords)")
