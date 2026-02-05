@@ -21,6 +21,7 @@ Run weekly or after significant index growth.
 
 import sys
 import re
+import math
 from pathlib import Path
 from collections import Counter, defaultdict
 
@@ -45,9 +46,9 @@ SEED_KEYWORDS = {
     '飞书', '多维表格', '审批', '浏览器', '自动化', '日历', '机器人',
 }
 
-# General stopwords to exclude (supplement to hint_keywords.py)
+# General stopwords - extensive list to filter out generic words
 GENERAL_STOPWORDS = {
-    # English
+    # Common English
     'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
     'to', 'for', 'of', 'in', 'on', 'at', 'by', 'with', 'from', 'as',
     'and', 'or', 'but', 'if', 'then', 'else', 'this', 'that', 'it',
@@ -58,11 +59,50 @@ GENERAL_STOPWORDS = {
     'other', 'such', 'same', 'new', 'first', 'last', 'next', 'right',
     'now', 'then', 'here', 'there', 'when', 'where', 'why', 'how',
     'what', 'which', 'who', 'whom', 'whose', 'one', 'two', 'three',
-    'use', 'used', 'using', 'file', 'files', 'code', 'like', 'want',
+    'your', 'our', 'their', 'its', 'into', 'about', 'after', 'before',
+    # Tech generic
+    'use', 'used', 'using', 'uses', 'file', 'files', 'code', 'like',
     'need', 'get', 'got', 'make', 'made', 'set', 'see', 'look', 'find',
     'run', 'running', 'test', 'error', 'message', 'result', 'value',
     'data', 'name', 'type', 'text', 'line', 'time', 'user', 'path',
-    # Chinese
+    'search', 'bash', 'memory', 'session', 'sessions', 'tool', 'tools',
+    'work', 'works', 'working', 'let', 'key', 'summary', 'full',
+    'messages', 'current', 'results', 'output', 'without', 'start',
+    'open', 'format', 'based', 'via', 'command', 'setup', 'mode', 'add',
+    'system', 'access', 'call', 'calls', 'check', 'show', 'process',
+    'com', 'www', 'http', 'https', 'nmemory', 'nthe', 'nif', 'nsearch',
+    'function', 'method', 'class', 'object', 'string', 'number', 'list',
+    'input', 'response', 'request', 'query', 'params', 'args', 'options',
+    'config', 'default', 'true', 'false', 'null', 'none', 'return',
+    'load', 'save', 'parse', 'build', 'generate', 'extract', 'convert',
+    'handle', 'execute', 'implement', 'import', 'export', 'module',
+    'version', 'example', 'testing', 'debug', 'log', 'print', 'display',
+    # Conversation words
+    'help', 'please', 'thanks', 'want', 'trying', 'going', 'doing',
+    'think', 'know', 'question', 'questions', 'answer', 'problem', 'issue', 'solution',
+    'idea', 'way', 'thing', 'something', 'anything', 'everything',
+    # Generic English adjectives/adverbs
+    'simple', 'better', 'good', 'best', 'great', 'nice', 'fine', 'easy',
+    'hard', 'difficult', 'fast', 'slow', 'quick', 'small', 'large', 'big',
+    'old', 'long', 'short', 'high', 'low', 'full', 'empty', 'available',
+    'optional', 'required', 'relevant', 'useful', 'different', 'similar',
+    # Generic English verbs (past/participle)
+    'added', 'updated', 'changed', 'created', 'removed', 'deleted', 'moved',
+    'done', 'made', 'found', 'written', 'read', 'called', 'defined',
+    # Generic nouns
+    'words', 'terms', 'names', 'types', 'items', 'elements', 'parts',
+    'design', 'structure', 'pattern', 'patterns', 'style', 'styles',
+    'docs', 'documentation', 'readme', 'guide', 'tutorial', 'reference',
+    # More generic
+    'etc', 'through', 'out', 'top', 'wants', 'native', 'complex',
+    'nthis', 'nthat', 'nif', 'nthe', 'natural', 'language', 'matches',
+    'primary', 'multi', 'control', 'recommendation', 'date', 'filter',
+    'auto', 'pass', 'flag', 'dev', 'commands',
+    # Claude Code specific (generic in this context)
+    'claude', 'agent', 'agents', 'task', 'tasks', 'context', 'prompt',
+    'hint', 'hints', 'keyword', 'keywords', 'topics', 'topic',
+    'extraction', 'architecture', 'implementation', 'workflow', 'approach',
+    # Chinese common
     '的', '地', '得', '了', '着', '过', '吗', '呢', '啊', '吧', '呀',
     '我', '你', '他', '她', '它', '我们', '你们', '他们', '这', '那',
     '是', '有', '没有', '不', '会', '能', '可以', '要', '想', '做',
@@ -152,24 +192,82 @@ def find_cooccurrences(messages):
     return global_counts, cooccurrence
 
 
-def score_candidates(global_counts, cooccurrence):
-    """Score candidate keywords by co-occurrence strength."""
+def get_jieba_freq(word):
+    """Get word frequency from jieba's built-in dictionary.
+
+    Returns a normalized frequency (0-1) or None if not found.
+    High frequency in jieba = common word in general Chinese.
+    """
+    if not JIEBA_AVAILABLE:
+        return None
+    try:
+        # jieba.dt.FREQ is a dict of word -> frequency
+        freq = jieba.dt.FREQ.get(word, 0)
+        # Normalize by total (jieba.dt.total is sum of all frequencies)
+        if freq > 0 and jieba.dt.total > 0:
+            return freq / jieba.dt.total
+        return None
+    except Exception:
+        return None
+
+
+def score_candidates(global_counts, cooccurrence, total_messages):
+    """Score candidate keywords using PMI + domain specificity.
+
+    Two-factor scoring:
+    1. PMI: How much more likely does this word appear with seeds vs random?
+    2. Domain specificity: Is this word rare in general Chinese but common here?
+    """
     candidates = Counter()
+    seed_lower = {s.lower() for s in SEED_KEYWORDS}
+
+    # Count messages containing any seed keyword
+    total_corpus_words = sum(global_counts.values())
 
     for seed, cooc_counts in cooccurrence.items():
+        seed_total = sum(cooc_counts.values())  # Total words co-occurring with this seed
+
         for word, count in cooc_counts.items():
-            if count >= MIN_COOCCURRENCE:
-                # Skip stopwords
-                if word.lower() in GENERAL_STOPWORDS or word in GENERAL_STOPWORDS:
-                    continue
-                # Skip seed keywords themselves
-                if word.lower() in {s.lower() for s in SEED_KEYWORDS} or word in SEED_KEYWORDS:
-                    continue
-                # Score by co-occurrence count weighted by inverse frequency
-                # (rare words that co-occur often are more interesting)
-                global_freq = global_counts.get(word, 1)
-                score = count * (1 + 1.0 / (global_freq ** 0.5))
-                candidates[word] += score
+            if count < MIN_COOCCURRENCE:
+                continue
+            # Skip stopwords
+            if word.lower() in GENERAL_STOPWORDS or word in GENERAL_STOPWORDS:
+                continue
+            # Skip seed keywords themselves
+            if word.lower() in seed_lower or word in SEED_KEYWORDS:
+                continue
+
+            # Factor 1: PMI-like score
+            # P(word|seed) = count / seed_total
+            # P(word) = global_count / total_corpus_words
+            # PMI = log2(P(word|seed) / P(word))
+            global_freq = global_counts.get(word, 1)
+            p_word_given_seed = count / max(seed_total, 1)
+            p_word = global_freq / max(total_corpus_words, 1)
+
+            if p_word > 0 and p_word_given_seed > p_word:
+                pmi = math.log2(p_word_given_seed / p_word)
+            else:
+                pmi = 0
+
+            # Factor 2: Domain specificity
+            # Compare our corpus frequency to jieba's general frequency
+            jieba_freq = get_jieba_freq(word)
+            if jieba_freq is not None and jieba_freq > 0:
+                our_freq = global_freq / max(total_corpus_words, 1)
+                # If our frequency is 10x higher than general, boost the score
+                domain_boost = min(10, our_freq / jieba_freq) if our_freq > jieba_freq else 0.5
+            else:
+                # Word not in jieba dict = likely domain-specific or proper noun
+                # Give significant boost to these
+                domain_boost = 8 if global_freq >= 10 else 2
+
+            # Combined score
+            # PMI identifies co-occurrence patterns
+            # domain_boost identifies domain-specific vocabulary
+            score = count * (1 + pmi) * domain_boost
+
+            candidates[word] += score
 
     return candidates
 
@@ -207,8 +305,8 @@ def main():
     print()
 
     # Score candidates
-    print("Scoring candidates...")
-    candidates = score_candidates(global_counts, cooccurrence)
+    print("Scoring candidates with PMI + domain specificity...")
+    candidates = score_candidates(global_counts, cooccurrence, len(messages))
     print()
 
     # Load existing
