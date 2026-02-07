@@ -24,26 +24,6 @@
         ]
       }
     ],
-    "PreToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/claude/pdsd-guard.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash(jj *)",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/claude/pdsd-state.sh"
-          }
-        ]
-      }
-    ],
     "PostToolUse": [
       {
         "matcher": "Edit|Write",
@@ -51,15 +31,6 @@
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/claude/post-edit-diagnose.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash(jj *)",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/hooks/claude/pdsd-prompt.sh"
           }
         ]
       }
