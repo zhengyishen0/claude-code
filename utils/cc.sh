@@ -12,12 +12,12 @@ set -euo pipefail
 : "${PROJECT_DIR:=$HOME/Codes/claude-code}"
 
 # Check for --continue or -c flag
-if [[ "${1:-}" == "--continue" || "${1:-}" == "-c" ]]; then
+if [[ "${1:-}" == "--resume" || "${1:-}" == "-r" ]]; then
     partial="${2:-}"
     
     if [[ -z "$partial" ]]; then
-        echo "Error: --continue requires a partial session ID" >&2
-        echo "Usage: cc --continue <partial-id>" >&2
+        echo "Error: --resume requires a partial session ID" >&2
+        echo "Usage: cc --resume <partial-id>" >&2
         exit 1
     fi
     
@@ -61,8 +61,8 @@ if [[ "${1:-}" == "--continue" || "${1:-}" == "-c" ]]; then
     
     echo "Resuming session: $session_id" >&2
     shift 2
-    exec claude --continue "$session_id" "$@"
+    exec claude --resume "$session_id" --model "claude-opus-4-5" "$@"
 else
     # Pass through to claude
-    COLUMNS=200 exec claude --dangerously-skip-permissions "$@"
+    COLUMNS=200 exec claude --dangerously-skip-permissions --model "claude-opus-4-5" "$@"
 fi
