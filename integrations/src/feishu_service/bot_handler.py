@@ -6,13 +6,25 @@ Handles:
 - DM: Each user message creates a new topic with fresh context
 - Group: Each thread has its own session
 - Session ID based on topic root message ID (not chat_id)
+- Concurrent message processing via ThreadPoolExecutor
 """
 
 import json
 import subprocess
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional
+
+# Thread pool for concurrent Claude calls
+# This allows multiple messages to be processed simultaneously
+# without blocking the WebSocket event loop
+_executor = ThreadPoolExecutor(max_workers=10)
+
+
+def get_executor() -> ThreadPoolExecutor:
+    """Get the shared thread pool executor."""
+    return _executor
 
 # System prompt file path
 SYSTEM_PROMPT_FILE = Path(__file__).parent / 'system_prompt.md'

@@ -39,7 +39,7 @@ from lark_oapi.event.callback.model.p2_card_action_trigger import (
 
 from .auth import get_credentials, AuthError, CREDENTIALS_PATH
 from .api import call_api
-from .bot_handler import handle_message, is_bot_mentioned
+from .bot_handler import handle_message, is_bot_mentioned, get_executor
 from .approval import handle_card_callback
 from .thread_tracker import track_thread
 
@@ -200,6 +200,67 @@ def default_message_handler(data: P2ImMessageReceiveV1) -> None:
         print(f"Raw event data: {data}")
 
 
+def _process_message_background(
+    event,
+    chat_id: str,
+    chat_type: str,
+    user_message_id: str,
+    topic_root_id: str,
+    is_new_topic: bool,
+    should_respond: bool,
+    t0: float,
+) -> None:
+    """
+    Background worker that processes a message (sends thinking indicator, calls Claude, sends response).
+
+    This runs in a ThreadPoolExecutor to avoid blocking the WebSocket event loop.
+    """
+    try:
+        thinking_message_id = None
+
+        # Send instant "thinking" indicator in a thread
+        if should_respond:
+            t1 = time.time()
+            # Reply in thread to user's message (creates topic in DM)
+            result = reply_in_thread(user_message_id, "让我思考一下...")
+            thinking_message_id = result.get('message_id')
+            t2 = time.time()
+            print(f"[TIMING] Sent thinking indicator (thread) in {(t2-t1):.3f}s, msg_id={thinking_message_id}", flush=True)
+
+        # Process message with per-topic fresh context
+        t3 = time.time()
+        response = handle_message(event, topic_root_id, is_new_topic)
+        t4 = time.time()
+        print(f"[TIMING] Claude processing took {(t4-t3):.3f}s", flush=True)
+
+        if response:
+            t5 = time.time()
+            if thinking_message_id:
+                # Edit the thinking message with actual response
+                result = edit_message(thinking_message_id, response)
+                t6 = time.time()
+                print(f"[TIMING] Edited message in {(t6-t5):.3f}s", flush=True)
+            else:
+                # Fallback: send new message if no thinking message
+                result = send_message(chat_id, response)
+                t6 = time.time()
+                print(f"[TIMING] Sent response in {(t6-t5):.3f}s", flush=True)
+
+            print(f"[TIMING] Total end-to-end: {(t6-t0):.3f}s", flush=True)
+            if result.get('error'):
+                print(f"Failed to send/edit message: {result.get('msg')}", flush=True)
+            else:
+                print(f"Response delivered to {chat_id}", flush=True)
+        else:
+            print(f"Message stored (no response needed) for {chat_id}", flush=True)
+            print(f"[TIMING] Total (no response): {(time.time()-t0):.3f}s", flush=True)
+
+    except Exception as e:
+        print(f"Error in background message processor: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+
+
 def cc_message_handler(data: P2ImMessageReceiveV1) -> None:
     """
     Message handler that integrates with Claude Code CLI.
@@ -208,6 +269,7 @@ def cc_message_handler(data: P2ImMessageReceiveV1) -> None:
     - Group: Only respond when @mentioned, stores all messages
     - Uses cc --resume for persistent conversations per chat
     - Deduplicates messages to prevent double-processing
+    - NON-BLOCKING: Dispatches work to ThreadPoolExecutor immediately
 
     Args:
         data: The message receive event data
@@ -279,44 +341,21 @@ def cc_message_handler(data: P2ImMessageReceiveV1) -> None:
             # New message in group - only respond if @mentioned
             should_respond = is_bot_mentioned(event)
 
-        thinking_message_id = None
-
-        # Send instant "thinking" indicator in a thread
-        if should_respond:
-            t1 = time.time()
-            # Reply in thread to user's message (creates topic in DM)
-            result = reply_in_thread(user_message_id, "让我思考一下...")
-            thinking_message_id = result.get('message_id')
-            t2 = time.time()
-            print(f"[TIMING] Sent thinking indicator (thread) in {(t2-t1):.3f}s, msg_id={thinking_message_id}", flush=True)
-
-        # Process message with per-topic fresh context
-        t3 = time.time()
-        response = handle_message(event, topic_root_id, is_new_topic)
-        t4 = time.time()
-        print(f"[TIMING] Claude processing took {(t4-t3):.3f}s", flush=True)
-
-        if response:
-            t5 = time.time()
-            if thinking_message_id:
-                # Edit the thinking message with actual response
-                result = edit_message(thinking_message_id, response)
-                t6 = time.time()
-                print(f"[TIMING] Edited message in {(t6-t5):.3f}s", flush=True)
-            else:
-                # Fallback: send new message if no thinking message
-                result = send_message(chat_id, response)
-                t6 = time.time()
-                print(f"[TIMING] Sent response in {(t6-t5):.3f}s", flush=True)
-
-            print(f"[TIMING] Total end-to-end: {(t6-t0):.3f}s", flush=True)
-            if result.get('error'):
-                print(f"Failed to send/edit message: {result.get('msg')}", flush=True)
-            else:
-                print(f"Response delivered to {chat_id}", flush=True)
-        else:
-            print(f"Message stored (no response needed) for {chat_id}", flush=True)
-            print(f"[TIMING] Total (no response): {(time.time()-t0):.3f}s", flush=True)
+        # Dispatch to background thread - returns immediately
+        # This keeps the WebSocket event loop responsive for ping/pong
+        executor = get_executor()
+        executor.submit(
+            _process_message_background,
+            event,
+            chat_id,
+            chat_type,
+            user_message_id,
+            topic_root_id,
+            is_new_topic,
+            should_respond,
+            t0,
+        )
+        print(f"[DISPATCH] Message dispatched to background worker", flush=True)
 
     except Exception as e:
         print(f"Error in cc_message_handler: {e}", flush=True)
