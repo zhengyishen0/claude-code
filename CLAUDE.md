@@ -355,6 +355,22 @@ jj describe -m "msg"     # Message on CURRENT commit (has changes)
 jj new -m "msg"          # Create NEW commit, changes stay in parent
 ```
 
+### AI Commit Rules
+
+1. **New phase = new commit** with `jj new -m "[phase] description"`
+2. **Same phase = update existing** with `jj describe -m "updated msg"`
+3. **Never edit an untitled node** - always know what you're working on
+4. **Never edit an unrelated node** - stay in your lane
+
+**Before any edit, AI checks:**
+```
+1. Am I on a titled node?         → No? Create one first
+2. Is this node for my task?      → No? Create my own
+3. Is this the right phase?       → No? New node for new phase
+```
+
+**Why:** Each AI works on its own commit. No conflicts. Clean history. Easy to combine or drop.
+
 ---
 
 ## Execution Safety

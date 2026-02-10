@@ -14,14 +14,16 @@ A CLI tool for AI to learn behavioral rules from experience.
 │    WHEN [context] -> DO [action] -> BECAUSE [reason]    │
 │    WHEN [context] -> DO NOT [action] -> BECAUSE [reason]│
 │                                                         │
-│  Trust model:                                           │
-│    AI drafts lessons (auto-saved)                       │
-│    Human can mark wrong or promote                      │
-│    True by default unless human says wrong              │
+│  Ownership:                                             │
+│    --skill=X    Skill auto-loads its lessons            │
+│    (no flag)    Global, always loaded                   │
 │                                                         │
-│  Hierarchy:                                             │
-│    Tools/Skills = stable, human-verified                │
-│    Lessons = dynamic, AI-learned, can be wrong          │
+│  Source (auto-detected):                                │
+│    Human runs command → from=user (authoritative)       │
+│    AI runs command    → from=ai (can be wrong)          │
+│                                                         │
+│  Lifecycle:                                             │
+│    AI drafts → active → human: wrong | promote          │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -59,27 +61,22 @@ WHEN [trigger/context]
 Add a new lesson.
 
 ```bash
-# Full pattern (recommended)
-lesson add "WHEN editing config files -> DO read first -> BECAUSE understand existing structure"
+# Global (always loaded)
+lesson add "WHEN multiple approaches -> DO pick minimal -> BECAUSE user preference"
 
-# With explicit scope
-lesson add --scope=tmux "WHEN editing -> DO read first -> BECAUSE avoid wrong assumptions"
-
-# Structured flags (compiles to pattern)
-lesson add -w "editing config files" -d "read first" -b "understand existing structure"
-lesson add -w "user is debugging" --dont "suggest refactors" -b "breaks focus"
-
-# Mark as user-stated (higher confidence)
-lesson add --firm "WHEN multiple approaches -> DO pick minimal -> BECAUSE user preference"
+# Skill-scoped (auto-loads when skill runs)
+lesson add --skill=config "WHEN editing -> DO read first -> BECAUSE avoid wrong assumptions"
+lesson add --skill=browser "WHEN navigation fails -> DO snapshot first -> BECAUSE see current state"
 ```
 
 **Flags:**
-- `-w, --when` — The trigger/context
-- `-d, --do` — The action to take
-- `--dont` — The action to avoid (mutually exclusive with --do)
-- `-b, --because` — The reason
-- `-s, --scope` — Tool/skill this applies to (default: global)
-- `--firm` — User-stated, won't be questioned
+- `--skill` — Skill this applies to (default: global, always loaded)
+
+**Source detection:**
+- Human runs `lesson add` in terminal → `from: user` (authoritative)
+- AI runs `lesson add` via tool → `from: ai` (can be wrong)
+
+No flag needed. The tool detects who called it.
 
 ### `lesson list`
 
@@ -87,9 +84,9 @@ List all lessons.
 
 ```bash
 lesson list                    # All active lessons
-lesson list --scope=tmux       # Lessons for tmux
-lesson list --scope=global     # Global lessons only
-lesson list --from=ai          # AI-drafted only
+lesson list --skill=config     # Lessons for config skill
+lesson list --global           # Global lessons only
+lesson list --from=ai          # AI-learned only
 lesson list --from=user        # User-stated only
 lesson list --all              # Include deleted/promoted
 ```
@@ -97,9 +94,9 @@ lesson list --all              # Include deleted/promoted
 **Output:**
 
 ```
-ID   SCOPE    FROM  PATTERN
+ID   SKILL    FROM  PATTERN
 001  global   user  WHEN multiple approaches -> DO pick minimal -> BECAUSE user preference
-002  tmux     ai    WHEN editing tmux.conf -> DO read first -> BECAUSE avoid wrong assumptions
+002  config   ai    WHEN editing config -> DO read first -> BECAUSE avoid wrong assumptions
 003  browser  ai    WHEN navigation fails -> DO snapshot first -> BECAUSE see current state
 ```
 
@@ -115,13 +112,13 @@ lesson show 002
 
 ```yaml
 id: 002
-scope: tmux
+skill: config
 from: ai
 status: active
 created: 2024-02-10
-pattern: "WHEN editing tmux.conf -> DO read first -> BECAUSE avoid wrong assumptions"
+pattern: "WHEN editing config -> DO read first -> BECAUSE avoid wrong assumptions"
 parsed:
-  when: "editing tmux.conf"
+  when: "editing config"
   action: do
   do: "read first"
   because: "avoid wrong assumptions"
@@ -138,22 +135,21 @@ lesson wrong 002 --reason "too specific"  # With reason (for learning)
 
 ### `lesson promote <id>`
 
-Promote a validated lesson to a skill or tool definition.
+Bake a validated lesson into a skill's definition.
 
 ```bash
-lesson promote 002 --to=skill/config-edit   # Add to skill
-lesson promote 002 --to=tool/tmux           # Add to tool context
+lesson promote 002 --to=config    # Append to config skill's SKILL.md
 ```
 
-This appends the lesson to the target file and marks it as promoted.
+This appends the lesson to the skill's SKILL.md and marks it as promoted.
 
 ### `lesson search <query>`
 
 Search lessons by keyword.
 
 ```bash
-lesson search "tmux"
-lesson search "config" --scope=global
+lesson search "config"
+lesson search "editing" --skill=config
 ```
 
 ---
@@ -173,9 +169,9 @@ Lessons stored in `~/.claude/lessons/`:
 **lessons.jsonl format:**
 
 ```jsonl
-{"id":"001","scope":"global","from":"user","status":"active","created":"2024-02-10","when":"multiple approaches","action":"do","do":"pick minimal","because":"user preference"}
-{"id":"002","scope":"tmux","from":"ai","status":"active","created":"2024-02-10","when":"editing tmux.conf","action":"do","do":"read first","because":"avoid wrong assumptions"}
-{"id":"002","scope":"tmux","from":"ai","status":"deleted","updated":"2024-02-11","reason":"too specific"}
+{"id":"001","skill":"global","from":"user","status":"active","created":"2024-02-10","when":"multiple approaches","action":"do","do":"pick minimal","because":"user preference"}
+{"id":"002","skill":"config","from":"ai","status":"active","created":"2024-02-10","when":"editing config","action":"do","do":"read first","because":"avoid wrong assumptions"}
+{"id":"002","skill":"config","from":"ai","status":"deleted","updated":"2024-02-11","reason":"too specific"}
 ```
 
 Append-only log allows tracking history. Latest entry per ID wins.
@@ -184,18 +180,23 @@ Append-only log allows tracking history. Latest entry per ID wins.
 
 ## Loading Lessons
 
-Lessons are loaded contextually based on scope:
+Skills auto-load their lessons. No manual loading needed.
 
-```bash
-# When AI starts a session
-lesson load                    # Loads global lessons
+```markdown
+# In skill definition (e.g., ~/.claude/commands/config/SKILL.md)
 
-# When AI uses a tool
-lesson load --scope=tmux       # Loads global + tmux lessons
+## Lessons
+$(lesson load --skill=config)
 
-# When AI runs a skill
-lesson load --scope=research   # Loads global + research lessons
+## Steps
+1. Read the file first
+...
 ```
+
+**When skill runs:**
+1. Skill loads global lessons (always)
+2. Skill loads its own scoped lessons (via `lesson load --skill=X`)
+3. AI has full context before acting
 
 **Output format (for AI consumption):**
 
@@ -203,11 +204,11 @@ lesson load --scope=research   # Loads global + research lessons
 ## Lessons (3 active)
 
 ### Global
-- WHEN multiple approaches -> DO pick minimal -> BECAUSE user preference [firm]
+- WHEN multiple approaches -> DO pick minimal -> BECAUSE user preference [user]
 
-### tmux
-- WHEN editing tmux.conf -> DO read first -> BECAUSE avoid wrong assumptions
-- WHEN debugging tmux -> DO NOT kill server -> BECAUSE destroys user sessions
+### config
+- WHEN editing config -> DO read first -> BECAUSE avoid wrong assumptions
+- WHEN config error -> DO NOT retry blindly -> BECAUSE show diff first
 ```
 
 ---
@@ -230,9 +231,9 @@ When V detects a correction pattern:
 ```
 1. User corrects AI behavior
 2. V recognizes: "This is a learnable pattern"
-3. V drafts: lesson add --scope=X "WHEN ... -> DO ... -> BECAUSE ..."
+3. V drafts: lesson add --skill=X "WHEN ... -> DO ... -> BECAUSE ..."
 4. Lesson saved (active, from=ai)
-5. Future sessions load this lesson
+5. Future skill invocations load this lesson
 ```
 
 ---
@@ -242,13 +243,13 @@ When V detects a correction pattern:
 ```typescript
 interface Lesson {
   id: string;              // Unique ID (incrementing)
-  scope: string;           // "global" | tool name | skill name
-  from: "ai" | "user";     // Who created it
+  skill: string;           // "global" | skill name
+  from: "ai" | "user";     // Auto-detected: who ran the command
   status: "active" | "promoted" | "deleted";
   created: string;         // ISO date
   updated?: string;        // ISO date (if modified)
 
-  // The pattern (parsed)
+  // The pattern (parsed from FP text)
   when: string;            // Trigger/context
   action: "do" | "dont";   // Positive or negative
   do: string;              // The action
@@ -268,47 +269,41 @@ interface Lesson {
 
 ```bash
 # Session: User corrects AI for not reading config first
-# AI drafts lesson automatically:
+# AI drafts lesson automatically (from=ai):
 
-$ lesson add --scope=tmux \
-  "WHEN editing tmux.conf -> DO read first -> BECAUSE user corrected: was layering on wrong assumptions"
+$ lesson add --skill=config "WHEN editing config -> DO read first -> BECAUSE was layering on wrong assumptions"
 
-# Next session: AI loads lesson
-$ lesson load --scope=tmux
-## Lessons (1 active)
-- WHEN editing tmux.conf -> DO read first -> BECAUSE user corrected: was layering on wrong assumptions
-
-# AI reads tmux.conf before editing ✓
+# Next session: /config skill loads its lessons automatically
+# AI reads config before editing ✓
 ```
 
 ### Workflow: User marks lesson wrong
 
 ```bash
 $ lesson list
-ID   SCOPE   FROM  PATTERN
+ID   SKILL   FROM  PATTERN
 005  browser ai    WHEN page slow -> DO wait 5s -> BECAUSE avoid timeout
 
 $ lesson wrong 005 --reason "too long, 2s is enough"
 Deleted lesson 005
 
-# User could add correct version:
-$ lesson add --scope=browser --firm \
-  "WHEN page slow -> DO wait 2s -> BECAUSE 5s too long"
+# User adds correct version (from=user, authoritative):
+$ lesson add --skill=browser "WHEN page slow -> DO wait 2s -> BECAUSE 5s too long"
 ```
 
 ### Workflow: Promote to skill
 
 ```bash
-$ lesson list --scope=config
-ID   SCOPE   FROM  PATTERN
+$ lesson list --skill=config
+ID   SKILL   FROM  PATTERN
 002  config  ai    WHEN editing any config -> DO read first -> BECAUSE understand structure
 007  config  ai    WHEN config syntax error -> DO show diff -> BECAUSE user needs to see what changed
 
-# These are solid patterns - promote to skill
-$ lesson promote 002 --to=skill/config-edit
-$ lesson promote 007 --to=skill/config-edit
+# These are solid patterns - bake into skill definition
+$ lesson promote 002 --to=config
+$ lesson promote 007 --to=config
 
-# Now they're part of the skill definition, not just lessons
+# Now they're part of the skill's SKILL.md, not dynamic lessons
 ```
 
 ---
@@ -316,14 +311,14 @@ $ lesson promote 007 --to=skill/config-edit
 ## CLI Summary
 
 ```
-lesson add <pattern>              Add a lesson
-lesson add -w -d/-dont -b         Add with structured flags
-lesson list [--scope] [--from]    List lessons
+lesson add <pattern>              Add a lesson (FP text only)
+lesson add --skill=X <pattern>    Add a skill-scoped lesson
+lesson list [--skill=X] [--from]  List lessons
 lesson show <id>                  Show lesson details
 lesson wrong <id>                 Mark as incorrect (delete)
-lesson promote <id> --to=<path>   Promote to skill/tool
+lesson promote <id> --to=<skill>  Bake into skill definition
 lesson search <query>             Search lessons
-lesson load [--scope]             Load lessons for AI context
+lesson load --skill=X             Load lessons (called by skills)
 ```
 
 ---
@@ -333,6 +328,7 @@ lesson load [--scope]             Load lessons for AI context
 1. **Behavioral, not factual** — Lessons are WHEN->DO->BECAUSE rules, not "user likes X"
 2. **True by default** — AI-drafted lessons are active immediately
 3. **Human override** — `lesson wrong` deletes, `lesson promote` elevates
-4. **Scoped loading** — Only load relevant lessons to avoid noise
-5. **Append-only log** — Full history preserved
-6. **FP-style pattern** — Parseable, composable, testable
+4. **Skill-scoped** — Skills auto-load their lessons, no manual loading
+5. **Source detection** — AI vs user determined by who runs the command
+6. **Append-only log** — Full history preserved
+7. **FP-style pattern** — Parseable, composable, testable
