@@ -12,9 +12,10 @@ PROJECT_ROOT="$(dirname "$WORKFLOW_DIR")"
 # Resolve symlink to real path
 VAULT_DIR="$(cd "$PROJECT_ROOT/vault" && pwd -P)"
 
-NOTE_PATH="$1"
+# Get absolute path for note (before cd'ing later)
+NOTE_PATH="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
 
-if [[ -z "$NOTE_PATH" ]]; then
+if [[ -z "$1" ]]; then
     echo "Usage: $0 <path-to-note.md>"
     exit 1
 fi
@@ -65,9 +66,10 @@ fi
 # Load the intention prompt
 PROMPT=$(cat "$WORKFLOW_DIR/prompts/intention.md")
 
-# Call claude in headless mode with the prompt
+# Call claude in headless mode with the prompt (from vault dir)
 echo "Calling Claude..."
-claude -p --dangerously-skip-permissions --append-system-prompt "$PROMPT" \
+cd "$VAULT_DIR"
+claude -p --dangerously-skip-permissions --model claude-opus-4-5 --append-system-prompt "$PROMPT" \
     "New note detected. Process into IVDX task.
 
 Task ID: $TASK_ID

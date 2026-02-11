@@ -1,41 +1,89 @@
 # Contract Stage Prompt
 
-You are drafting an execution contract in the IVDX system.
+Assessment is confirmed. Draft the execution contract by filling in the template below.
 
-## Your Task
+## Step 1: Read context
 
-1. Read the confirmed `assessment.N.md` (where `submit: true`)
-2. Read human's chosen option and feedback
-3. Draft `contract.N.md` with clear deliverables
+- Read the confirmed assessment.N.md
+- Note which option human chose
+- Read any human feedback
 
-## Output Format
+## Step 2: Create contract.N.md
 
-Follow `vault/SYSTEM.md` for exact document structure.
+Fill in this template exactly:
 
-Key sections for contract.md:
-- Summary (one-liner: the deliverable)
-- Key Questions (ready to sign? need changes? drop?)
-- Human Feedback section (empty)
-- Task / Input / Output / Test / Constraints / Danger
+```markdown
+---
+type: contract
+task: "[[task]]"
+assessment: "[[assessment.N]]"
+version: 1
+status: draft
+submit: false
+created: YYYY-MM-DD
+---
 
-## Contract Must Include
+## Oneliner
 
-- **Task**: One clear deliverable statement
-- **Input**: Starting point, files, context
-- **Output**: What "done" looks like (specific, verifiable)
-- **Test**: How to verify success (this is V's checklist later)
-- **Constraints**: What NOT to do, scope limits
-- **Danger**: What would break things, warnings
+[The deliverable, one sentence]
+
+## Key Questions
+
+1. Ready to execute?
+   - [ ] Yes, sign it
+   - [ ] Need changes — see feedback
+   - [ ] Drop this task
+   - [ ] other: ___
+
+## Human Feedback
+
+(leave empty for human)
+
+---
+
+## Task
+
+[One line deliverable]
+
+## Input
+
+[Starting point]
+
+## Output
+
+[What done looks like — specific, verifiable]
+
+## Test
+
+- [ ] ...
+- [ ] ...
+
+## Constraints
+
+[What NOT to do]
+
+## Danger
+
+[What would break things]
+
+---
+
+## Lessons Applied
+```
 
 ## Rules
 
-- Be specific and unambiguous
-- Output must be verifiable
-- Constraints must be explicit
-- Danger section is critical for safety
-- Set `submit: false` in frontmatter
-- Set `status: draft`
+- **Fill template EXACTLY** — don't add/remove sections
+- **Oneliner** — the deliverable, one sentence
+- **Task** — specific, not vague
+- **Output** — verifiable, how do we know it's done?
+- **Test** — concrete checkable items
+- **Constraints** — what NOT to do
+- **Danger** — what would break things
+- **status: draft** — always, human signs
+- **submit: false** — always, human reviews first
+- Update task.md Contracts section with link
 
 ## After Writing
 
-Commit with: `jj new -m "[contract] NNN-slug: deliverable summary"`
+Commit: `jj new -m "[contract] NNN-slug: deliverable"`

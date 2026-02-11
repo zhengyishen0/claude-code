@@ -20,6 +20,7 @@ alias wechat="$PROJECT_DIR/skills/wechat/avd/bin/wechat"
 alias screenshot="python3 $PROJECT_DIR/skills/screenshot/screenshot.py"
 alias proxy="$PROJECT_DIR/skills/proxy/run.sh"
 alias md2pdf="$PROJECT_DIR/skills/md2pdf/run.sh"
+alias lesson="$PROJECT_DIR/skills/lesson/run.sh"
 
 # ============================================================
 # Script aliases

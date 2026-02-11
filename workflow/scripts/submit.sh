@@ -10,9 +10,10 @@ PROJECT_ROOT="$(dirname "$WORKFLOW_DIR")"
 # Resolve symlink to real path
 VAULT_DIR="$(cd "$PROJECT_ROOT/vault" && pwd -P)"
 
-DOC_PATH="$1"
+# Get absolute path for doc (before cd'ing later)
+DOC_PATH="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
 
-if [[ -z "$DOC_PATH" ]]; then
+if [[ -z "$1" ]]; then
     echo "Usage: $0 <path-to-document.md>"
     exit 1
 fi
@@ -33,7 +34,7 @@ echo "Processing submitted $DOC_TYPE for task: $TASK_ID"
 
 # Select appropriate prompt based on document type
 case "$DOC_TYPE" in
-    intention)
+    intention|eval)
         PROMPT=$(cat "$WORKFLOW_DIR/prompts/assessment.md")
         NEXT_STAGE="assessment"
         ;;
@@ -61,8 +62,9 @@ case "$DOC_TYPE" in
         ;;
 esac
 
-# Call claude in headless mode with the appropriate prompt
-claude -p --dangerously-skip-permissions --append-system-prompt "$PROMPT" \
+# Call claude in headless mode with the appropriate prompt (from vault dir)
+cd "$VAULT_DIR"
+claude -p --dangerously-skip-permissions --model claude-opus-4-5 --append-system-prompt "$PROMPT" \
     "Document submitted for task: $TASK_ID
 
 Submitted document: $DOC_PATH

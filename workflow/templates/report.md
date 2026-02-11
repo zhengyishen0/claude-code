@@ -1,29 +1,45 @@
 ---
 type: report
 task: "[[task]]"
-contract: "[[contract]]"
+contract: "[[contract.N]]"
 attempt: 1
-outcome: success
-verified: false
-created:
+outcome: success | partial | failed | pivot
+submit: false
+created: YYYY-MM-DD
+---
+
+## Oneliner
+
+[Outcome, one sentence]
+
+## Key Questions
+
+1. Accept result?
+   - [ ] Yes, mark done
+   - [ ] Retry with adjustments
+   - [ ] Pivot — need new approach
+   - [ ] other: ___
+
+## Human Feedback
+
+(write here)
+
 ---
 
 ## Work Done
 
-| File | Operation | Status |
-|------|-----------|--------|
-| | | |
-
-### Summary
-[Key changes made]
+[What was executed]
 
 ## Verification
 
-- [ ] Syntax correct
-- [ ] All files updated
-- [ ] No unintended changes
-- [ ] Tests pass
-- [ ] Goal achieved
+| Test | Result |
+|------|--------|
+| ... | ✅ / ❌ |
 
-## Result
-[Pass/fail with evidence]
+## What Worked
+
+## What Didn't
+
+---
+
+## Lessons Proposed

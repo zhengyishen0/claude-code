@@ -1,39 +1,56 @@
 ---
 type: contract
 task: "[[task]]"
-status: draft
-created:
-approved:
+assessment: "[[assessment.N]]"
+version: 1
+status: draft | signed | dropped
+submit: false
+created: YYYY-MM-DD
+---
+
+## Oneliner
+
+[The deliverable, one sentence]
+
+## Key Questions
+
+1. Ready to execute?
+   - [ ] Yes, sign it
+   - [ ] Need changes — see feedback
+   - [ ] Drop this task
+   - [ ] other: ___
+
+## Human Feedback
+
+(write here)
+
 ---
 
 ## Task
+
 [One line deliverable]
 
-## Intent
-[What and why]
+## Input
 
-## Scope
-[Which areas are in scope, key decisions]
+[Starting point]
 
-## File Map
+## Output
 
-| File | Operation | Priority |
-|------|-----------|----------|
-| | | |
-
-## Done When
-[What success looks like]
+[What done looks like — specific, verifiable]
 
 ## Test
-- [ ] Intent achieved
-- [ ] Implications addressed
-- [ ] Files updated
-- [ ] Changes correct
+
+- [ ] ...
+- [ ] ...
 
 ## Constraints
-[What NOT to touch]
 
-## Danger Zone
-- Do NOT push
-- Do NOT modify outside scope
-- If blocked → escalate
+[What NOT to do]
+
+## Danger
+
+[What would break things]
+
+---
+
+## Lessons Applied

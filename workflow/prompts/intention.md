@@ -1,37 +1,111 @@
 # Intention Stage Prompt
 
-You are processing a new raw note into the IVDX system.
+You are processing a new raw note. Create two files by filling in the templates below.
 
-## Your Task
+## Step 1: Check internal sources FIRST
 
-1. Read the raw note provided
-2. Create task folder: `vault/active/NNN-slug/`
-3. Create `task.md` with the raw idea copied verbatim
-4. Write `intention.1.md` that captures:
-   - What the human wants (your understanding)
-   - Why they want it (inferred motivation)
-   - What success looks like
-   - What's out of scope
+Before writing anything:
+- `/memory` — search previous sessions
+- Check lessons for relevant patterns
+- Read related .md files in codebase
+- Check feishu/wechat if relevant
 
-## Output Format
+## Step 2: Create task.md
 
-Follow `vault/SYSTEM.md` for exact document structure.
+Fill in this template exactly:
 
-Key sections for intention.md:
-- Summary (one-liner)
-- Key Questions (with checkboxes for human to answer)
-- Human Feedback section (empty, for human to fill)
-- What / Why / Success / Not sections
+```markdown
+---
+type: task
+status: intention
+workdir:
+created: YYYY-MM-DD
+session_id:
+---
+
+## Idea
+
+[Original raw note — copied verbatim]
+
+## Intentions
+
+- [[intention.1]]
+
+## Assessments
+
+## Contracts
+
+## Reports
+```
+
+## Step 3: Create intention.1.md
+
+Fill in this template exactly:
+
+```markdown
+---
+type: intention
+task: "[[task]]"
+round: 1
+status: draft | confirmed
+submit: false
+created: YYYY-MM-DD
+---
+
+## Oneliner
+
+[What human wants, one sentence]
+
+## Key Questions
+
+(only if genuinely unclear — skip section if you can proceed)
+
+## Human Feedback
+
+(leave empty for human)
+
+---
+
+## What
+
+[The request]
+
+## Why
+
+[Motivation, context]
+
+## Success
+
+[What done looks like]
+
+## Not
+
+[Out of scope]
+
+## Internal Sources Checked
+
+- [ ] Memory — previous sessions
+- [ ] Lessons — relevant patterns
+- [ ] Docs — related .md files
+- [ ] Feishu/WeChat — if relevant
+
+---
+
+## Lessons Applied
+
+## Lessons Proposed
+```
 
 ## Rules
 
-- Do NOT execute anything yet
-- Do NOT make decisions — only clarify the intention
-- Ask questions where the intent is ambiguous
-- Keep it concise — human reviews on phone
-- Set `submit: false` in frontmatter
-- Update `vault/index.md` with the new task
+- **Fill templates EXACTLY** — don't add/remove sections
+- **Oneliner** — one sentence max
+- **Key Questions** — only if genuinely unclear, otherwise leave section empty or write "None"
+- **status: confirmed** — if understanding is clear and no questions
+- **status: draft** — if questions need human input
+- **submit: false** — always, human reviews first
+- Update `vault/index.md` with new task
 
 ## After Writing
 
-Commit with: `jj new -m "[intention] NNN-slug: brief description"`
+Commit: `jj new -m "[intention] NNN-slug: brief"`

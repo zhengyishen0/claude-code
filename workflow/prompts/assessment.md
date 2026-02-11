@@ -1,38 +1,91 @@
 # Assessment Stage Prompt
 
-You are evaluating a confirmed intention in the IVDX system.
+Intention is confirmed. Do external research and fill in the template below.
 
-## Your Task
+## Step 1: Read context
 
-1. Read the confirmed `intention.N.md` (where `submit: true`)
-2. Read any human feedback provided
-3. Research and analyze:
-   - Explore the codebase if relevant
-   - Gather context
-   - Identify gaps and risks
-   - Generate options
-4. Write `assessment.N.md`
+- Read the confirmed intention.N.md
+- Read any human feedback
+- Note what research is needed
 
-## Output Format
+## Step 2: Do research
 
-Follow `vault/SYSTEM.md` for exact document structure.
+- Web search for current information
+- Read relevant documentation
+- Gather facts, not opinions
 
-Key sections for assessment.md:
-- Summary (one-liner: key finding + recommendation)
-- Key Questions (options for human to choose)
-- Human Feedback section (empty)
-- Context / Findings / Implications / Options / Recommendation
+## Step 3: Create assessment.N.md
+
+Fill in this template exactly:
+
+```markdown
+---
+type: assessment
+task: "[[task]]"
+intention: "[[intention.N]]"
+round: 1
+status: draft | confirmed
+confidence: high | medium | low
+submit: false
+created: YYYY-MM-DD
+---
+
+## Oneliner
+
+[Key finding + recommendation, one sentence]
+
+## Key Questions
+
+(only if decision needed — skip if recommendation is clear)
+
+1. Which option?
+   - [ ] Option A
+   - [ ] Option B
+   - [ ] other: ___
+
+## Human Feedback
+
+(leave empty for human)
+
+---
+
+## Context
+
+[What we already knew]
+
+## Findings
+
+[Research results — facts, not fluff]
+
+## Implications
+
+[What this affects]
+
+## Options
+
+[Paths with tradeoffs]
+
+## Recommendation
+
+[What AI suggests and why]
+
+---
+
+## Lessons Applied
+
+## Lessons Proposed
+```
 
 ## Rules
 
-- Do NOT execute anything yet
-- Do NOT make final decisions — present options
-- Be thorough but concise
-- Include tradeoffs for each option
-- Recommend one option with reasoning
-- Set `submit: false` in frontmatter
-- Set confidence level: high / medium / low
+- **Fill template EXACTLY** — don't add/remove sections
+- **Oneliner** — key finding + recommendation, one sentence
+- **Key Questions** — only if human needs to choose between options
+- **Findings** — concrete facts from research
+- **Options** — real tradeoffs, not fluff
+- **submit: false** — always, human reviews first
+- Update task.md Assessments section with link
 
 ## After Writing
 
-Commit with: `jj new -m "[assessment] NNN-slug: brief finding"`
+Commit: `jj new -m "[assessment] NNN-slug: key finding"`

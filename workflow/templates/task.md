@@ -1,17 +1,19 @@
 ---
 type: task
-status: validation
+status: intention | assessment | decision | execution | done | dropped
 workdir:
-created:
+created: YYYY-MM-DD
 session_id:
 ---
 
 ## Idea
 
-[Your idea here]
+[Original raw note — copied verbatim]
 
-## Evals
+## Intentions
 
-## Contract
+## Assessments
+
+## Contracts
 
 ## Reports
