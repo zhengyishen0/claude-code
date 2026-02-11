@@ -1,5 +1,5 @@
 #!/bin/bash
-# proxy.sh - Proxy tool for Claude Code
+# proxy - Proxy management tool
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

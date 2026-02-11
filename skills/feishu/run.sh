@@ -9,14 +9,18 @@ while [ -L "$SOURCE" ]; do
     [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+SKILLS_DIR="$(dirname "$SCRIPT_DIR")"
 
 # Suppress Python warnings
 export PYTHONWARNINGS="ignore"
 
-# Run the feishu CLI directly
+# Add skills dir to Python path (for relative imports)
+export PYTHONPATH="$SKILLS_DIR:${PYTHONPATH:-}"
+
+# Run the feishu CLI
 python3 -W ignore -c "
 import sys
-sys.path.insert(0, '$SCRIPT_DIR')
-from __init__ import feishu_cli
+sys.path.insert(0, '$SKILLS_DIR')
+from feishu import feishu_cli
 feishu_cli()
 " "$@"

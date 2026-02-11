@@ -7,7 +7,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WORKFLOW_DIR="$(dirname "$SCRIPT_DIR")"
 PROJECT_ROOT="$(dirname "$WORKFLOW_DIR")"
-VAULT_DIR="$PROJECT_ROOT/vault"
+# Resolve symlink to real path
+VAULT_DIR="$(cd "$PROJECT_ROOT/vault" && pwd -P)"
 
 TASK_ID="$1"
 

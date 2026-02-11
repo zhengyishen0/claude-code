@@ -7,7 +7,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WORKFLOW_DIR="$(dirname "$SCRIPT_DIR")"
 PROJECT_ROOT="$(dirname "$WORKFLOW_DIR")"
-VAULT_DIR="$PROJECT_ROOT/vault"
+# Resolve symlink to real path
+VAULT_DIR="$(cd "$PROJECT_ROOT/vault" && pwd -P)"
 
 DOC_PATH="$1"
 
@@ -60,8 +61,8 @@ case "$DOC_TYPE" in
         ;;
 esac
 
-# Call claude with the appropriate prompt
-claude --append-system-prompt "$PROMPT" \
+# Call claude in headless mode with the appropriate prompt
+claude -p --dangerously-skip-permissions --append-system-prompt "$PROMPT" \
     "Document submitted for task: $TASK_ID
 
 Submitted document: $DOC_PATH

@@ -14,15 +14,16 @@ export CLAUDE_DIR="${CLAUDE_DIR:-$HOME/.claude}"
 alias browser="node $PROJECT_DIR/skills/browser/cli.js"
 alias memory="$PROJECT_DIR/skills/memory/run.sh"
 alias diagnose="$PROJECT_DIR/skills/diagnose/diagnose"
-alias service="$PROJECT_DIR/skills/service/run.sh"
+alias google="$PROJECT_DIR/skills/google/run.sh"
+alias feishu="$PROJECT_DIR/skills/feishu/run.sh"
 alias wechat="$PROJECT_DIR/skills/wechat/avd/bin/wechat"
 alias screenshot="python3 $PROJECT_DIR/skills/screenshot/screenshot.py"
+alias proxy="$PROJECT_DIR/skills/proxy/run.sh"
+alias md2pdf="$PROJECT_DIR/skills/md2pdf/run.sh"
 
 # ============================================================
 # Script aliases
 # ============================================================
-alias proxy="$PROJECT_DIR/scripts/proxy.sh"
-alias md2pdf="$PROJECT_DIR/scripts/md2pdf.sh"
 alias cc="$PROJECT_DIR/scripts/cc.sh"
 
 # ============================================================
@@ -34,7 +35,7 @@ alias claude-kill='pkill -9 "^claude"'
 # ============================================================
 # Auto-init: Enable proxy if reachable
 # ============================================================
-eval "$("$PROJECT_DIR/scripts/proxy.sh" init 2>/dev/null)"
+eval "$("$PROJECT_DIR/skills/proxy/run.sh" init 2>/dev/null)"
 
 # ============================================================
 # work - Agent workspace management

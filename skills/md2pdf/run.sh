@@ -5,7 +5,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CSS_FILE="$SCRIPT_DIR/md-pdf.css"
+CSS_FILE="$SCRIPT_DIR/style.css"
 
 if [[ -z "$1" ]]; then
     echo "Usage: md2pdf <input.md> [output_dir]"
