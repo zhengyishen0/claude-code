@@ -46,6 +46,64 @@ X — Make it real
 
 ---
 
+## Multi-Layer Projection
+
+IVDX phases map to **projection layers** — from abstract intent to concrete edits:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Layer 1: INTENT                                            │
+│  "What do you want to achieve?"                             │
+│  Raw idea, motivation, constraints                          │
+│                                                    ← I      │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼  project onto domain knowledge
+┌─────────────────────────────────────────────────────────────┐
+│  Layer 2: DOMAIN                                            │
+│  "What are the implications?"                               │
+│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐           │
+│  │ Arch    │ │ Security│ │ Perf    │ │ Testing │  ...      │
+│  │ patterns│ │ auth    │ │ scale   │ │ coverage│           │
+│  └─────────┘ └─────────┘ └─────────┘ └─────────┘  ← V      │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼  project onto artifacts        ← D (contract)
+┌─────────────────────────────────────────────────────────────┐
+│  Layer 3: FILES                                             │
+│  "What artifacts need to change?"                           │
+│  Impact graph: which files, dependencies, order             │
+│                                                    ← X      │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼  project onto operations
+┌─────────────────────────────────────────────────────────────┐
+│  Layer 4: EDITS                                             │
+│  "What are the actual changes?"                             │
+│  Create, modify, delete — the concrete operations           │
+│                                                    ← X      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Why this matters — failure modes:**
+
+| Skip | Symptom | Example |
+|------|---------|---------|
+| Layer 2 (Domain) | "Works but breaks other things" | Added feature, broke security |
+| Layer 3 (Files) | "Forgot to update X" | Changed code, missed tests |
+| Layer 1→4 jump | "Solved wrong problem" | Built feature nobody wanted |
+| Weak Layer 2 | "Doesn't follow patterns" | Inconsistent with codebase |
+
+**V is where Layer 2 happens.** This is the expertise layer — understanding implications across domains before committing to a plan.
+
+**Layer 2 expertise areas (adapt per domain):**
+- **Code**: architecture, security, performance, testing, dependencies
+- **Architecture/BIM**: fire, structure, MEP, accessibility, codes
+- **Business**: legal, compliance, cost, stakeholders
+- **Any domain**: the "what else is affected?" question
+
+---
+
 ## The Four Phases
 
 ### I: Idea, Intention, Input, Initiate — Human
@@ -63,13 +121,23 @@ You dump raw ideas. One line is fine.
 
 AI evaluates — understands context, validates ideas, verifies outputs.
 
+**V is the Domain Layer (Layer 2).** This is where expertise lives.
+
 **Internal loop:** research → clarify → diverge → converge → iterate.
 
 **V does two jobs:**
-1. **Evaluate ideas** (I → V → D): Understand context, identify gaps, prepare questions
+1. **Evaluate ideas** (I → V → D): Project intent onto domain knowledge
 2. **Verify execution** (X → V): Check against contract, confirm correctness
 
-**Output:** `eval.N.md` with findings + questions/options.
+**Domain analysis includes:**
+- **Architecture**: Where does this fit? What patterns apply?
+- **Security**: Auth, permissions, data exposure?
+- **Performance**: Scale, load, bottlenecks?
+- **Testing**: What needs coverage?
+- **Dependencies**: What else is affected?
+- **Domain-specific**: (e.g., fire codes, medical protocols, legal precedents)
+
+**Output:** `eval.N.md` with domain analysis + file impact map.
 
 ### D: Decision, Discussion, Dialogue, Deliberate — Human + AI
 
@@ -88,11 +156,17 @@ Intensive conversation to refine and reach conclusion.
 
 AI works — does the task, experiments, learns from results.
 
-- **eXecute** — do the work
+**X operates on Layer 3 (Files) and Layer 4 (Edits).**
+
+- **eXecute** — map files, make edits
 - **eXperiment** — try and observe
 - **eXplore** — discover through action
 
-**Internal loop:** execute → observe → adjust → iterate.
+**Internal loop:**
+1. Map artifacts (Layer 3): which files, what order, dependencies
+2. Execute edits (Layer 4): create, modify, delete
+3. Observe results
+4. Adjust and iterate
 
 **Output:** `report.N.md` with outcome.
 
@@ -169,32 +243,31 @@ V is one skill applied everywhere:
 
 ```
 vault/
+├── index.md                        # Links to all active/archived tasks
 ├── templates/
-│   ├── task.md
-│   ├── eval.md
-│   ├── contract.md
-│   └── report.md
+│   └── task.md
 │
-├── inbox/                          # New ideas
-│   └── 003-idea.task.md
+├── (anywhere else)/                # WATCHED — raw ideas, notes
+│   ├── random-thought.md           # AI picks up any .md file
+│   ├── notes/
+│   └── ideas/
 │
-├── active/                         # Being worked
-│   ├── 001-bug.task.md             # Task file (visible)
-│   ├── 001-bug/                    # Deliverables folder
+├── active/                         # NOT watched — being processed
+│   ├── 001-bug/
+│   │   ├── task.md                 # Task inside folder
 │   │   ├── eval.1.md
-│   │   ├── eval.2.md
 │   │   ├── contract.md
 │   │   └── report.1.md
-│   │
-│   ├── 002-feature.task.md
 │   └── 002-feature/
+│       └── task.md
 │
-└── archive/                        # Done or dropped
-    ├── 000-old.task.md
+└── archive/                        # NOT watched — done/dropped
     └── 000-old/
+        └── task.md
 ```
 
-**Task file at top level. Folder alongside for deliverables.**
+**Human dumps anywhere in vault. AI watches all except active/, archive/, templates/.**
+**Task and deliverables all inside one folder.**
 
 ---
 
@@ -202,11 +275,12 @@ vault/
 
 | Phase | File | Created by |
 |-------|------|------------|
-| I | `X.task.md` | Human |
-| V | `X/eval.N.md` | AI |
-| D | `X/contract.md` | AI (human approves) |
-| X | `X/report.N.md` | AI |
+| I | `anywhere.md` (raw) → `active/X/task.md` (formatted) | Human (raw), AI (formats) |
+| V | `active/X/eval.N.md` | AI |
+| D | `active/X/contract.md` | AI (human approves) |
+| X | `active/X/report.N.md` | AI |
 
+**Human dumps raw ideas anywhere. AI structures into active/X/ folder.**
 **All AI output goes to documents. No chat responses.**
 
 ---
@@ -229,14 +303,16 @@ session_id:
 [Your idea here]
 
 ## Evals
-- [[001-bug/eval.1]]
+- [[eval.1]]
 
 ## Contract
-[[001-bug/contract]]
+[[contract]]
 
 ## Reports
-- [[001-bug/report.1]]
+- [[report.1]]
 ```
+
+Note: Links are relative within the same task folder.
 
 ### eval.md (V output)
 
@@ -249,17 +325,38 @@ confidence: high | medium | low
 created: 2024-02-08
 ---
 
-## Question
-[What V is evaluating]
+## Intent (Layer 1)
+[Clarified understanding of what human wants and why]
 
-## Findings
-[Research, context gathered]
+## Domain Analysis (Layer 2)
+### Architecture
+[Where this fits, patterns, structure]
+
+### Security
+[Auth, permissions, data considerations]
+
+### Performance
+[Scale, efficiency, bottlenecks]
+
+### Testing
+[What needs coverage, how to verify]
+
+### Dependencies
+[What else is affected, ripple effects]
+
+### Domain-Specific
+[Industry/context-specific implications]
+
+## File Impact Map (Layer 3)
+| File | Operation | Depends On | Notes |
+|------|-----------|------------|-------|
+| path/to/file | create/modify/delete | other files | why |
 
 ## Gaps
-[What's still unknown]
+[What's still unknown, needs clarification]
 
 ## Options
-[If applicable]
+[If applicable, with trade-offs]
 
 ## Proposed Decision
 [V's recommendation for D]
@@ -279,17 +376,29 @@ approved:
 ## Task
 [One line deliverable]
 
-## Input
-[Files, context]
+## Intent (Layer 1)
+[What and why — the agreed understanding]
+
+## Domain Scope (Layer 2)
+[Which expertise areas are in scope, key decisions made]
+
+## File Map (Layer 3)
+| File | Operation | Priority |
+|------|-----------|----------|
+| path/to/file | create/modify/delete | 1/2/3 |
 
 ## Output
 [What done looks like]
 
 ## Test
-[How to verify — this is V's checklist]
+[How to verify — V's checklist, by layer]
+- [ ] Intent: Does it achieve the goal?
+- [ ] Domain: Are all implications addressed?
+- [ ] Files: Are all mapped files updated?
+- [ ] Edits: Are changes correct?
 
 ## Constraints
-[Scope limits]
+[Scope limits — what NOT to touch]
 
 ## Danger Zone
 - Do NOT push
@@ -310,11 +419,33 @@ verified: true | false
 created: 2024-02-08
 ---
 
-## Work Done
-[What X did]
+## Work Done (Layer 3-4)
 
-## Verification
-[V's check against contract]
+### Files Changed
+| File | Operation | Status |
+|------|-----------|--------|
+| path/to/file | created/modified/deleted | ✓/✗ |
+
+### Edit Summary
+[Key changes made at Layer 4]
+
+## Verification (back through layers)
+
+### Layer 4: Edits
+- [ ] Syntax correct, no errors
+- [ ] Follows code style
+
+### Layer 3: Files
+- [ ] All mapped files updated
+- [ ] No unintended changes
+
+### Layer 2: Domain
+- [ ] Architecture patterns followed
+- [ ] Security addressed
+- [ ] Tests pass
+
+### Layer 1: Intent
+- [ ] Original goal achieved
 
 ## Result
 [Pass/fail with evidence]
@@ -437,6 +568,22 @@ Two machines via Tailscale:
 
 ---
 
+## Temp Files
+
+Use `.tmp/` for any temporary files. This folder is gitignored.
+
+```bash
+# Good
+.tmp/scratch.py
+.tmp/test-output.json
+
+# Bad
+./tmp/foo.txt           # Don't use
+/tmp/bar.txt            # Don't use system tmp
+```
+
+---
+
 ## Tools
 
 ### Task management
@@ -470,7 +617,8 @@ Workers don't message each other. Coordinate through:
 
 | Artifact | Location |
 |----------|----------|
-| Tasks | vault/active/*.task.md |
+| Overview | vault/index.md |
+| Tasks | vault/active/X/task.md |
 | Evaluations | vault/active/X/eval.N.md |
 | Contracts | vault/active/X/contract.md |
 | Reports | vault/active/X/report.N.md |
@@ -485,16 +633,22 @@ Workers don't message each other. Coordinate through:
 ┌─────────────────────────────────────────────────────────┐
 │  IVDX = Idea → Validate → Decide → eXecute             │
 │                                                         │
-│  I — What you want        (Human)                       │
-│  V — Is it sound?         (AI, loops, verifies)         │
-│  D — What we'll do        (Human + AI, contract)        │
-│  X — Make it real         (AI, loops, experiments)      │
+│  I — What you want        (Human)     → Layer 1: Intent │
+│  V — Is it sound?         (AI)        → Layer 2: Domain │
+│  D — What we'll do        (Human+AI)  → Layer 2→3 gate  │
+│  X — Make it real         (AI)        → Layer 3-4: Work │
 │                                                         │
-│  V is the unified evaluator:                            │
-│    • Evaluates ideas before D                           │
-│    • Verifies execution after X                         │
-│    • Fixes within scope or escalates                    │
+├─────────────────────────────────────────────────────────┤
+│  Multi-Layer Projection:                                │
 │                                                         │
+│  Layer 1: Intent  — what and why                        │
+│  Layer 2: Domain  — implications (the expertise layer)  │
+│  Layer 3: Files   — which artifacts change              │
+│  Layer 4: Edits   — the actual operations               │
+│                                                         │
+│  V = Layer 2. Skipping it causes failures.              │
+│  X = Layer 3→4. Map files before editing.               │
+├─────────────────────────────────────────────────────────┤
 │  All output is documents. Async collaboration.          │
 │  One human gate: D → X (contract approval).             │
 │  Worst case: drop. Never break.                         │

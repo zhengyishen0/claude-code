@@ -1,0 +1,23 @@
+# Sensitive data - DO NOT COMMIT
+wechat_config.json
+*_backup.json
+
+# Decrypted databases
+decrypted/
+
+.claude/settings.local.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Windows
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Large binaries
+*.exe
