@@ -5,11 +5,11 @@ from Feishu/Lark in real-time using the long connection protocol.
 
 Usage:
     # With default handler (prints messages)
-    from feishu_service.bot import start_bot
+    from feishu.bot import start_bot
     start_bot()
 
     # With custom handler
-    from feishu_service.bot import start_bot, create_event_handler
+    from feishu.bot import start_bot, create_event_handler
 
     def my_handler(data):
         message = data.event.message
@@ -19,7 +19,7 @@ Usage:
     start_bot(event_handler=handler)
 
     # With CC integration (auto-responds via Claude Code)
-    from feishu_service.bot import start_bot_with_cc
+    from feishu.bot import start_bot_with_cc
     start_bot_with_cc()
 """
 

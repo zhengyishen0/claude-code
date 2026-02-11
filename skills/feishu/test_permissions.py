@@ -12,12 +12,12 @@ from datetime import datetime, timedelta
 # Add the parent directory to path for imports
 sys.path.insert(0, '/Users/zhengyishen/Codes/claude-code/integrations/src')
 
-from feishu_service.plugins import (
+from feishu.plugins import (
     calendar_list_events,
     bitable_list_tables,
     vc_list_recordings,
 )
-from feishu_service.auth import get_status, get_client, AuthError
+from feishu.auth import get_status, get_client, AuthError
 
 
 def test_tenant_access_token():

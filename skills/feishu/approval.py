@@ -7,7 +7,7 @@ This module implements an approval workflow for calendar operations:
 4. Callback handler executes or cancels the action
 
 Usage:
-    from feishu_service.approval import (
+    from feishu.approval import (
         request_calendar_create,
         request_calendar_update,
         request_calendar_delete,

@@ -9,22 +9,18 @@ export PROJECT_DIR="$HOME/Codes/claude-code"
 export CLAUDE_DIR="${CLAUDE_DIR:-$HOME/.claude}"
 
 # ============================================================
-# Tool aliases
+# Skill aliases (tools now live in skills/)
 # ============================================================
-alias browser="node $PROJECT_DIR/tools/browser/cli.js"
-alias memory="$PROJECT_DIR/tools/memory/run.sh"
-alias diagnose="$PROJECT_DIR/tools/diagnose/diagnose"
-
-# ============================================================
-# Service aliases
-# ============================================================
-alias service="$PROJECT_DIR/services/run.sh"
-alias wechat="$PROJECT_DIR/services/wechat/bin/wechat"
+alias browser="node $PROJECT_DIR/skills/browser/cli.js"
+alias memory="$PROJECT_DIR/skills/memory/run.sh"
+alias diagnose="$PROJECT_DIR/skills/diagnose/diagnose"
+alias service="$PROJECT_DIR/skills/service/run.sh"
+alias wechat="$PROJECT_DIR/skills/wechat/avd/bin/wechat"
+alias screenshot="python3 $PROJECT_DIR/skills/screenshot/screenshot.py"
 
 # ============================================================
 # Script aliases
 # ============================================================
-alias screenshot="python3 $PROJECT_DIR/scripts/screenshot.py"
 alias proxy="$PROJECT_DIR/scripts/proxy.sh"
 alias md2pdf="$PROJECT_DIR/scripts/md2pdf.sh"
 alias cc="$PROJECT_DIR/scripts/cc.sh"

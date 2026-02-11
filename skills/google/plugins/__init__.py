@@ -91,6 +91,6 @@ def run_plugin(service: str, action: str, args):
 
     # Import and run the plugin module
     module_path = plugin['module']
-    module = importlib.import_module(f'.{module_path}', package='google_service.plugins')
+    module = importlib.import_module(f'.{module_path}', package='google.plugins')
 
     return module.run(args)

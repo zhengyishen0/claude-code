@@ -4,7 +4,7 @@ Stores thread metadata to allow listing and resuming past conversations.
 Thread data is stored in a JSON file in the Feishu config directory.
 
 Usage:
-    from feishu_service.thread_tracker import track_thread, list_threads, get_thread
+    from feishu.thread_tracker import track_thread, list_threads, get_thread
 
     # Track a new or updated thread
     track_thread(
