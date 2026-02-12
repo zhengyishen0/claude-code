@@ -1,16 +1,10 @@
 #!/bin/bash
 # Archive a completed or dropped task
 # Usage: ./archive.sh <task-id>
-#
-# Moves: vault/tasks/NNN-slug.md → vault/archive/NNN-slug.md
-# Moves: vault/files/NNN-slug/  → vault/archive/NNN-slug/
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SKILL_DIR="$(dirname "$SCRIPT_DIR")"
-PROJECT_ROOT="$(dirname "$(dirname "$SKILL_DIR")")"
-VAULT_DIR="$(cd "$PROJECT_ROOT/vault" && pwd -P)"
+VAULT_DIR="$(cd ~/.claude-code/vault && pwd -P)"
 
 TASK_ID="$1"
 
@@ -19,35 +13,30 @@ if [[ -z "$TASK_ID" ]]; then
     exit 1
 fi
 
-TASK_FILE="$VAULT_DIR/tasks/$TASK_ID.md"
-FILES_DIR="$VAULT_DIR/files/$TASK_ID"
+TASK_DIR="$VAULT_DIR/active/$TASK_ID"
+ARCHIVE_DIR="$VAULT_DIR/archive/$TASK_ID"
 
-if [[ ! -f "$TASK_FILE" ]]; then
-    echo "Error: Task not found: $TASK_FILE"
+if [[ ! -d "$TASK_DIR" ]]; then
+    echo "Error: Task not found: $TASK_DIR"
     exit 1
 fi
 
 # Check task status
-STATUS=$(grep -m1 "^status:" "$TASK_FILE" | sed 's/status: *//')
-if [[ "$STATUS" != "done" && "$STATUS" != "dropped" ]]; then
-    echo "Task status is '$STATUS', not 'done' or 'dropped'. Continue anyway? (y/n)"
-    read -r REPLY
-    if [[ ! "$REPLY" =~ ^[Yy]$ ]]; then
-        exit 0
+TASK_FILE="$TASK_DIR/task.md"
+if [[ -f "$TASK_FILE" ]]; then
+    STATUS=$(grep -m1 "^status:" "$TASK_FILE" | sed 's/status: *//')
+    if [[ "$STATUS" != "done" && "$STATUS" != "dropped" ]]; then
+        echo "Task status is '$STATUS', not 'done' or 'dropped'. Continue anyway? (y/n)"
+        read -r REPLY
+        if [[ ! "$REPLY" =~ ^[Yy]$ ]]; then
+            exit 0
+        fi
     fi
 fi
 
-# Create archive dir if needed
-mkdir -p "$VAULT_DIR/archive"
+# Move to archive
+mv "$TASK_DIR" "$ARCHIVE_DIR"
+echo "Archived: $TASK_ID"
 
-# Move task file
-mv "$TASK_FILE" "$VAULT_DIR/archive/$TASK_ID.md"
-echo "Archived: tasks/$TASK_ID.md"
-
-# Move files dir if exists
-if [[ -d "$FILES_DIR" ]]; then
-    mv "$FILES_DIR" "$VAULT_DIR/archive/$TASK_ID"
-    echo "Archived: files/$TASK_ID/"
-fi
-
+# Update index.md
 echo "Remember to update vault/index.md"

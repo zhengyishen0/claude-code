@@ -1,21 +1,91 @@
-# Continue Task Prompt
+# Assessment Stage Prompt
 
-Task submitted. Continue working on it.
+Intention is confirmed. Do external research and fill in the template below.
 
-## Read
+## Step 1: Read context
 
-- Task file
-- Human feedback
-- Existing resources
+- Read the confirmed intention.N.md
+- Read any human feedback
+- Note what research is needed
 
-## Do
+## Step 2: Do research
 
-- Research, execute, whatever the task needs
-- Save ALL outputs to `vault/files/NNN-slug/`
-- Update task file Progress section
-- Link new resources
+- Web search for current information
+- Read relevant documentation
+- Gather facts, not opinions
 
-## When done
+## Step 3: Create assessment.N.md
 
-- Update status: `done` or `waiting` (if need human input)
-- Set `submit: false`
+Fill in this template exactly:
+
+```markdown
+---
+type: assessment
+task: "[[task]]"
+intention: "[[intention.N]]"
+round: 1
+status: draft | confirmed
+confidence: high | medium | low
+submit: false
+created: YYYY-MM-DD
+---
+
+## Oneliner
+
+[Key finding + recommendation, one sentence]
+
+## Key Questions
+
+(only if decision needed — skip if recommendation is clear)
+
+1. Which option?
+   - [ ] Option A
+   - [ ] Option B
+   - [ ] other: ___
+
+## Human Feedback
+
+(leave empty for human)
+
+---
+
+## Context
+
+[What we already knew]
+
+## Findings
+
+[Research results — facts, not fluff]
+
+## Implications
+
+[What this affects]
+
+## Options
+
+[Paths with tradeoffs]
+
+## Recommendation
+
+[What AI suggests and why]
+
+---
+
+## Lessons Applied
+
+## Lessons Proposed
+```
+
+## Rules
+
+- **Fill template EXACTLY** — don't add/remove sections
+- **Oneliner** — key finding + recommendation, one sentence
+- **Key Questions** — only if human needs to choose between options
+- **Findings** — concrete facts from research
+- **Options** — real tradeoffs, not fluff
+- **submit: false** — always, human reviews first
+- Update task.md Assessments section with link
+
+## After Writing
+
+Commit: `jj new -m "[assessment] NNN-slug: key finding"`
