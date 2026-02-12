@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# work-done - Merge a jj workspace to main and clean up
-# Usage: work done "workspace-name" ["summary"]
+# vcs done - Merge a workspace to main and clean up
+# Usage: vcs done "workspace-name" ["summary"]
 set -euo pipefail
 
 ws="$1"
 summary="${2:-Merge ${ws}}"
 
 if [ -z "$ws" ]; then
-    echo "Usage: work done \"workspace-name\" [\"summary\"]"
+    echo "Usage: vcs done \"workspace-name\" [\"summary\"]"
     echo ""
     echo "Active workspaces:"
     jj workspace list
@@ -35,8 +35,6 @@ jj new main "${change}" -m "${summary}" && \
 jj bookmark set main -r @ && \
 jj workspace forget "${ws}"
 
-# Clean up workspace directory
 rm -rf "$ws_path" 2>/dev/null
 
-echo ""
 echo "Merged and cleaned up"
