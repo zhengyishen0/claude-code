@@ -28,6 +28,8 @@ cd '../[session-id]'
 | Update message | `jj describe -m "[session-id] description"` |
 | Merge to main | `jj new main <change> -m "msg"` then `jj bookmark set main -r @` |
 | Cleanup | `jj workspace forget '[session-id]'` + `rm -rf '../[session-id]'` |
+| Headless agent | `vcs on "task description"` |
+| Merge + cleanup | `vcs done "workspace-name" "summary"` |
 
 **Critical:** `jj new` = new commit. `jj describe` = update current.
 
