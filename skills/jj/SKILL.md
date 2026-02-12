@@ -56,6 +56,15 @@ jj undo                            # Undo last operation
 jj restore --from @-               # Restore file from parent
 ```
 
+## Agent Workspace Management
+
+```bash
+work on "task description"    # Start headless agent with its own workspace
+work done "ws-name" "summary" # Merge workspace to main and cleanup
+```
+
+Scripts: `skills/jj/scripts/work-on.sh`, `skills/jj/scripts/work-done.sh`
+
 ## Rules for AI
 
 1. **Every session → own workspace**: Use `jj workspace add ../ws-<session-id>` before any work
@@ -63,3 +72,4 @@ jj restore --from @-               # Restore file from parent
 3. **Only edit your commits**: Commits without your session ID are read-only
 4. **Same task = update** with `jj describe -m "[session-id] updated msg"`
 5. **Check before edit**: `jj log -r @` to see current commit
+6. **Clean up after merge**: `jj workspace forget` + remove workspace directory
