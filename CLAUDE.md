@@ -12,32 +12,23 @@ This codebase uses **jj (Jujutsu), NOT git**. See `/vcs` skill for full referenc
 
 ### Workflow
 
+**Before ANY file edits:**
+
 ```bash
-vcs on "task description"    # Create workspace (auto-detects session ID)
-cd '<path from output>'      # Switch to workspace
-# ... do work ...
-vcs done "summary"           # Merge to main + cleanup (auto-detects workspace)
+cd "$(vcs on 'task description')"   # Create workspace + cd into it
 ```
 
-### jj Basics
+**When finished:**
 
-| Task | Command |
-|------|---------|
-| Record progress | `jj new -m "[session-id] description"` |
-| Update current | `jj describe -m "[session-id] description"` |
-| Status/diff/log | `jj status` / `jj diff` / `jj log` |
-
-**Critical:** `jj new` = new commit. `jj describe` = update current.
+```bash
+vcs done "summary"                   # Merge to main + cleanup
+```
 
 ### Rules
 
-- **Always use `vcs on`** before editing — never edit without a workspace
-- **Only edit YOUR commits** - commits without your session ID are read-only
-- **⚠️ NEVER `jj abandon`** - escalate to user if conflicts
-- **⚠️ NEVER squash/rebase** - unless user explicitly requests
-- **Always merge with `jj new`** - never rebase
-
-**Progress types:** `[validation]` `[decision]` `[execution]` `[done]` `[dropped]`
+- **Always `vcs on` before editing** — never edit without a workspace
+- **⚠️ NEVER `jj abandon`** — escalate to user if conflicts
+- **⚠️ NEVER squash/rebase** — unless user explicitly requests
 
 ---
 
