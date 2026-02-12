@@ -1,10 +1,10 @@
 # Assessment Stage Prompt
 
-Fill the Assessment section in task.md with research findings.
+Fill the Assessment section in task file with research findings.
 
 ## Step 1: Read context
 
-- Read task.md Intention section
+- Read task file Intention section
 - Read Human Feedback section
 - Note what research is needed
 
@@ -13,11 +13,11 @@ Fill the Assessment section in task.md with research findings.
 - Web search for current information
 - Read relevant documentation
 - Gather facts, not opinions
-- Save detailed research to `resources/` folder if needed
+- Save detailed research to `vault/resources/NNN-slug/` if needed
 
 ## Step 3: Fill Assessment section
 
-Update task.md:
+Update task file:
 
 ```markdown
 ## Assessment
@@ -45,7 +45,6 @@ submit: false
 ## Rules
 
 - **Findings = facts** from research
-- **Options = real tradeoffs**
-- **Detailed research** → save to `resources/research.md`, link from Assessment
+- **Detailed research** → save to `vault/resources/NNN-slug/research.md`
 - **status: assessment**
 - **submit: false**

@@ -25,18 +25,25 @@ X: Execution   — What happened
 ```
 vault/
 ├── index.md              # Overview of all tasks
-├── active/
-│   └── task-name/
-│       ├── task.md       # Main doc (all stages in one file)
-│       └── resources/    # Research outputs, screenshots, etc.
+├── tasks/                # All task files
+│   ├── 001-task-name.md
+│   ├── 002-another.md
+│   └── ...
+├── resources/            # Research outputs per task
+│   ├── 001-task-name/
+│   │   ├── research.md
+│   │   └── screenshot.png
+│   └── 002-another/
 └── archive/              # Done or dropped
 ```
 
-**One file per task.** Stages are sections, not separate files.
+**All tasks visible at once** in `tasks/` folder.
 
 ---
 
-## task.md Format
+## Task File Format
+
+`tasks/NNN-slug.md`:
 
 ```markdown
 ---
@@ -57,7 +64,7 @@ created: YYYY-MM-DD
 **Why:** [Motivation]
 **Success:** [What done looks like]
 **Not:** [Out of scope]
-**Questions:** [If unclear, otherwise "None"]
+**Questions:** [If unclear]
 
 ## Assessment
 
@@ -65,7 +72,6 @@ created: YYYY-MM-DD
 **Findings:** [Research results]
 **Options:** [Paths with tradeoffs]
 **Recommendation:** [AI suggestion]
-**Questions:** [If decision needed, otherwise "None"]
 
 ## Decision
 
@@ -73,14 +79,12 @@ created: YYYY-MM-DD
 **Output:** [Verifiable result]
 **Test:** [Checklist]
 **Constraints:** [What NOT to do]
-**Danger:** [What would break things]
 
 ## Execution
 
 **Outcome:** success | partial | failed | pivot
 **Work Done:** [What was executed]
 **Verification:** [Test results]
-**What Worked/Didn't:** [Learnings]
 
 ---
 
@@ -97,11 +101,11 @@ created: YYYY-MM-DD
 
 ```
 1. Human creates note in vault root
-2. AI detects → creates task.md with Intention filled
+2. AI creates tasks/NNN-slug.md with Intention
 3. Human reviews → sets submit: true
-4. AI fills Assessment → sets submit: false
+4. AI fills Assessment
 5. Human reviews → sets submit: true
-6. AI fills Decision → sets submit: false
+6. AI fills Decision
 7. Human approves → sets submit: true
 8. AI executes → fills Execution → status: done
 ```
@@ -115,45 +119,17 @@ intention → assessment → decision → execution → done
                                             ↘ dropped
 ```
 
-| Status | Meaning |
-|--------|---------|
-| intention | AI understanding, waiting for confirm |
-| assessment | AI research done, waiting for review |
-| decision | Plan ready, waiting for approval |
-| execution | Work done, waiting for accept |
-| done | Complete |
-| dropped | Abandoned |
-
 ---
 
-## Submit Flag
+## Resources
 
-```yaml
-submit: false  # AI's turn complete, human reviewing
-submit: true   # Human done, AI should proceed
-```
-
----
-
-## Resources Folder
-
-`task-name/resources/` for:
+`resources/NNN-slug/` for each task:
 - Detailed research reports
 - Screenshots
-- API documentation
+- API docs
 - Any supporting material
 
-Link from task.md: `See: [[resources/research.md]]`
-
----
-
-## Human Workflow
-
-1. See task.md in Obsidian
-2. Read current stage section
-3. Write in **Human Feedback** if needed
-4. Set `submit: true`
-5. AI proceeds → new section filled
+Link from task: `See: [[resources/001-task-name/research.md]]`
 
 ---
 
@@ -161,24 +137,14 @@ Link from task.md: `See: [[resources/research.md]]`
 
 ```
 ┌─────────────────────────────────────────────┐
-│  Human drops idea anywhere in vault          │
-│                  ↓                           │
-│  AI creates task.md with Intention           │
-│                  ↓                           │
-│  Human reviews, sets submit: true            │
-│                  ↓                           │
-│  AI fills Assessment (research)              │
-│                  ↓                           │
-│  Human reviews, sets submit: true            │
-│                  ↓                           │
-│  AI fills Decision (plan)                    │
-│                  ↓                           │
-│  Human approves, sets submit: true           │
-│                  ↓                           │
-│  AI executes, fills Execution                │
-│                  ↓                           │
-│  Human accepts → done                        │
+│  vault/                                      │
+│  ├── tasks/         ← All task files here   │
+│  │   ├── 001-xxx.md                         │
+│  │   └── 002-yyy.md                         │
+│  └── resources/     ← Research per task     │
+│      ├── 001-xxx/                           │
+│      └── 002-yyy/                           │
 └─────────────────────────────────────────────┘
 ```
 
-**One file. Four stages. Simple.**
+**Simple. Clean. All tasks visible at once.**

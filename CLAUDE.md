@@ -126,6 +126,7 @@ Use `/skill` for detailed instructions:
 | `/feishu` | Feishu APIs (Messaging, Calendar, Bitable) |
 | `/jj` | jj version control (NOT git) |
 | `/screenshot` | Screen capture |
+| `/yt-transcript` | YouTube video transcripts |
 
 ---
 
@@ -140,7 +141,9 @@ Use `/skill` for detailed instructions:
 
 **Critical:** `jj new` creates new commit. `jj describe` updates current.
 
-**Progress types:** `[validation]` `[decision]` `[execution]` `[done]` `[dropped]`
+**Isolation:** Every session → own workspace. Tag commits with `[session-id]`.
+
+**Rule:** Only edit commits with your session ID. Others are read-only.
 
 See `/jj` for full reference.
 

@@ -1,6 +1,6 @@
 # Intention Stage Prompt
 
-Process a raw note into task.md with Intention section filled.
+Process a raw note into a task file with Intention section filled.
 
 ## Step 0: Analyze ideas
 
@@ -8,22 +8,15 @@ Read the note. Group related ideas, split unrelated ones.
 - Related (same topic) → 1 task
 - Unrelated (different topics) → multiple tasks
 
-**Examples:**
-```
-研究Cursor和Aider → 1 task (both AI tools)
-研究tailscale / 学日语 / 整理文档 → 3 tasks (unrelated)
-买机票 / 订酒店 / 规划行程 → 1 task (all trip planning)
-```
-
 ## Step 1: Check internal sources
 
 - `/memory` — previous sessions
 - Lessons, related .md files
 - Feishu/WeChat if relevant
 
-## Step 2: Create task.md
+## Step 2: Create task file
 
-For each task, create `vault/active/NNN-slug/task.md`:
+For each task, create `vault/tasks/NNN-slug.md`:
 
 ```markdown
 ---
@@ -70,17 +63,18 @@ created: YYYY-MM-DD
 ## Lessons
 ```
 
-## Step 3: Create resources folder
+## Step 3: Create resources folder if needed
 
-Create `vault/active/NNN-slug/resources/` for research outputs later.
+Create `vault/resources/NNN-slug/` for research outputs later.
 
 ## Rules
 
-- **Group intelligently**
+- **Task file:** `vault/tasks/NNN-slug.md`
+- **Resources:** `vault/resources/NNN-slug/`
 - **status: intention**
 - **submit: false**
 - Update `vault/index.md`
 
 ## Output
 
-Report: how many tasks, what's in each, why grouped.
+Report how many tasks created and why grouped that way.

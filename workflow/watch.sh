@@ -2,18 +2,13 @@
 #
 # File watcher for IVDX vault
 # - Watches vault root for new ideas → triggers new-note.sh
-# - Watches active/*/task.md for submit: true → triggers submit.sh
-#
-# Logic:
-# - Title (filename) IS the idea - content optional
-# - 15s debounce - waits for user to stop typing
+# - Watches vault/tasks/*.md for submit: true → triggers submit.sh
 #
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-# Resolve symlink to real path (fswatch returns real paths)
 VAULT_DIR="$(cd "$PROJECT_ROOT/vault" && pwd -P)"
 DEBOUNCE_SEC=15
 PENDING_DIR=$(mktemp -d)
@@ -26,17 +21,15 @@ echo "Debounce: ${DEBOUNCE_SEC}s"
 echo "Press Ctrl+C to stop"
 echo ""
 
-# Function to check if file has submit: true
 has_submit_true() {
     grep -q "^submit: true" "$1" 2>/dev/null
 }
 
-# Function to get hash of filepath for temp file naming
 file_hash() {
     echo "$1" | md5 | cut -c1-16
 }
 
-# Background job to check for debounced files
+# Background checker
 (
     while true; do
         sleep 2
@@ -51,13 +44,11 @@ file_hash() {
 
             if [[ $ELAPSED -ge $DEBOUNCE_SEC ]]; then
                 rm "$pending_file"
-
                 [[ -f "$ORIGINAL_PATH" ]] || continue
 
                 REL_PATH="${ORIGINAL_PATH#$VAULT_DIR/}"
-                FILENAME=$(basename "$ORIGINAL_PATH")
 
-                # New note in vault root (no subdirectory)
+                # New note in vault root
                 if [[ "$REL_PATH" != */* ]]; then
                     echo ""
                     echo "$(date '+%H:%M:%S') 🚀 Processing: $REL_PATH"
@@ -65,8 +56,8 @@ file_hash() {
                     continue
                 fi
 
-                # Submit: only task.md files with submit: true
-                if [[ "$REL_PATH" == active/*/task.md ]] && [[ "$FILENAME" == "task.md" ]] && has_submit_true "$ORIGINAL_PATH"; then
+                # Submit: tasks/*.md with submit: true
+                if [[ "$REL_PATH" == tasks/*.md ]] && has_submit_true "$ORIGINAL_PATH"; then
                     echo ""
                     echo "$(date '+%H:%M:%S') 🚀 Processing submit: $REL_PATH"
                     "$SCRIPT_DIR/scripts/submit.sh" "$ORIGINAL_PATH" || true
@@ -76,7 +67,7 @@ file_hash() {
     done
 ) &
 
-# Watch for file changes (include AttributeModified for edits, Renamed for atomic writes)
+# Watch for changes
 fswatch -0 \
   --event Created --event Updated --event AttributeModified --event Renamed \
   --exclude "\.DS_Store" \
@@ -84,19 +75,16 @@ fswatch -0 \
   --exclude "/resources/" \
   "$VAULT_DIR" | while read -d "" event; do
 
-  # Skip non-markdown files
   [[ "$event" == *.md ]] || continue
-
-  # Skip if file doesn't exist
   [[ -f "$event" ]] || continue
 
   REL_PATH="${event#$VAULT_DIR/}"
 
-  # Skip index.md and archive
+  # Skip index, archive, journal
   [[ "$REL_PATH" == "index.md" ]] && continue
   [[ "$REL_PATH" == archive/* ]] && continue
+  [[ "$REL_PATH" == journal/* ]] && continue
 
-  # Create/update pending file
   HASH=$(file_hash "$event")
   PENDING_FILE="$PENDING_DIR/$HASH"
 

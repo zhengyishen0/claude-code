@@ -4,25 +4,24 @@ Decision is approved. Do the work and fill Execution section.
 
 ## Step 1: Read Decision
 
-- Read task.md Decision section
+- Read task file Decision section
 - Note: Deliverable, Output, Test, Constraints, Danger
 
 ## Step 2: Execute
 
 - Do the work as specified
-- Stay in scope — only what Decision says
+- Stay in scope
 - Follow Constraints
-- If blocked, stop — don't force through
+- If blocked, stop
 
 ## Step 3: Verify
 
 - Check each Test item
 - Does output match?
-- Were Constraints respected?
 
 ## Step 4: Fill Execution section
 
-Update task.md:
+Update task file:
 
 ```markdown
 ## Execution
@@ -51,22 +50,14 @@ status: done
 submit: false
 ```
 
-If needs retry/pivot:
+If needs retry:
 ```yaml
 status: execution
 submit: false
 ```
 
-## Outcome Values
-
-- `success` — all tests pass
-- `partial` — some done, needs more
-- `failed` — blocked, can't complete
-- `pivot` — discovered better approach
-
 ## Rules
 
-- **Be honest** — don't hide problems
-- **Verification table** — check each test
-- **status: done** if success, otherwise stay in execution
+- **Be honest**
+- **status: done** if success
 - **submit: false**

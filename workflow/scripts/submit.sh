@@ -1,5 +1,5 @@
 #!/bin/bash
-# Process a submitted task.md in the IVDX system
+# Process a submitted task file in the IVDX system
 # Usage: ./submit.sh <path-to-task.md>
 #
 # Reads status field and proceeds to next stage
@@ -9,10 +9,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WORKFLOW_DIR="$(dirname "$SCRIPT_DIR")"
 PROJECT_ROOT="$(dirname "$WORKFLOW_DIR")"
-# Resolve symlink to real path
 VAULT_DIR="$(cd "$PROJECT_ROOT/vault" && pwd -P)"
 
-# Get absolute path for doc (before cd'ing later)
+# Get absolute path
 DOC_PATH="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
 
 if [[ -z "$1" ]]; then
@@ -25,24 +24,23 @@ if [[ ! -f "$DOC_PATH" ]]; then
     exit 1
 fi
 
-# Only process task.md files
-FILENAME=$(basename "$DOC_PATH")
-if [[ "$FILENAME" != "task.md" ]]; then
-    echo "Skipping: not a task.md file"
+# Only process files in tasks/ folder
+REL_PATH="${DOC_PATH#$VAULT_DIR/}"
+if [[ "$REL_PATH" != tasks/*.md ]]; then
+    echo "Skipping: not in tasks/ folder"
     exit 0
 fi
+
+# Get task ID from filename (e.g., 001-task-name.md → 001-task-name)
+TASK_ID=$(basename "$DOC_PATH" .md)
 
 # Get current status
 STATUS=$(grep -m1 "^status:" "$DOC_PATH" | sed 's/status: *//')
 
-# Get task directory
-TASK_DIR=$(dirname "$DOC_PATH")
-TASK_ID=$(basename "$TASK_DIR")
-
 echo "Task: $TASK_ID"
 echo "Status: $STATUS"
 
-# Select appropriate prompt based on current status
+# Select prompt based on status
 case "$STATUS" in
     intention)
         PROMPT=$(cat "$WORKFLOW_DIR/prompts/assessment.md")
@@ -56,11 +54,7 @@ case "$STATUS" in
         PROMPT=$(cat "$WORKFLOW_DIR/prompts/execution.md")
         NEXT_STAGE="execution"
         ;;
-    execution)
-        echo "Execution complete. Check outcome in task.md."
-        exit 0
-        ;;
-    done|dropped)
+    execution|done|dropped)
         echo "Task already $STATUS."
         exit 0
         ;;
@@ -72,13 +66,14 @@ esac
 
 echo "Next stage: $NEXT_STAGE"
 
-# Call claude in headless mode with the appropriate prompt (from vault dir)
+# Call claude
 cd "$VAULT_DIR"
 claude -p --dangerously-skip-permissions --model claude-opus-4-5 --append-system-prompt "$PROMPT" \
     "Task submitted: $TASK_ID
 Task file: $DOC_PATH
+Resources folder: vault/resources/$TASK_ID/
 
 Current status: $STATUS
 Next stage: $NEXT_STAGE
 
-Read task.md, check Human Feedback section, then fill the $NEXT_STAGE section."
+Read task file, check Human Feedback, fill the $NEXT_STAGE section."

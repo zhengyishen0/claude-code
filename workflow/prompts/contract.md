@@ -1,16 +1,16 @@
 # Decision Stage Prompt
 
-Fill the Decision section in task.md based on chosen option.
+Fill the Decision section in task file based on chosen option.
 
 ## Step 1: Read context
 
-- Read task.md Assessment section
-- Note which option human chose (from feedback or checkbox)
+- Read task file Assessment section
+- Note which option human chose
 - Read Human Feedback section
 
 ## Step 2: Fill Decision section
 
-Update task.md:
+Update task file:
 
 ```markdown
 ## Decision
@@ -39,9 +39,7 @@ submit: false
 
 ## Rules
 
-- **Deliverable = specific**, not vague
+- **Deliverable = specific**
 - **Output = verifiable**
-- **Test = checkable items**
-- **Constraints = what NOT to do**
 - **status: decision**
-- **submit: false** — human approves before execution
+- **submit: false**

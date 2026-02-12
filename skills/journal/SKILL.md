@@ -37,7 +37,7 @@ Use Edit tool to append to today's file:
 
 ## End of Day
 
-Run `skills/dailylog/jj-graph.sh` to append jj graph (or set up cron).
+Run `skills/journal/jj-graph.sh` to append jj graph (or set up cron).
 
 ## What NOT to Write
 
