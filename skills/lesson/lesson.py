@@ -8,6 +8,7 @@ Pattern: WHEN [context] -> DO [action] -> BECAUSE [reason]
 import json
 import os
 import re
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -17,6 +18,9 @@ from typing import Optional
 LESSONS_DIR = Path.home() / ".claude" / "lessons"
 LESSONS_FILE = LESSONS_DIR / "lessons.jsonl"
 INDEX_FILE = LESSONS_DIR / "index.json"
+
+# Daily log integration
+DAILYLOG_SCRIPT = Path(__file__).parent.parent / "dailylog" / "dailylog.py"
 
 # Pattern regex
 PATTERN_RE = re.compile(
@@ -89,6 +93,19 @@ def append_lesson(lesson: dict):
         f.write(json.dumps(lesson) + "\n")
 
 
+def sync_to_dailylog(lesson_id: str, pattern: str):
+    """Sync lesson to daily log."""
+    if DAILYLOG_SCRIPT.exists():
+        try:
+            subprocess.run(
+                ["python3", str(DAILYLOG_SCRIPT), "lesson", lesson_id, pattern],
+                capture_output=True,
+                check=False
+            )
+        except Exception:
+            pass  # Don't fail if dailylog sync fails
+
+
 def get_all_lessons() -> list:
     """Get all lessons from JSONL, latest entry per ID wins."""
     ensure_storage()
@@ -135,6 +152,11 @@ def cmd_add(pattern: str, skill: str = "global"):
 
     # Append to log
     append_lesson(lesson)
+
+    # Sync to daily log
+    action = "DO NOT" if parsed["action"] == "dont" else "DO"
+    full_pattern = f"WHEN {parsed['when']} -> {action} {parsed['do']} -> BECAUSE {parsed['because']}"
+    sync_to_dailylog(f"L{lesson_id}", full_pattern)
 
     print(f"Added lesson {lesson_id} ({source}): {pattern[:60]}...")
 

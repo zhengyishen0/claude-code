@@ -83,9 +83,9 @@ file_hash() {
     done
 ) &
 
-# Watch for file changes
+# Watch for file changes (include AttributeModified for edits, Renamed for atomic writes)
 fswatch -0 \
-  --event Created --event Updated \
+  --event Created --event Updated --event AttributeModified --event Renamed \
   --exclude "\.DS_Store" \
   --exclude "\.obsidian" \
   "$VAULT_DIR" | while read -d "" event; do

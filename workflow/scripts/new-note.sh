@@ -2,7 +2,7 @@
 # Process a new raw note into the IVDX system
 # Usage: ./new-note.sh <path-to-note.md>
 #
-# Title (filename) IS the idea. Content is optional context.
+# Note may contain ONE or MULTIPLE ideas. AI will split if needed.
 
 set -e
 
@@ -25,10 +25,6 @@ if [[ ! -f "$NOTE_PATH" ]]; then
     exit 1
 fi
 
-# Get next task number
-LAST_NUM=$(ls -d "$VAULT_DIR/active/"*/ 2>/dev/null | grep -oE '[0-9]+' | sort -n | tail -1 || echo "0")
-NEXT_NUM=$(printf "%03d" $((${LAST_NUM:-0} + 1)))
-
 # Title = filename without extension
 TITLE=$(basename "$NOTE_PATH" .md)
 
@@ -38,18 +34,12 @@ if [[ "$TITLE" == "Untitled" || "$TITLE" == "untitled" || -z "$TITLE" ]]; then
     exit 0
 fi
 
-# Create slug from title
-SLUG=$(echo "$TITLE" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | tr -cd '[:alnum:]-' | cut -c1-30)
-[[ -z "$SLUG" ]] && SLUG="untitled"
+# Get next task number (AI will use this as starting point)
+LAST_NUM=$(ls -d "$VAULT_DIR/active/"*/ 2>/dev/null | grep -oE '[0-9]+' | sort -n | tail -1 || echo "0")
+NEXT_NUM=$(printf "%03d" $((${LAST_NUM:-0} + 1)))
 
-TASK_ID="${NEXT_NUM}-${SLUG}"
-TASK_DIR="$VAULT_DIR/active/$TASK_ID"
-
-echo "Task ID: $TASK_ID"
-echo "Title:   $TITLE"
-
-# Create task directory
-mkdir -p "$TASK_DIR"
+echo "Title:    $TITLE"
+echo "Next ID:  $NEXT_NUM"
 
 # Get content (may be empty)
 NOTE_CONTENT=$(cat "$NOTE_PATH" 2>/dev/null || echo "")
@@ -70,17 +60,22 @@ PROMPT=$(cat "$WORKFLOW_DIR/prompts/intention.md")
 echo "Calling Claude..."
 cd "$VAULT_DIR"
 claude -p --dangerously-skip-permissions --model claude-opus-4-5 --append-system-prompt "$PROMPT" \
-    "New note detected. Process into IVDX task.
+    "New note detected. Process into IVDX task(s).
 
-Task ID: $TASK_ID
-Task directory: $TASK_DIR
+Vault directory: $VAULT_DIR
+Next task number: $NEXT_NUM
 
-Raw idea:
+Raw note:
 ---
 $IDEA
 ---
 
-Create task.md and intention.1.md following the system prompt instructions."
+Analyze the note:
+1. If MULTIPLE distinct ideas → create multiple task folders starting from $NEXT_NUM
+2. If SINGLE idea → create one task folder $NEXT_NUM-slug
+
+For each task, create task.md and intention.1.md.
+Update vault/index.md with all new tasks."
 
 # Delete original note after processing
 rm "$NOTE_PATH"

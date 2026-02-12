@@ -107,7 +107,7 @@ if [[ "${1:-}" == "--resume" || "${1:-}" == "-r" ]]; then
 
     echo "Resuming session: $session_id" >&2
     shift 2
-    exec claude --resume "$session_id" --model "claude-opus-4-5" "$@"
+    exec claude --resume "$session_id" --dangerously-skip-permissions --model "claude-opus-4-5" "$@"
 else
     # Pass through to claude
     COLUMNS=200 exec claude --dangerously-skip-permissions --model "claude-opus-4-5" "$@"
