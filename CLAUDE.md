@@ -10,35 +10,29 @@ You handle: research, writing, scheduling, browsing, code, and anything else.
 
 This codebase uses **jj (Jujutsu), NOT git**. See `/vcs` skill for full reference.
 
-### Workspace Isolation
-
-**Before ANY file edits**, create your own jj workspace:
+### Workflow
 
 ```bash
-jj workspace add '../[session-id]'    # session ID from SessionStart hook
-cd '../[session-id]'
+vcs on "task description"    # Create workspace (auto-detects session ID)
+cd '<path from output>'      # Switch to workspace
+# ... do work ...
+vcs done "summary"           # Merge to main + cleanup (auto-detects workspace)
 ```
 
-### Quick Reference
+### jj Basics
 
 | Task | Command |
 |------|---------|
-| Create workspace | `jj workspace add '../[session-id]'` |
-| Tag commits | `jj new -m "[session-id] description"` |
-| Update message | `jj describe -m "[session-id] description"` |
-| Merge to main | `jj new main <change> -m "msg"` then `jj bookmark set main -r @` |
-| Cleanup | `jj workspace forget '[session-id]'` + `rm -rf '../[session-id]'` |
-| Headless agent | `vcs on "task description"` |
-| Merge + cleanup | `vcs done "workspace-name" "summary"` |
+| Record progress | `jj new -m "[session-id] description"` |
+| Update current | `jj describe -m "[session-id] description"` |
+| Status/diff/log | `jj status` / `jj diff` / `jj log` |
 
 **Critical:** `jj new` = new commit. `jj describe` = update current.
 
 ### Rules
 
-- **Never edit without a workspace** - create one first, always
-- **Use `[session-id]`** - same format for workspace name AND commit prefix
+- **Always use `vcs on`** before editing — never edit without a workspace
 - **Only edit YOUR commits** - commits without your session ID are read-only
-- **Clean up after merge** - forget workspace + remove directory
 - **⚠️ NEVER `jj abandon`** - escalate to user if conflicts
 - **⚠️ NEVER squash/rebase** - unless user explicitly requests
 - **Always merge with `jj new`** - never rebase
