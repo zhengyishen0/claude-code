@@ -2,6 +2,9 @@
 /tmp/
 /.tmp/
 
+# Runtime data (credentials, browser profiles, memory index)
+/data/
+
 # Hidden files (except tracked ones)
 .*
 !.gitignore
