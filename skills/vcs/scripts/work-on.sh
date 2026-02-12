@@ -1,32 +1,31 @@
 #!/usr/bin/env bash
-# vcs on - Create a jj workspace for a task
-# Usage: vcs on "task description"
+# vcs on - Create a jj workspace
+# Usage: cd "$(vcs on 'task description')"
 set -euo pipefail
 
 task="$1"
 if [ -z "$task" ]; then
-    echo "Usage: vcs on \"task description\""
+    echo "Usage: vcs on \"task description\"" >&2
     exit 1
 fi
 
-sid=$(openssl rand -hex 4)
-slug="$(echo "$task" | tr ' ' '-' | tr '[:upper:]' '[:lower:]' | cut -c1-20)-${sid}"
-path="$HOME/.workspaces/claude-code/${slug}"
+# Use agent session ID if available, otherwise generate one
+sid="${CLAUDE_SESSION_ID:-$(openssl rand -hex 4)}"
+sid="${sid:0:8}"
 
-mkdir -p "$HOME/.workspaces/claude-code"
+name="[${sid}]"
+path="$(dirname ~/.claude-code)/${name}"
 
-if ! jj workspace add --name "${slug}" "${path}" 2>/dev/null; then
-    echo "Failed to create workspace"
+if ! jj workspace add --name "${name}" "${path}" 2>/dev/null; then
+    echo "Failed to create workspace" >&2
     exit 1
 fi
 
 cd "${path}"
-jj new main -m "[${sid}] ${task}"
+jj new main -m "[${sid}] ${task}" >&2
 
-echo ""
-echo "Workspace: ${slug}"
-echo "Path:      ${path}"
-echo "Session:   ${sid}"
-echo ""
-echo "cd '${path}'"
-echo "vcs done '${slug}' when finished"
+echo "Workspace: ${name}" >&2
+echo "Session:   ${sid}" >&2
+
+# stdout: path only (for cd)
+echo "${path}"

@@ -9,8 +9,8 @@ case "${1:-}" in
     done|end) shift; "$SCRIPT_DIR/scripts/work-done.sh" "$@" ;;
     *)
         echo "Usage: vcs <on|done> [args]"
-        echo "  on \"task\"       Start headless agent with workspace"
-        echo "  done \"ws\"       Merge workspace to main and cleanup"
+        echo "  on \"task\"       Create workspace (uses CLAUDE_SESSION_ID or random)"
+        echo "  done [\"summary\"] Merge to main and cleanup"
         exit 1
         ;;
 esac
