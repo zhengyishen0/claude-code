@@ -1,6 +1,6 @@
 ---
-name: jj
-description: jj (Jujutsu) version control - NOT git. Use this skill when working with version control in this codebase. Critical differences from git.
+name: vcs
+description: Version control (jj, NOT git) and agent workspace management.
 ---
 
 # jj (NOT git)
@@ -59,11 +59,11 @@ jj restore --from @-               # Restore file from parent
 ## Agent Workspace Management
 
 ```bash
-work on "task description"    # Start headless agent with its own workspace
-work done "ws-name" "summary" # Merge workspace to main and cleanup
+vcs on "task description"    # Start headless agent with its own workspace
+vcs done "ws-name" "summary" # Merge workspace to main and cleanup
 ```
 
-Scripts: `skills/jj/scripts/work-on.sh`, `skills/jj/scripts/work-done.sh`
+Scripts: `skills/vcs/scripts/work-on.sh`, `skills/vcs/scripts/work-done.sh`
 
 ## Rules for AI
 
