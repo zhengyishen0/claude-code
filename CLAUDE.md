@@ -32,12 +32,6 @@ vcs done "summary"                   # Merge to main + cleanup
 
 ---
 
-## Skills
-
-Available skills are shown in system messages. Use `/skill-name` to load details.
-
----
-
 ## Environment
 
 | Machine | Hostname | Use |
