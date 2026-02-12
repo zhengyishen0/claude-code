@@ -1,27 +1,19 @@
 ---
-status: new | working | waiting | done | dropped
-submit: false
+type: task
+status: intention | assessment | decision | execution | done | dropped
+workdir:
 created: YYYY-MM-DD
+session_id:
 ---
 
 ## Idea
 
-[Raw note]
+[Original raw note — copied verbatim]
 
-## Understanding
+## Intentions
 
-[What, why, success]
+## Assessments
 
-## Progress
+## Contracts
 
-(AI updates here)
-
-## Resources
-
-(links to resources/NNN-slug/)
-
----
-
-## Feedback
-
-## Lessons
+## Reports

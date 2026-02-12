@@ -1,44 +1,70 @@
 #!/bin/bash
-# Continue working on a submitted task
-# Usage: ./submit.sh <path-to-task.md>
+# Process a submitted document (submit: true) in the IVDX system
+# Usage: ./submit.sh <path-to-document.md>
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SKILL_DIR="$(dirname "$SCRIPT_DIR")"
-PROJECT_ROOT="$(dirname "$(dirname "$SKILL_DIR")")"
-VAULT_DIR="$(cd "$PROJECT_ROOT/vault" && pwd -P)"
+SKILL_DIR=~/.claude-code/skills/vault
+VAULT_DIR="$(cd ~/.claude-code/vault && pwd -P)"
 
+# Get absolute path for doc (before cd'ing later)
 DOC_PATH="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
 
-if [[ -z "$1" || ! -f "$DOC_PATH" ]]; then
-    echo "Usage: $0 <path-to-task.md>"
+if [[ -z "$1" ]]; then
+    echo "Usage: $0 <path-to-document.md>"
     exit 1
 fi
 
-# Only process files in tasks/ folder
-REL_PATH="${DOC_PATH#$VAULT_DIR/}"
-if [[ "$REL_PATH" != tasks/*.md ]]; then
-    echo "Skipping: not in tasks/"
-    exit 0
+if [[ ! -f "$DOC_PATH" ]]; then
+    echo "Error: File not found: $DOC_PATH"
+    exit 1
 fi
 
-TASK_ID=$(basename "$DOC_PATH" .md)
-STATUS=$(grep -m1 "^status:" "$DOC_PATH" | sed 's/status: *//')
+# Determine document type from frontmatter
+DOC_TYPE=$(grep -m1 "^type:" "$DOC_PATH" | sed 's/type: *//')
 
-echo "Task: $TASK_ID ($STATUS)"
+# Get task directory
+TASK_DIR=$(dirname "$DOC_PATH")
+TASK_ID=$(basename "$TASK_DIR")
 
-if [[ "$STATUS" == "done" || "$STATUS" == "dropped" ]]; then
-    echo "Task already $STATUS"
-    exit 0
-fi
+echo "Processing submitted $DOC_TYPE for task: $TASK_ID"
 
-PROMPT=$(cat "$SKILL_DIR/prompts/assessment.md")
+# Select appropriate prompt based on document type
+case "$DOC_TYPE" in
+    intention|eval)
+        PROMPT=$(cat "$SKILL_DIR/prompts/assessment.md")
+        NEXT_STAGE="assessment"
+        ;;
+    assessment)
+        PROMPT=$(cat "$SKILL_DIR/prompts/contract.md")
+        NEXT_STAGE="contract"
+        ;;
+    contract)
+        # Check if contract is signed (not just submitted)
+        STATUS=$(grep -m1 "^status:" "$DOC_PATH" | sed 's/status: *//')
+        if [[ "$STATUS" != "signed" ]]; then
+            echo "Contract not signed yet. Waiting for signature."
+            exit 0
+        fi
+        PROMPT=$(cat "$SKILL_DIR/prompts/execution.md")
+        NEXT_STAGE="execution"
+        ;;
+    report)
+        echo "Report submitted. Human review needed."
+        exit 0
+        ;;
+    *)
+        echo "Unknown document type: $DOC_TYPE"
+        exit 1
+        ;;
+esac
 
+# Call claude in headless mode with the appropriate prompt (from vault dir)
 cd "$VAULT_DIR"
-claude -p --dangerously-skip-permissions --model claude-opus-4-5 --append-system-prompt "$PROMPT" \
-    "Continue task: $TASK_ID
-File: $DOC_PATH
-Resources: vault/files/$TASK_ID/
+~/.claude-code/cc -p --model claude-opus-4-5 --append-system-prompt "$PROMPT" \
+    "Document submitted for task: $TASK_ID
 
-Read task, check feedback, continue working."
+Submitted document: $DOC_PATH
+Next stage: $NEXT_STAGE
+
+Read the submitted document and any human feedback, then proceed to $NEXT_STAGE stage."
