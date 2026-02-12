@@ -13,10 +13,10 @@ This codebase uses **jj (Jujutsu), NOT git**. See `/vcs` skill for full referenc
 ### Workflow
 
 ```bash
-vcs on "task description"          # Create workspace + initial commit
-cd '<path from output>'            # Switch to workspace
-# ... do work, commit with jj new/describe ...
-vcs done "workspace-name" "summary"  # Merge to main + cleanup
+vcs on "task description"    # Create workspace (auto-detects session ID)
+cd '<path from output>'      # Switch to workspace
+# ... do work ...
+vcs done "summary"           # Merge to main + cleanup (auto-detects workspace)
 ```
 
 ### jj Basics

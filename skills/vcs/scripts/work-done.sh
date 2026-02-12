@@ -1,20 +1,30 @@
 #!/usr/bin/env bash
-# vcs done - Merge a workspace to main and clean up
-# Usage: vcs done "workspace-name" ["summary"]
+# vcs done - Merge current workspace to main and clean up
+# Usage: vcs done ["summary"]
 set -euo pipefail
 
-ws="$1"
-summary="${2:-Merge ${ws}}"
-
-if [ -z "$ws" ]; then
-    echo "Usage: vcs done \"workspace-name\" [\"summary\"]"
-    echo ""
-    echo "Active workspaces:"
-    jj workspace list
-    exit 1
+# Find workspace name: explicit arg, or from session ID, or detect from cwd
+if [ -n "${1:-}" ] && [[ "$1" == "["* ]]; then
+    ws="$1"
+    summary="${2:-Merge ${ws}}"
+elif [ -n "${CLAUDE_SESSION_ID:-}" ]; then
+    ws="[${CLAUDE_SESSION_ID:0:8}]"
+    summary="${1:-Merge ${ws}}"
+else
+    # Try to detect from current directory name
+    ws="$(basename "$PWD")"
+    if [[ "$ws" != "["*"]" ]]; then
+        echo "Usage: vcs done [\"summary\"]"
+        echo "  Run from workspace dir, or set CLAUDE_SESSION_ID"
+        echo ""
+        echo "Active workspaces:"
+        jj workspace list
+        exit 1
+    fi
+    summary="${1:-Merge ${ws}}"
 fi
 
-ws_path="$HOME/.workspaces/claude-code/${ws}"
+ws_path="$(dirname ~/.claude-code)/${ws}"
 
 if [ ! -d "$ws_path" ]; then
     echo "Workspace not found: $ws_path"
@@ -28,7 +38,7 @@ if [ -z "$change" ]; then
     exit 1
 fi
 
-echo "Merging change ${change} from ${ws}..."
+echo "Merging ${change} from ${ws}..."
 
 cd ~/.claude-code && \
 jj new main "${change}" -m "${summary}" && \

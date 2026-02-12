@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# vcs on - Create a jj workspace for a task
+# vcs on - Create a jj workspace
 # Usage: vcs on "task description"
 set -euo pipefail
 
@@ -9,13 +9,14 @@ if [ -z "$task" ]; then
     exit 1
 fi
 
-sid=$(openssl rand -hex 4)
-slug="$(echo "$task" | tr ' ' '-' | tr '[:upper:]' '[:lower:]' | cut -c1-20)-${sid}"
-path="$HOME/.workspaces/claude-code/${slug}"
+# Use agent session ID if available, otherwise generate one
+sid="${CLAUDE_SESSION_ID:-$(openssl rand -hex 4)}"
+sid="${sid:0:8}"
 
-mkdir -p "$HOME/.workspaces/claude-code"
+name="[${sid}]"
+path="$(dirname ~/.claude-code)/${name}"
 
-if ! jj workspace add --name "${slug}" "${path}" 2>/dev/null; then
+if ! jj workspace add --name "${name}" "${path}" 2>/dev/null; then
     echo "Failed to create workspace"
     exit 1
 fi
@@ -23,10 +24,6 @@ fi
 cd "${path}"
 jj new main -m "[${sid}] ${task}"
 
-echo ""
-echo "Workspace: ${slug}"
+echo "Workspace: ${name}"
 echo "Path:      ${path}"
 echo "Session:   ${sid}"
-echo ""
-echo "cd '${path}'"
-echo "vcs done '${slug}' when finished"
