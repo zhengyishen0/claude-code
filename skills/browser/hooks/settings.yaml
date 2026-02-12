@@ -1,0 +1,4 @@
+# Browser hooks
+
+- event: SessionStart
+  script: browser-cleanup.sh

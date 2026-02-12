@@ -1,0 +1,7 @@
+# Daily log hooks
+
+- event: PreCompact
+  script: precompact.sh
+
+- event: SessionEnd
+  script: session-end.sh

@@ -1,0 +1,11 @@
+name: hook-builder
+type: fswatch
+path: skills/
+events: [Created, Updated, Removed, Renamed]
+exclude:
+  - "\.DS_Store"
+debounce: 3
+
+rules:
+  - match: ".*/hooks/settings\\.yaml$"
+    action: skills/hook/scripts/build.sh

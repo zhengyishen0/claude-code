@@ -1,0 +1,5 @@
+# Memory hooks
+
+- event: UserPromptSubmit
+  script: memory-hint.sh
+  timeout: 5

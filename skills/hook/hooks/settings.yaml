@@ -1,0 +1,7 @@
+# Non-skill hooks (general purpose)
+
+- event: SessionStart
+  script: persist-env.sh
+
+- event: SubagentStart
+  script: persist-env.sh

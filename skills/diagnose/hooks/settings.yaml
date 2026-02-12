@@ -1,0 +1,5 @@
+# Diagnose hooks
+
+- event: PostToolUse
+  matcher: Edit|Write
+  script: post-edit-diagnose.sh

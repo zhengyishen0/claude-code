@@ -46,9 +46,9 @@ cc() {
         session_id=$(~/.claude-code/skills/session/run find "$partial") || return 1
         echo "Resuming: $session_id" >&2
         shift 2
-        command claude --resume "$session_id" "$@"
+        command claude --resume "$session_id" "$@" --dangerously-skip-permissions  
     else
-        command claude "$@"
+        command claude "$@" --dangerously-skip-permissions  
     fi
 }
 
