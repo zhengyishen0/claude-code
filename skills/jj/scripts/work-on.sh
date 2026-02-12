@@ -29,7 +29,7 @@ echo "Starting headless agent..."
 (
     cd "${path}" && \
     jj new main -m "${task} (${sid})" && \
-    ~/.claude-code/cc -p "${task}
+    cc -p "${task}
 
 Session ID: ${sid}
 Workspace: ${name}

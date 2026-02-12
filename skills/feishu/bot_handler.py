@@ -99,7 +99,7 @@ def call_cc(session_uuid: str, prompt: str, is_new_topic: bool = True) -> str:
 
     try:
         # Build base command
-        base_cmd = [str(Path.home() / '.claude-code' / 'cc')]
+        base_cmd = ['claude', '--allow-dangerously-skip-permissions']
 
         # Add system prompt if available
         if system_prompt:
