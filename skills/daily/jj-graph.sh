@@ -6,10 +6,10 @@ set -e
 
 VAULT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/vault"
 TODAY=$(date +%Y-%m-%d)
-DAILY_FILE="$VAULT_DIR/journal/$TODAY.md"
+DAILY_FILE="$VAULT_DIR/daily/$TODAY.md"
 
 # Ensure directory exists
-mkdir -p "$VAULT_DIR/journal"
+mkdir -p "$VAULT_DIR/daily"
 
 # Create file if doesn't exist
 if [ ! -f "$DAILY_FILE" ]; then

@@ -1,1 +1,81 @@
-../hooks/claude/settings.json
+{
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://claude-proxy.zhengyishen1.workers.dev",
+    "ANTHROPIC_CUSTOM_HEADERS": "x-access-key:bogyIEaafOQTeXuQcxHIb9QdsBLFp0bd",
+    "HTTP_PROXY": "http://127.0.0.1:33210",
+    "HTTPS_PROXY": "http://127.0.0.1:33210"
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/persist-env.sh"
+          },
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/skills/browser/hooks/browser-cleanup.sh"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/skills/memory/hooks/memory-hint.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/scripts/persist-env.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/skills/diagnose/hooks/post-edit-diagnose.sh"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/skills/daily/hooks/precompact.sh"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/skills/daily/hooks/session-end.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "$CLAUDE_DIR/statusline.sh"
+  },
+  "effortLevel": "medium"
+}

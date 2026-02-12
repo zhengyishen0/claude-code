@@ -7,6 +7,7 @@
 !.gitignore
 !.gitkeep
 !.claude/
+.claude/*.local*
 
 # Secrets
 .env

@@ -1,11 +1,11 @@
 ---
-name: journal
-description: Daily journal for episodic memory
+name: daily
+description: Daily log for episodic memory
 ---
 
-# Journal
+# Daily
 
-Daily journal captures what happened each day. Location: `vault/journal/YYYY-MM-DD.md`
+Daily log captures what happened each day. Location: `vault/daily/YYYY-MM-DD.md`
 
 ## When to Write
 
@@ -19,7 +19,7 @@ Daily journal captures what happened each day. Location: `vault/journal/YYYY-MM-
 Use Edit tool to append to today's file:
 
 ```markdown
-### HH:MM - Brief title
+### HH:MM - Brief title [session-id]
 - What was discussed/done
 - Key decisions or outcomes
 - Links to artifacts (commits, files, vault tasks)
@@ -37,12 +37,12 @@ Use Edit tool to append to today's file:
 
 ## End of Day
 
-Run `skills/journal/jj-graph.sh` to append jj graph (or set up cron).
+Run `skills/daily/jj-graph.sh` to append jj graph (or set up cron).
 
 ## What NOT to Write
 
 - Lessons → use `lesson add` (procedural memory, separate system)
 - Stable facts → put in CLAUDE.md (semantic memory)
-- Task details → put in vault/active/ (IVDX artifacts)
+- Task details → put in vault/tasks/ (task files)
 
 Daily log is for **episodic context** - what happened, when, brief summary.

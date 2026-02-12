@@ -11,7 +11,7 @@ cat << EOF
 {
   "hookSpecificOutput": {
     "hookEventName": "SessionEnd",
-    "message": "JOURNAL: Session [$SESSION_ID] ending ($REASON). If significant work was done, append summary to vault/journal/$(date +%Y-%m-%d).md"
+    "message": "JOURNAL: Session [$SESSION_ID] ending ($REASON). If significant work was done, append summary to vault/daily/$(date +%Y-%m-%d).md"
   }
 }
 EOF

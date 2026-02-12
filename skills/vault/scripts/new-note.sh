@@ -1,15 +1,15 @@
 #!/bin/bash
-# Process a new raw note into the IVDX system
+# Process a new raw note into task(s)
 # Usage: ./new-note.sh <path-to-note.md>
 #
 # Creates: vault/tasks/NNN-slug.md
-# Creates: vault/resources/NNN-slug/ (if needed)
+# Creates: vault/files/NNN-slug/ (if needed)
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-WORKFLOW_DIR="$(dirname "$SCRIPT_DIR")"
-PROJECT_ROOT="$(dirname "$WORKFLOW_DIR")"
+SKILL_DIR="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="$(dirname "$(dirname "$SKILL_DIR")")"
 VAULT_DIR="$(cd "$PROJECT_ROOT/vault" && pwd -P)"
 
 # Get absolute path for note
@@ -53,13 +53,13 @@ else
 fi
 
 # Load prompt
-PROMPT=$(cat "$WORKFLOW_DIR/prompts/intention.md")
+PROMPT=$(cat "$SKILL_DIR/prompts/intention.md")
 
 # Call claude (from vault dir)
 echo "Calling Claude..."
 cd "$VAULT_DIR"
 claude -p --dangerously-skip-permissions --model claude-opus-4-5 --append-system-prompt "$PROMPT" \
-    "New note detected. Process into IVDX task(s).
+    "New note detected. Process into task(s).
 
 Vault directory: $VAULT_DIR
 Next task number: $NEXT_NUM
@@ -69,9 +69,9 @@ Raw note:
 $IDEA
 ---
 
-Create task file(s) in vault/tasks/ as NNN-slug.md
-Create resources folder(s) in vault/resources/NNN-slug/ if needed
-Update vault/index.md"
+Create task file(s) in tasks/ as NNN-slug.md
+Create files folder(s) in files/NNN-slug/ if needed
+Update index.md"
 
 # Delete original note
 rm "$NOTE_PATH"

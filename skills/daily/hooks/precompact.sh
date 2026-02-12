@@ -10,7 +10,7 @@ cat << EOF
 {
   "hookSpecificOutput": {
     "hookEventName": "PreCompact",
-    "message": "JOURNAL REMINDER: Context is about to be compacted. Write a brief summary of this session to vault/journal/$(date +%Y-%m-%d).md under ## Sessions. Include session ID [$SESSION_ID] and key topics/decisions/outcomes. Use Edit tool to append."
+    "message": "JOURNAL REMINDER: Context is about to be compacted. Write a brief summary of this session to vault/daily/$(date +%Y-%m-%d).md under ## Sessions. Include session ID [$SESSION_ID] and key topics/decisions/outcomes. Use Edit tool to append."
   }
 }
 EOF
