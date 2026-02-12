@@ -28,7 +28,6 @@ cc() {
         command claude "$@" --model claude-opus-4-5 --allow-dangerously-skip-permissions
     fi
 }
-export -f cc
 
 alias claude-ps='pgrep -fl "^claude"'
 alias claude-kill='pkill -9 "^claude"'
