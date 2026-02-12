@@ -56,7 +56,7 @@ PROMPT=$(cat "$SKILL_DIR/prompts/intention.md")
 # Call claude in headless mode with the prompt (from vault dir)
 echo "Calling Claude..."
 cd "$VAULT_DIR"
-claude -p --dangerously-skip-permissions --model claude-opus-4-5 --append-system-prompt "$PROMPT" \
+cc -p --append-system-prompt "$PROMPT" \
     "New note detected. Process into IVDX task(s).
 
 Vault directory: $VAULT_DIR
