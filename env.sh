@@ -32,14 +32,4 @@ export -f cc
 
 alias claude-ps='pgrep -fl "^claude"'
 alias claude-kill='pkill -9 "^claude"'
-
-# work - agent workspace management
-work() {
-    case "$1" in
-        on)   shift; ~/.claude-code/skills/jj/scripts/work-on.sh "$@" ;;
-        done) shift; ~/.claude-code/skills/jj/scripts/work-done.sh "$@" ;;
-        *)    echo "Usage: work <on|done> [args]"; return 1 ;;
-    esac
-}
-
 eval "$(~/.claude-code/skills/proxy/run init 2>/dev/null)"
