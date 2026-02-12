@@ -1,11 +1,11 @@
 # Assessment Stage Prompt
 
-Intention is confirmed. Do external research and fill in the template below.
+Fill the Assessment section in task.md with research findings.
 
 ## Step 1: Read context
 
-- Read the confirmed intention.N.md
-- Read any human feedback
+- Read task.md Intention section
+- Read Human Feedback section
 - Note what research is needed
 
 ## Step 2: Do research
@@ -13,79 +13,39 @@ Intention is confirmed. Do external research and fill in the template below.
 - Web search for current information
 - Read relevant documentation
 - Gather facts, not opinions
+- Save detailed research to `resources/` folder if needed
 
-## Step 3: Create assessment.N.md
+## Step 3: Fill Assessment section
 
-Fill in this template exactly:
+Update task.md:
 
 ```markdown
----
-type: assessment
-task: "[[task]]"
-intention: "[[intention.N]]"
-round: 1
-status: draft | confirmed
-confidence: high | medium | low
+## Assessment
+
+**Oneliner:** [Key finding + recommendation]
+
+**Findings:** [Research results — facts, not fluff]
+
+**Options:**
+- Option A: [tradeoff]
+- Option B: [tradeoff]
+
+**Recommendation:** [What AI suggests and why]
+
+**Questions:** [Only if human needs to decide, otherwise "None — recommendation is clear"]
+```
+
+## Step 4: Update frontmatter
+
+```yaml
+status: assessment
 submit: false
-created: YYYY-MM-DD
----
-
-## Oneliner
-
-[Key finding + recommendation, one sentence]
-
-## Key Questions
-
-(only if decision needed — skip if recommendation is clear)
-
-1. Which option?
-   - [ ] Option A
-   - [ ] Option B
-   - [ ] other: ___
-
-## Human Feedback
-
-(leave empty for human)
-
----
-
-## Context
-
-[What we already knew]
-
-## Findings
-
-[Research results — facts, not fluff]
-
-## Implications
-
-[What this affects]
-
-## Options
-
-[Paths with tradeoffs]
-
-## Recommendation
-
-[What AI suggests and why]
-
----
-
-## Lessons Applied
-
-## Lessons Proposed
 ```
 
 ## Rules
 
-- **Fill template EXACTLY** — don't add/remove sections
-- **Oneliner** — key finding + recommendation, one sentence
-- **Key Questions** — only if human needs to choose between options
-- **Findings** — concrete facts from research
-- **Options** — real tradeoffs, not fluff
-- **submit: false** — always, human reviews first
-- Update task.md Assessments section with link
-
-## After Writing
-
-Commit: `jj new -m "[assessment] NNN-slug: key finding"`
+- **Findings = facts** from research
+- **Options = real tradeoffs**
+- **Detailed research** → save to `resources/research.md`, link from Assessment
+- **status: assessment**
+- **submit: false**

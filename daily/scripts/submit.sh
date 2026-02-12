@@ -1,8 +1,6 @@
 #!/bin/bash
-# Process a submitted task.md in the IVDX system
-# Usage: ./submit.sh <path-to-task.md>
-#
-# Reads status field and proceeds to next stage
+# Process a submitted document (submit: true) in the IVDX system
+# Usage: ./submit.sh <path-to-document.md>
 
 set -e
 
@@ -16,7 +14,7 @@ VAULT_DIR="$(cd "$PROJECT_ROOT/vault" && pwd -P)"
 DOC_PATH="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
 
 if [[ -z "$1" ]]; then
-    echo "Usage: $0 <path-to-task.md>"
+    echo "Usage: $0 <path-to-document.md>"
     exit 1
 fi
 
@@ -25,60 +23,51 @@ if [[ ! -f "$DOC_PATH" ]]; then
     exit 1
 fi
 
-# Only process task.md files
-FILENAME=$(basename "$DOC_PATH")
-if [[ "$FILENAME" != "task.md" ]]; then
-    echo "Skipping: not a task.md file"
-    exit 0
-fi
-
-# Get current status
-STATUS=$(grep -m1 "^status:" "$DOC_PATH" | sed 's/status: *//')
+# Determine document type from frontmatter
+DOC_TYPE=$(grep -m1 "^type:" "$DOC_PATH" | sed 's/type: *//')
 
 # Get task directory
 TASK_DIR=$(dirname "$DOC_PATH")
 TASK_ID=$(basename "$TASK_DIR")
 
-echo "Task: $TASK_ID"
-echo "Status: $STATUS"
+echo "Processing submitted $DOC_TYPE for task: $TASK_ID"
 
-# Select appropriate prompt based on current status
-case "$STATUS" in
-    intention)
+# Select appropriate prompt based on document type
+case "$DOC_TYPE" in
+    intention|eval)
         PROMPT=$(cat "$WORKFLOW_DIR/prompts/assessment.md")
         NEXT_STAGE="assessment"
         ;;
     assessment)
         PROMPT=$(cat "$WORKFLOW_DIR/prompts/contract.md")
-        NEXT_STAGE="decision"
+        NEXT_STAGE="contract"
         ;;
-    decision)
+    contract)
+        # Check if contract is signed (not just submitted)
+        STATUS=$(grep -m1 "^status:" "$DOC_PATH" | sed 's/status: *//')
+        if [[ "$STATUS" != "signed" ]]; then
+            echo "Contract not signed yet. Waiting for signature."
+            exit 0
+        fi
         PROMPT=$(cat "$WORKFLOW_DIR/prompts/execution.md")
         NEXT_STAGE="execution"
         ;;
-    execution)
-        echo "Execution complete. Check outcome in task.md."
-        exit 0
-        ;;
-    done|dropped)
-        echo "Task already $STATUS."
+    report)
+        echo "Report submitted. Human review needed."
         exit 0
         ;;
     *)
-        echo "Unknown status: $STATUS"
+        echo "Unknown document type: $DOC_TYPE"
         exit 1
         ;;
 esac
 
-echo "Next stage: $NEXT_STAGE"
-
 # Call claude in headless mode with the appropriate prompt (from vault dir)
 cd "$VAULT_DIR"
 claude -p --dangerously-skip-permissions --model claude-opus-4-5 --append-system-prompt "$PROMPT" \
-    "Task submitted: $TASK_ID
-Task file: $DOC_PATH
+    "Document submitted for task: $TASK_ID
 
-Current status: $STATUS
+Submitted document: $DOC_PATH
 Next stage: $NEXT_STAGE
 
-Read task.md, check Human Feedback section, then fill the $NEXT_STAGE section."
+Read the submitted document and any human feedback, then proceed to $NEXT_STAGE stage."

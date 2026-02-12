@@ -1,77 +1,60 @@
 # Execution Stage Prompt
 
-Contract is signed. Do the work and fill in the report template below.
+Decision is approved. Do the work and fill Execution section.
 
-## Step 1: Read contract
+## Step 1: Read Decision
 
-- Read the signed contract.N.md
-- Note Task, Output, Test, Constraints, Danger
+- Read task.md Decision section
+- Note: Deliverable, Output, Test, Constraints, Danger
 
 ## Step 2: Execute
 
 - Do the work as specified
-- Stay in scope — only what contract says
-- Follow constraints — respect "NOT to do"
+- Stay in scope — only what Decision says
+- Follow Constraints
 - If blocked, stop — don't force through
-- Record progress with jj commits
 
 ## Step 3: Verify
 
-- Check each Test item from contract
-- Does output match contract's Output?
+- Check each Test item
+- Does output match?
 - Were Constraints respected?
-- Any Danger items triggered?
 
-## Step 4: Create report.N.md
+## Step 4: Fill Execution section
 
-Fill in this template exactly:
+Update task.md:
 
 ```markdown
----
-type: report
-task: "[[task]]"
-contract: "[[contract.N]]"
-attempt: 1
-outcome: success | partial | failed | pivot
-submit: false
-created: YYYY-MM-DD
----
+## Execution
 
-## Oneliner
+**Outcome:** success | partial | failed | pivot
 
-[Outcome, one sentence]
+**Work Done:** [What was executed]
 
-## Key Questions
-
-1. Accept result?
-   - [ ] Yes, mark done
-   - [ ] Retry with adjustments
-   - [ ] Pivot — need new approach
-   - [ ] other: ___
-
-## Human Feedback
-
-(leave empty for human)
-
----
-
-## Work Done
-
-[What was executed]
-
-## Verification
-
+**Verification:**
 | Test | Result |
 |------|--------|
-| [from contract] | ✅ / ❌ |
+| [from Decision] | ✅ / ❌ |
 
-## What Worked
+**What Worked:** [Successes]
 
-## What Didn't
+**What Didn't:** [Issues, if any]
 
----
+**Next:** [Accept? Retry? Pivot?]
+```
 
-## Lessons Proposed
+## Step 5: Update frontmatter
+
+If successful:
+```yaml
+status: done
+submit: false
+```
+
+If needs retry/pivot:
+```yaml
+status: execution
+submit: false
 ```
 
 ## Outcome Values
@@ -83,13 +66,7 @@ created: YYYY-MM-DD
 
 ## Rules
 
-- **Fill template EXACTLY** — don't add/remove sections
-- **Oneliner** — outcome in one sentence
-- **Verification** — copy tests from contract, mark pass/fail
 - **Be honest** — don't hide problems
-- **submit: false** — always, human reviews first
-- Update task.md Reports section with link
-
-## After Writing
-
-Commit: `jj new -m "[execution] NNN-slug: outcome"`
+- **Verification table** — check each test
+- **status: done** if success, otherwise stay in execution
+- **submit: false**

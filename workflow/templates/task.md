@@ -1,19 +1,34 @@
 ---
 type: task
 status: intention | assessment | decision | execution | done | dropped
-workdir:
+submit: false
 created: YYYY-MM-DD
-session_id:
 ---
 
 ## Idea
 
 [Original raw note — copied verbatim]
 
-## Intentions
+## Intention
 
-## Assessments
+[AI understanding of what/why/success/not]
 
-## Contracts
+## Assessment
 
-## Reports
+[AI research findings, options, recommendation]
+
+## Decision
+
+[What to do, deliverable, test criteria, constraints]
+
+## Execution
+
+[Work done, verification, outcome]
+
+---
+
+## Human Feedback
+
+[Write here at any stage]
+
+## Lessons

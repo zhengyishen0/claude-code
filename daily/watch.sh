@@ -2,7 +2,7 @@
 #
 # File watcher for IVDX vault
 # - Watches vault root for new ideas → triggers new-note.sh
-# - Watches active/*/task.md for submit: true → triggers submit.sh
+# - Watches active/ for submit changes → triggers submit.sh
 #
 # Logic:
 # - Title (filename) IS the idea - content optional
@@ -31,6 +31,11 @@ has_submit_true() {
     grep -q "^submit: true" "$1" 2>/dev/null
 }
 
+# Function to check if contract is signed
+is_contract_signed() {
+    grep -q "^status: signed" "$1" 2>/dev/null
+}
+
 # Function to get hash of filepath for temp file naming
 file_hash() {
     echo "$1" | md5 | cut -c1-16
@@ -55,7 +60,6 @@ file_hash() {
                 [[ -f "$ORIGINAL_PATH" ]] || continue
 
                 REL_PATH="${ORIGINAL_PATH#$VAULT_DIR/}"
-                FILENAME=$(basename "$ORIGINAL_PATH")
 
                 # New note in vault root (no subdirectory)
                 if [[ "$REL_PATH" != */* ]]; then
@@ -65,11 +69,14 @@ file_hash() {
                     continue
                 fi
 
-                # Submit: only task.md files with submit: true
-                if [[ "$REL_PATH" == active/*/task.md ]] && [[ "$FILENAME" == "task.md" ]] && has_submit_true "$ORIGINAL_PATH"; then
-                    echo ""
-                    echo "$(date '+%H:%M:%S') 🚀 Processing submit: $REL_PATH"
-                    "$SCRIPT_DIR/scripts/submit.sh" "$ORIGINAL_PATH" || true
+                # Submit in active/
+                if [[ "$REL_PATH" == active/* ]] && has_submit_true "$ORIGINAL_PATH"; then
+                    DOC_TYPE=$(grep -m1 "^type:" "$ORIGINAL_PATH" | sed 's/type: *//' || echo "unknown")
+                    if [[ "$DOC_TYPE" != "contract" ]] || is_contract_signed "$ORIGINAL_PATH"; then
+                        echo ""
+                        echo "$(date '+%H:%M:%S') 🚀 Processing submit: $REL_PATH"
+                        "$SCRIPT_DIR/scripts/submit.sh" "$ORIGINAL_PATH" || true
+                    fi
                 fi
             fi
         done
@@ -81,7 +88,6 @@ fswatch -0 \
   --event Created --event Updated --event AttributeModified --event Renamed \
   --exclude "\.DS_Store" \
   --exclude "\.obsidian" \
-  --exclude "/resources/" \
   "$VAULT_DIR" | while read -d "" event; do
 
   # Skip non-markdown files
