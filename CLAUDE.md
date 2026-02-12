@@ -32,6 +32,8 @@ cd '../[ba259574]'
 - **One workspace per session** - don't reuse others' workspaces
 - **Only edit YOUR commits** - commits without your session ID are read-only
 - **⚠️ NEVER `jj abandon`** - never delete/drop/abandon ANY commit. Escalate to user if conflicts
+- **⚠️ NEVER squash/rebase** - never use `jj squash`, `jj rebase`, or similar unless user explicitly requests
+- **Always merge with `jj new`** - use `jj new a b -m "msg"` to merge two commits, never rebase
 
 **Progress types:** `[validation]` `[decision]` `[execution]` `[done]` `[dropped]`
 
@@ -44,6 +46,7 @@ cd '../[ba259574]'
 | Status/diff/log | `jj status` / `jj diff` / `jj log` |
 | Create commit | `jj new -m "[session-id] msg"` |
 | Update message | `jj describe -m "[session-id] msg"` |
+| Merge | `jj new main <change> -m "msg"` |
 | Push | `jj git push` |
 
 **Critical:** `jj new` = new commit. `jj describe` = update current.
