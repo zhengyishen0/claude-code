@@ -1,31 +1,11 @@
 #!/usr/bin/env bash
 # env.sh - Source this in ~/.zshrc:
-#   source ~/Codes/claude-code/scripts/env.sh
+#   source ~/.claude-code/scripts/env.sh
 
 # ============================================================
-# Core paths
+# PATH-based skill access (auto-discovered via link-skills.sh)
 # ============================================================
-export PROJECT_DIR="$HOME/Codes/claude-code"
-export CLAUDE_DIR="${CLAUDE_DIR:-$HOME/.claude}"
-
-# ============================================================
-# Skill aliases (tools now live in skills/)
-# ============================================================
-alias browser="node $PROJECT_DIR/skills/browser/cli.js"
-alias memory="$PROJECT_DIR/skills/memory/run.sh"
-alias diagnose="$PROJECT_DIR/skills/diagnose/diagnose"
-alias google="$PROJECT_DIR/skills/google/run.sh"
-alias feishu="$PROJECT_DIR/skills/feishu/run.sh"
-alias wechat="$PROJECT_DIR/skills/wechat/avd/bin/wechat"
-alias screenshot="python3 $PROJECT_DIR/skills/screenshot/screenshot.py"
-alias proxy="$PROJECT_DIR/skills/proxy/run.sh"
-alias md2pdf="$PROJECT_DIR/skills/md2pdf/run.sh"
-alias lesson="$PROJECT_DIR/skills/lesson/run.sh"
-
-# ============================================================
-# Script aliases
-# ============================================================
-alias cc="$PROJECT_DIR/scripts/cc.sh"
+export PATH="$HOME/.claude-code/scripts/bin:$PATH"
 
 # ============================================================
 # Claude CLI aliases
@@ -36,7 +16,7 @@ alias claude-kill='pkill -9 "^claude"'
 # ============================================================
 # Auto-init: Enable proxy if reachable
 # ============================================================
-eval "$("$PROJECT_DIR/skills/proxy/run.sh" init 2>/dev/null)"
+eval "$("$HOME/.claude-code/skills/proxy/run" init 2>/dev/null)"
 
 # ============================================================
 # work - Agent workspace management
@@ -85,11 +65,12 @@ _work_on() {
         return 1
     fi
 
+    local project_dir="$HOME/.claude-code"
     local sid=$(openssl rand -hex 4)
     local name="$(echo "$task" | tr ' ' '-' | tr '[:upper:]' '[:lower:]' | cut -c1-20)-${sid}"
-    local path="$PROJECT_DIR/../.workspaces/claude-code/${name}"
+    local path="$project_dir/../.workspaces/claude-code/${name}"
 
-    mkdir -p "$PROJECT_DIR/../.workspaces/claude-code"
+    mkdir -p "$project_dir/../.workspaces/claude-code"
 
     if ! jj workspace add --name "${name}" "${path}" 2>/dev/null; then
         echo "Failed to create workspace"
@@ -131,6 +112,7 @@ When done, prefix final commit with: DONE:" \
 _work_done() {
     local ws="$1"
     local summary="${2:-Merge ${ws}}"
+    local project_dir="$HOME/.claude-code"
 
     if [ -z "$ws" ]; then
         echo "Usage: work done \"workspace-name\" [\"summary\"]"
@@ -140,7 +122,7 @@ _work_done() {
         return 1
     fi
 
-    local ws_path="$PROJECT_DIR/../.workspaces/claude-code/${ws}"
+    local ws_path="$project_dir/../.workspaces/claude-code/${ws}"
 
     if [ ! -d "$ws_path" ]; then
         echo "Workspace not found: $ws_path"
@@ -156,7 +138,7 @@ _work_done() {
 
     echo "Merging change ${change} from ${ws}..."
 
-    cd "$PROJECT_DIR" && \
+    cd "$project_dir" && \
     jj new main "${change}" -m "${summary}" && \
     jj bookmark set main -r @ && \
     jj workspace forget "${ws}"
@@ -165,5 +147,5 @@ _work_done() {
     rm -rf "$ws_path" 2>/dev/null
 
     echo ""
-    echo "✓ Merged and cleaned up"
+    echo "Merged and cleaned up"
 }
