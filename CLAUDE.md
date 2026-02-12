@@ -12,25 +12,26 @@ You handle: research, writing, scheduling, browsing, code, and anything else.
 
 ```bash
 # Use your Claude session ID (from SessionStart hook, e.g., "ba259574")
-jj workspace add ../ws-$SESSION_ID
-cd ../ws-$SESSION_ID
+jj workspace add '../[ba259574]'
+cd '../[ba259574]'
 ```
 
 **Every agent works in isolation. This prevents conflicts.**
 
 ### Workflow
 
-1. **Create workspace** → `jj workspace add ../ws-<session-id>`
-2. **Switch to it** → `cd ../ws-<session-id>`
+1. **Create workspace** → `jj workspace add '../[session-id]'` (quotes required)
+2. **Switch to it** → `cd '../[session-id]'`
 3. **Tag commits** → `jj new -m "[session-id] description"`
 4. **Update message** → `jj describe -m "[session-id] updated description"`
 
 ### Rules
 
 - **Never edit without a workspace** - create one first, always
-- **Tag all commits with `[session-id]`** - your session ID as prefix
+- **Use `[session-id]`** - same format for workspace name AND commit prefix
 - **One workspace per session** - don't reuse others' workspaces
 - **Only edit YOUR commits** - commits without your session ID are read-only
+- **⚠️ NEVER `jj abandon`** - never delete/drop/abandon ANY commit. Escalate to user if conflicts
 
 **Progress types:** `[validation]` `[decision]` `[execution]` `[done]` `[dropped]`
 

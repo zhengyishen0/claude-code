@@ -3,9 +3,54 @@
 #   source ~/.claude-code/scripts/env.sh
 
 # ============================================================
-# PATH-based skill access (auto-discovered via link-skills.sh)
+# Colors (for scripts that source this)
 # ============================================================
-export PATH="$HOME/.claude-code/scripts/bin:$PATH"
+_GREEN='\033[0;32m'
+_YELLOW='\033[0;33m'
+_RED='\033[0;31m'
+_NC='\033[0m'
+
+ok()   { echo -e "${_GREEN}✓${_NC} $1"; }
+warn() { echo -e "${_YELLOW}!${_NC} $1"; }
+err()  { echo -e "${_RED}✗${_NC} $1"; }
+
+# ============================================================
+# Auto-discover skills (creates aliases for skills/*/run)
+# ============================================================
+for _skill in ~/.claude-code/skills/*/run; do
+    [[ -x "$_skill" ]] || continue
+    _name=$(basename "$(dirname "$_skill")")
+    alias $_name="$_skill"
+done
+unset _skill _name
+
+# ============================================================
+# cc - Claude Code wrapper
+# ============================================================
+# Usage:
+#   cc                    Start new session
+#   cc -r <partial>       Resume session by partial ID
+#   cc <args>             Pass through to claude
+
+cc() {
+    if [[ "${1:-}" == "-r" || "${1:-}" == "--resume" ]]; then
+        local partial="${2:-}"
+        if [[ -z "$partial" ]]; then
+            echo "Usage: cc -r <partial-session-id>" >&2
+            echo "" >&2
+            ~/.claude-code/skills/session/run list 5
+            return 1
+        fi
+
+        local session_id
+        session_id=$(~/.claude-code/skills/session/run find "$partial") || return 1
+        echo "Resuming: $session_id" >&2
+        shift 2
+        command claude --resume "$session_id" "$@"
+    else
+        command claude "$@"
+    fi
+}
 
 # ============================================================
 # Claude CLI aliases
@@ -16,7 +61,7 @@ alias claude-kill='pkill -9 "^claude"'
 # ============================================================
 # Auto-init: Enable proxy if reachable
 # ============================================================
-eval "$("$HOME/.claude-code/skills/proxy/run" init 2>/dev/null)"
+eval "$(~/.claude-code/skills/proxy/run init 2>/dev/null)"
 
 # ============================================================
 # work - Agent workspace management
