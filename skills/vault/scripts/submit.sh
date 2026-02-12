@@ -61,7 +61,7 @@ esac
 
 # Call claude in headless mode with the appropriate prompt (from vault dir)
 cd "$VAULT_DIR"
-~/.claude-code/cc -p --model claude-opus-4-5 --append-system-prompt "$PROMPT" \
+cc -p --append-system-prompt "$PROMPT" \
     "Document submitted for task: $TASK_ID
 
 Submitted document: $DOC_PATH
