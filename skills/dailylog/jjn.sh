@@ -27,10 +27,10 @@ if [[ "$MESSAGE" =~ ^\[([^\]]+)\]\ (.+)$ ]]; then
     MSG="${BASH_REMATCH[2]}"
 fi
 
-# Create jj commit
-jj new -m "$MESSAGE"
+# Describe current change and create new working copy (jj commit = describe + new)
+jj commit -m "$MESSAGE"
 
-# Get the change ID of the new commit (the parent, since jj new creates empty working copy)
+# Get the change ID of the committed change (now the parent)
 CHANGE_ID=$(jj log -r @- --no-graph -T 'change_id.short()')
 
 # Log to daily log
