@@ -5,6 +5,9 @@
 # Runtime data (credentials, browser profiles, memory index)
 /data/
 
+# Auto-generated (run scripts/link-skills.sh to regenerate)
+/scripts/bin/
+
 # Hidden files (except tracked ones)
 .*
 !.gitignore
