@@ -6,63 +6,56 @@ You handle: research, writing, scheduling, browsing, code, and anything else.
 
 ---
 
-## Vault
+## ⚠️ MANDATORY: Workspace Isolation
 
-Shared workspace for async collaboration. Use `/vault` for details.
+**Before ANY file edits**, create your own jj workspace using your session ID:
 
-```
-vault/
-├── tasks/      # Task files (NNN-slug.md)
-├── files/      # Outputs per task (NNN-slug/)
-├── journal/    # Daily logs
-└── archive/    # Done tasks
+```bash
+# Use your Claude session ID (from SessionStart hook, e.g., "ba259574")
+jj workspace add ../ws-$SESSION_ID
+cd ../ws-$SESSION_ID
 ```
 
-**When to write:**
-- Task tracking → `tasks/NNN-slug.md`
-- Work outputs → `files/NNN-slug/`
-- Session log → `journal/YYYY-MM-DD.md`
+**Every agent works in isolation. This prevents conflicts.**
+
+### Workflow
+
+1. **Create workspace** → `jj workspace add ../ws-<session-id>`
+2. **Switch to it** → `cd ../ws-<session-id>`
+3. **Tag commits** → `jj new -m "[session-id] description"`
+4. **Update message** → `jj describe -m "[session-id] updated description"`
+
+### Rules
+
+- **Never edit without a workspace** - create one first, always
+- **Tag all commits with `[session-id]`** - your session ID as prefix
+- **One workspace per session** - don't reuse others' workspaces
+- **Only edit YOUR commits** - commits without your session ID are read-only
+
+**Progress types:** `[validation]` `[decision]` `[execution]` `[done]` `[dropped]`
+
+---
+
+## jj Commands
+
+| Task | Command |
+|------|---------|
+| Status/diff/log | `jj status` / `jj diff` / `jj log` |
+| Create commit | `jj new -m "[session-id] msg"` |
+| Update message | `jj describe -m "[session-id] msg"` |
+| Push | `jj git push` |
+
+**Critical:** `jj new` = new commit. `jj describe` = update current.
 
 ---
 
 ## Skills
 
-Use `/skill` for detailed instructions:
-
-| Skill | Purpose |
-|-------|---------|
-| `/vault` | Task workflow (async collaboration) |
-| `/journal` | Daily episodic memory |
-| `/memory` | Search previous sessions |
-| `/browser` | Browser automation |
-| `/wechat` | WeChat messages |
-| `/google` | Google APIs (Gmail, Calendar, Drive) |
-| `/feishu` | Feishu APIs (Messaging, Calendar, Bitable) |
-| `/jj` | jj version control (NOT git) |
-| `/screenshot` | Screen capture |
-
----
-
-## jj (NOT git)
-
-| Task | Command |
-|------|---------|
-| Status/diff/log | `jj status` / `jj diff` / `jj log` |
-| Commit | `jj new -m "msg"` |
-| Amend message | `jj describe -m "msg"` |
-| Push | `jj git push` |
-
-**Critical:** `jj new` creates new commit. `jj describe` updates current.
-
-**Progress types:** `[validation]` `[decision]` `[execution]` `[done]` `[dropped]`
-
-See `/jj` for full reference.
+Available skills are shown in system messages. Use `/skill-name` to load details.
 
 ---
 
 ## Environment
-
-**Machines** (via Tailscale):
 
 | Machine | Hostname | Use |
 |---------|----------|-----|
