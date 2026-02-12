@@ -1,51 +1,149 @@
-# New Task Prompt
+# Intention Stage Prompt
 
-Process a raw note into task file(s).
+You are processing a raw note that may contain multiple ideas. Your job is to organize them into logical tasks.
 
-## Split if needed
+## Step 0: Analyze and group ideas
 
-- Related ideas → 1 task
-- Unrelated ideas → separate tasks
+Read the note and identify distinct ideas. Then group them:
 
-## Create
+**Group related ideas into ONE task:**
+- Same topic/domain
+- Would be researched together
+- Natural to compare/contrast
 
-1. `vault/tasks/NNN-slug.md` — task file
-2. `vault/files/NNN-slug/` — folder for all outputs
+**Split unrelated ideas into SEPARATE tasks:**
+- Different topics
+- Independent work
+- Different timelines/priorities
 
-## Task file format
+**Examples:**
+
+```
+研究Cursor和Aider的工作流
+看看有没有其他AI coding工具
+```
+→ 1 task: "AI coding tools research" (all related)
+
+```
+研究tailscale
+学一下日语
+整理workflow文档
+```
+→ 3 tasks: networking, language learning, documentation (unrelated)
+
+```
+买机票去东京
+订酒店
+规划行程
+```
+→ 1 task: "Tokyo trip planning" (all related)
+
+## Step 1: Check internal sources
+
+Before writing:
+- `/memory` — previous sessions
+- Lessons — relevant patterns
+- Related .md files
+- Feishu/WeChat if relevant
+
+## Step 2: Create task folder(s)
+
+For each logical task group, create: `vault/active/NNN-slug/`
+
+Use consecutive numbers starting from the provided next number.
+
+## Step 3: Create task.md (for each)
 
 ```markdown
 ---
-status: new
-submit: false
+type: task
+status: intention
+workdir:
 created: YYYY-MM-DD
+session_id:
 ---
 
 ## Idea
 
-[Raw note]
+[This task's grouped ideas — from original note]
 
-## Understanding
+## Intentions
 
-[What human wants, why, what success looks like]
+- [[intention.1]]
 
-## Progress
+## Assessments
 
-(AI updates as work proceeds)
+## Contracts
 
-## Resources
+## Reports
+```
 
-(links to files in files/NNN-slug/)
+## Step 4: Create intention.1.md (for each)
+
+```markdown
+---
+type: intention
+task: "[[task]]"
+round: 1
+status: draft | confirmed
+submit: false
+created: YYYY-MM-DD
+---
+
+## Oneliner
+
+[What this task group is about, one sentence]
+
+## Key Questions
+
+(only if genuinely unclear)
+
+## Human Feedback
 
 ---
 
-## Feedback
+## What
 
-## Lessons
+[The grouped requests]
+
+## Why
+
+[Motivation]
+
+## Success
+
+[What done looks like]
+
+## Not
+
+[Out of scope]
+
+## Internal Sources Checked
+
+- [ ] Memory — previous sessions
+- [ ] Lessons — relevant patterns
+- [ ] Docs — related .md files
+- [ ] Feishu/WeChat — if relevant
+
+---
+
+## Lessons Applied
+
+## Lessons Proposed
 ```
 
 ## Rules
 
-- Save any research/outputs to `files/NNN-slug/`
-- Link from task file
-- Update `vault/index.md`
+- **Group intelligently** — related items together, unrelated items separate
+- **Fill templates EXACTLY**
+- **Oneliner** — one sentence max
+- **status: confirmed** — if understanding is clear
+- **submit: false** — always
+- Update `vault/index.md` with ALL new tasks
+
+## Output
+
+Report:
+1. How many tasks created
+2. What's in each task
+3. Why grouped this way (if merged or split)

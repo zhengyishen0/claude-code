@@ -1,18 +1,15 @@
 #!/bin/bash
-# Process a new raw note into task(s)
+# Process a new raw note into the IVDX system
 # Usage: ./new-note.sh <path-to-note.md>
 #
-# Creates: vault/tasks/NNN-slug.md
-# Creates: vault/files/NNN-slug/ (if needed)
+# Note may contain ONE or MULTIPLE ideas. AI will split if needed.
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SKILL_DIR="$(dirname "$SCRIPT_DIR")"
-PROJECT_ROOT="$(dirname "$(dirname "$SKILL_DIR")")"
-VAULT_DIR="$(cd "$PROJECT_ROOT/vault" && pwd -P)"
+SKILL_DIR=~/.claude-code/skills/vault
+VAULT_DIR="$(cd ~/.claude-code/vault && pwd -P)"
 
-# Get absolute path for note
+# Get absolute path for note (before cd'ing later)
 NOTE_PATH="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
 
 if [[ -z "$1" ]]; then
@@ -28,22 +25,23 @@ fi
 # Title = filename without extension
 TITLE=$(basename "$NOTE_PATH" .md)
 
-# Skip untitled files
+# Skip untitled/empty title files
 if [[ "$TITLE" == "Untitled" || "$TITLE" == "untitled" || -z "$TITLE" ]]; then
     echo "Skipping: no real title yet"
     exit 0
 fi
 
-# Get next task number from tasks/ folder
-LAST_NUM=$(ls "$VAULT_DIR/tasks/"*.md 2>/dev/null | grep -oE '[0-9]+' | sort -n | tail -1 || echo "0")
+# Get next task number (AI will use this as starting point)
+LAST_NUM=$(ls -d "$VAULT_DIR/active/"*/ 2>/dev/null | grep -oE '[0-9]+' | sort -n | tail -1 || echo "0")
 NEXT_NUM=$(printf "%03d" $((${LAST_NUM:-0} + 1)))
 
 echo "Title:    $TITLE"
 echo "Next ID:  $NEXT_NUM"
 
-# Get content
+# Get content (may be empty)
 NOTE_CONTENT=$(cat "$NOTE_PATH" 2>/dev/null || echo "")
 
+# Build the idea text: title first, then content if any
 if [[ -n "$NOTE_CONTENT" ]]; then
     IDEA="$TITLE
 
@@ -52,14 +50,14 @@ else
     IDEA="$TITLE"
 fi
 
-# Load prompt
+# Load the intention prompt
 PROMPT=$(cat "$SKILL_DIR/prompts/intention.md")
 
-# Call claude (from vault dir)
+# Call claude in headless mode with the prompt (from vault dir)
 echo "Calling Claude..."
 cd "$VAULT_DIR"
 claude -p --dangerously-skip-permissions --model claude-opus-4-5 --append-system-prompt "$PROMPT" \
-    "New note detected. Process into task(s).
+    "New note detected. Process into IVDX task(s).
 
 Vault directory: $VAULT_DIR
 Next task number: $NEXT_NUM
@@ -69,10 +67,13 @@ Raw note:
 $IDEA
 ---
 
-Create task file(s) in tasks/ as NNN-slug.md
-Create files folder(s) in files/NNN-slug/ if needed
-Update index.md"
+Analyze the note:
+1. If MULTIPLE distinct ideas → create multiple task folders starting from $NEXT_NUM
+2. If SINGLE idea → create one task folder $NEXT_NUM-slug
 
-# Delete original note
+For each task, create task.md and intention.1.md.
+Update vault/index.md with all new tasks."
+
+# Delete original note after processing
 rm "$NOTE_PATH"
 echo "Processed and removed: $NOTE_PATH"
