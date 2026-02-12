@@ -31,10 +31,10 @@ skills/hook/
 skills/hook/scripts/build.sh
 
 # Start watcher (auto-rebuild on change)
-skills/watchers/run.sh start hook-builder
+skills/watcher/run.sh start hook-builder
 
 # Check status
-skills/watchers/run.sh status
+skills/watcher/run.sh status
 ```
 
 ## Creating Hooks

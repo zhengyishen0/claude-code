@@ -1,21 +1,24 @@
-# Watchers
+---
+name: watcher
+description: Auto-discovery watcher system using yaml configuration.
+---
 
-Auto-discovery watcher system using yaml configuration.
+# Watcher
 
 ## Quick Start
 
 ```bash
 # List discovered watchers
-skills/watchers/run.sh list
+skills/watcher/run.sh list
 
 # Start all watchers
-skills/watchers/run.sh start
+skills/watcher/run.sh start
 
 # Check status
-skills/watchers/run.sh status
+skills/watcher/run.sh status
 
 # Stop all watchers
-skills/watchers/run.sh stop
+skills/watcher/run.sh stop
 ```
 
 ## Architecture
@@ -28,7 +31,7 @@ skills/
 ├── another-skill/
 │   └── watch/
 │       └── api.yaml        # Another watcher
-└── watchers/
+└── watcher/
     ├── SKILL.md            # This file
     └── run.sh              # Central runner
 ```
@@ -101,25 +104,25 @@ action: skills/my-skill/scripts/heartbeat.sh
 
 ```bash
 # List all discovered watchers
-skills/watchers/run.sh list
+skills/watcher/run.sh list
 
 # Show status (running/stopped)
-skills/watchers/run.sh status
+skills/watcher/run.sh status
 
 # Start all watchers
-skills/watchers/run.sh start
+skills/watcher/run.sh start
 
 # Start specific watcher
-skills/watchers/run.sh start vault-files
+skills/watcher/run.sh start vault-files
 
 # Stop all watchers
-skills/watchers/run.sh stop
+skills/watcher/run.sh stop
 
 # Stop specific watcher
-skills/watchers/run.sh stop vault-files
+skills/watcher/run.sh stop vault-files
 
 # Tail logs for a watcher
-skills/watchers/run.sh logs vault-files
+skills/watcher/run.sh logs vault-files
 ```
 
 ## Event Types (fswatch)
