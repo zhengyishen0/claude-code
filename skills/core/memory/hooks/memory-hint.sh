@@ -2,7 +2,7 @@
 # Memory hint hook - shows relevant past sessions for user's question
 # Runs on first message of session
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ZENIX_ROOT="${ZENIX_ROOT:-$HOME/.zenix}"
 
 INPUT=$(cat)
 PROMPT=$(echo "$INPUT" | jq -r '.prompt')
@@ -18,7 +18,7 @@ if [ -f "$TRANSCRIPT" ] && [ $(wc -l < "$TRANSCRIPT") -gt 5 ]; then
 fi
 
 # Run memory hint
-HINTS=$("$REPO_ROOT/skills/memory/hint.sh" "$PROMPT" 2>/dev/null)
+HINTS=$("$ZENIX_ROOT/skills/core/memory/hint.sh" "$PROMPT" 2>/dev/null)
 
 if [ -n "$HINTS" ]; then
   echo "<memory-hint>"

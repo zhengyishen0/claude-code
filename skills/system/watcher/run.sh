@@ -14,8 +14,7 @@
 set -euo pipefail
 
 # Paths
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_ROOT="$(dirname "$(dirname "$(dirname "$SCRIPT_DIR")")")"
+ZENIX_ROOT="${ZENIX_ROOT:-$HOME/.zenix}"
 STATE_DIR="$HOME/.local/state/watchers"
 PID_DIR="$STATE_DIR/pids"
 LOG_DIR="$STATE_DIR/logs"
@@ -37,7 +36,7 @@ log_err() { echo -e "${RED}[watchers]${NC} $*" >&2; }
 
 # Discover all watcher yaml files
 discover_watchers() {
-    find "$PROJECT_ROOT/skills" -path "*/watch/*.yaml" -type f 2>/dev/null | sort
+    find "$ZENIX_ROOT/skills" -path "*/watch/*.yaml" -type f 2>/dev/null | sort
 }
 
 # Parse yaml value (simple parser for flat yaml)
@@ -145,7 +144,7 @@ start_fswatch() {
     if [[ "$watch_path" == /* ]]; then
         full_path="$watch_path"
     else
-        full_path="$PROJECT_ROOT/$watch_path"
+        full_path="$ZENIX_ROOT/$watch_path"
     fi
     # Resolve symlinks to real path (fswatch returns real paths)
     full_path="$(cd "$full_path" && pwd -P)"
@@ -203,7 +202,7 @@ start_fswatch() {
                         if [[ "$RULE_ACTION" == /* ]]; then
                             action_path="$RULE_ACTION"
                         else
-                            action_path="$PROJECT_ROOT/$RULE_ACTION"
+                            action_path="$ZENIX_ROOT/$RULE_ACTION"
                         fi
 
                         if [[ -x "$action_path" ]]; then
@@ -357,7 +356,7 @@ start_cron() {
     if [[ "$action" == /* ]]; then
         action_path="$action"
     else
-        action_path="$PROJECT_ROOT/$action"
+        action_path="$ZENIX_ROOT/$action"
     fi
 
     # Create cron entry with marker
@@ -517,7 +516,7 @@ cmd_list() {
         name=$(get_watcher_name "$yaml_file")
         local type
         type=$(yaml_get "$yaml_file" "type")
-        local rel_path="${yaml_file#$PROJECT_ROOT/}"
+        local rel_path="${yaml_file#$ZENIX_ROOT/}"
         echo "  $name ($type) - $rel_path"
     done < <(discover_watchers)
 }

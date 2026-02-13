@@ -2,9 +2,8 @@
 # Build .claude/settings.json from skills/*/*/hooks/settings.yaml
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
-SETTINGS_FILE="$PROJECT_ROOT/.claude/settings.json"
+ZENIX_ROOT="${ZENIX_ROOT:-$HOME/.zenix}"
+SETTINGS_FILE="$ZENIX_ROOT/.claude/settings.json"
 
 # Read existing settings (preserve env, statusLine, effortLevel)
 if [ -f "$SETTINGS_FILE" ]; then
@@ -20,7 +19,7 @@ fi
 # Collect all hooks from YAML files
 ALL_HOOKS='[]'
 
-for yaml_file in "$PROJECT_ROOT"/skills/*/*/hooks/settings.yaml; do
+for yaml_file in "$ZENIX_ROOT"/skills/*/*/hooks/settings.yaml; do
     [ -f "$yaml_file" ] || continue
 
     SKILL_DIR=$(dirname "$(dirname "$yaml_file")")

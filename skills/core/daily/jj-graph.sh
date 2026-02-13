@@ -4,7 +4,8 @@
 
 set -e
 
-VAULT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/vault"
+ZENIX_ROOT="${ZENIX_ROOT:-$HOME/.zenix}"
+VAULT_DIR="$ZENIX_ROOT/vault"
 TODAY=$(date +%Y-%m-%d)
 DAILY_FILE="$VAULT_DIR/daily/$TODAY.md"
 
