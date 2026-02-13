@@ -1,6 +1,7 @@
 #!/bin/bash
 # proxy - Proxy management tool
 set -euo pipefail
+: "${ZENIX_ROOT:=$HOME/.zenix}"
 
 CONFIG_FILE="$ZENIX_ROOT/skills/utility/proxy/proxy.conf"
 

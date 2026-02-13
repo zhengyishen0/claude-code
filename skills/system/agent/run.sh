@@ -8,6 +8,7 @@
 #   agent -P <profile> "prompt" # Use named profile
 #
 set -euo pipefail
+: "${ZENIX_ROOT:=$HOME/.zenix}"
 
 # Default to claude-code
 exec "$ZENIX_ROOT/skills/system/agent/scripts/claude-code.sh" "$@"
