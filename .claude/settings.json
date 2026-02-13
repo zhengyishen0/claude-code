@@ -12,6 +12,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/skills/system/work/hooks/snapshot.sh"
+          }
+        ],
+        "matcher": "Edit|Write"
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/skills/utility/diagnose/hooks/post-edit-diagnose.sh"
           }
         ],
@@ -23,9 +32,20 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/skills/agent/daily/hooks/precompact.sh"
+            "command": "\"$CLAUDE_PROJECT_DIR\"/skills/core/daily/hooks/precompact.sh"
           }
         ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/skills/system/work/hooks/guard-main.sh"
+          }
+        ],
+        "matcher": "Edit|Write|Bash"
       }
     ],
     "SessionEnd": [
@@ -33,7 +53,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/skills/agent/daily/hooks/session-end.sh"
+            "command": "\"$CLAUDE_PROJECT_DIR\"/skills/core/daily/hooks/session-end.sh"
           }
         ]
       }
@@ -43,7 +63,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/skills/agent/browser/hooks/browser-cleanup.sh"
+            "command": "\"$CLAUDE_PROJECT_DIR\"/skills/core/browser/hooks/browser-cleanup.sh"
           }
         ]
       },
@@ -71,7 +91,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/skills/agent/memory/hooks/memory-hint.sh",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/skills/core/memory/hooks/memory-hint.sh",
             "timeout": 5
           }
         ]

@@ -1,0 +1,23 @@
+# Dangerous commands blocked by PreToolUse hook
+# Uppercase aliases provide explicit workaround
+#
+# Format:
+#   pattern: regex to match in Bash commands
+#   alias: uppercase function name
+#   command: actual command to run
+
+- pattern: "jj\\s+abandon"
+  alias: ABANDON
+  command: "jj abandon"
+
+- pattern: "jj\\s+restore"
+  alias: RESTORE
+  command: "jj restore"
+
+- pattern: "git\\s+reset\\s+--hard"
+  alias: HARDRESET
+  command: "git reset --hard"
+
+- pattern: "git\\s+push\\s+(--force|-f)"
+  alias: FORCEPUSH
+  command: "git push --force"
