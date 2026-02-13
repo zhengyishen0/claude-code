@@ -10,24 +10,30 @@ Agent workspace management using jj workspaces.
 ## Usage
 
 ```bash
-# Start work (creates isolated workspace)
-work on "task description" && cd ~/.workspace/[SESSION_ID]
+# Start work (creates isolated workspace, cd is persistent)
+cd "$(work on 'task description')"
 
 # Finish work (merges to main, cleans up)
 work done "summary"
-```
 
-**SESSION_ID** = first 8 chars of `$CLAUDE_SESSION_ID` (or random if not set).
+# Abandon work (removes workspace, change becomes orphaned)
+work drop
+
+# Clean up empty leaf orphans
+work clean
+```
 
 ## Example
 
 ```bash
-# Session ID is 3a880298-...
-work on "fix login bug" && cd ~/.workspace/[3a880298]
+cd "$(work on 'fix login bug')"
+# task: fix login bug
+# cwd:  /Users/.../.workspace/[3a880298] (persistent)
 
 # ... do work ...
 
 work done "fixed login validation"
+# or: work drop  (if abandoning)
 ```
 
 ## What Happens
@@ -38,6 +44,7 @@ work done "fixed login validation"
 2. Creates jj workspace at `~/.workspace/[session-id]`
 3. Saves repo root to `.repo_root` file
 4. Creates new commit off main: `[session-id] task`
+5. Outputs path for `cd` (info goes to stderr)
 
 ### `work done "summary"`
 
@@ -45,6 +52,18 @@ work done "fixed login validation"
 2. Reads repo root from `.repo_root`
 3. Creates merge commit on main
 4. Forgets workspace and deletes directory
+
+### `work drop`
+
+1. Forgets workspace (change becomes orphaned, not abandoned)
+2. Deletes workspace directory
+3. No merge - change stays in repo but disconnected (will be GC'd)
+
+### `work clean`
+
+1. Finds empty leaf orphans: `heads(all()) & empty() & ~::bookmarks()`
+2. Shows commits and prompts for confirmation
+3. Abandons them if confirmed
 
 ## jj Quick Reference
 
