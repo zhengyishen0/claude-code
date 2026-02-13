@@ -7,9 +7,17 @@ export ZENIX_ROOT="$HOME/.zenix"
 export PATH="$ZENIX_ROOT/bin:$PATH"
 
 # Auto-import skill env files marked with @always
-for _skill_env in "$ZENIX_ROOT"/skills/*/*/env; do
-    [[ -f "$_skill_env" ]] && head -3 "$_skill_env" | grep -q '^# @always' && source "$_skill_env"
-done
+if [[ -n "$ZSH_VERSION" ]]; then
+    # (N) = null glob qualifier, returns empty if no matches
+    for _skill_env in "$ZENIX_ROOT"/skills/*/*/env(N); do
+        [[ -f "$_skill_env" ]] && head -3 "$_skill_env" | grep -q '^# @always' && source "$_skill_env"
+    done
+elif [[ -n "$BASH_VERSION" ]]; then
+    shopt -s nullglob
+    for _skill_env in "$ZENIX_ROOT"/skills/*/*/env; do
+        [[ -f "$_skill_env" ]] && head -3 "$_skill_env" | grep -q '^# @always' && source "$_skill_env"
+    done
+fi
 unset _skill_env
 
 # Dangerous command aliases (bypass for blocked commands)
