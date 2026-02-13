@@ -8,4 +8,4 @@ debounce: 3
 
 rules:
   - match: ".*/hooks/settings\\.yaml$"
-    action: skills/hook/scripts/build.sh
+    action: skills/system/hook/scripts/build.sh

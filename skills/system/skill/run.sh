@@ -10,9 +10,9 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SKILLS_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
-DATA_ROOT="$HOME/.zenix/data"
+ZENIX_ROOT="${ZENIX_ROOT:-$HOME/.zenix}"
+SKILLS_DIR="$ZENIX_ROOT/skills"
+DATA_ROOT="$ZENIX_ROOT/data"
 
 # Colors
 RED='\033[0;31m'

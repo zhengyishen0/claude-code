@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # source ~/.zenix/env.sh
 
-# Skill aliases (skills/*/run → command name)
-for _skill in ~/.zenix/skills/*/run; do
+export ZENIX_ROOT="$HOME/.zenix"
+
+# Skill aliases (skills/*/*/run → command name)
+for _skill in "$ZENIX_ROOT"/skills/*/*/run; do
     [[ -x "$_skill" ]] || continue
     _name=$(basename "$(dirname "$_skill")")
     alias $_name="$_skill"
