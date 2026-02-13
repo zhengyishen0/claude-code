@@ -1,5 +1,5 @@
 # Agent Brewfile - minimal tools for AI agents
-# Install: brew bundle --file=skills/system/cli/Brewfile
+# Install: brew bundle --file=skills/system/zenix/Brewfile
 
 # Version control (mandatory)
 brew "jj"            # jujutsu - next-gen VCS
