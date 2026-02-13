@@ -12,9 +12,9 @@ rules:
   # New note in vault root (not index.md)
   - match: ^[^/]+\.md$
     exclude: ^index\.md$
-    action: skills/core/vault/scripts/new-note.sh
+    action: skills/agent/vault/scripts/new-note.sh
 
   # Submit in tasks/ (when submit: true is present)
   - match: ^tasks/.*\.md$
     condition: grep -q '^submit: true'
-    action: skills/core/vault/scripts/submit.sh
+    action: skills/agent/vault/scripts/submit.sh

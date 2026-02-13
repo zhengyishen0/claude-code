@@ -34,22 +34,26 @@ cmd_new() {
     local category="$1"
     local name="$2"
 
+    # Discover categories dynamically
+    local categories=()
+    for dir in "$SKILLS_DIR"/*/; do
+        [[ -d "$dir" ]] && categories+=("$(basename "$dir")")
+    done
+    local categories_str="${categories[*]}"
+
     if [[ -z "$category" ]] || [[ -z "$name" ]]; then
         echo "Usage: $0 new <category> <name>"
         echo ""
-        echo "Categories: system, core, apps, utility, community"
+        echo "Categories: ${categories_str// /, }"
         exit 1
     fi
 
-    # Validate category
-    case "$category" in
-        system|core|apps|utility|community) ;;
-        *)
-            err "Invalid category: $category"
-            echo "Valid categories: system, core, apps, utility, community"
-            exit 1
-            ;;
-    esac
+    # Validate category exists
+    if [[ ! -d "$SKILLS_DIR/$category" ]]; then
+        err "Invalid category: $category"
+        echo "Valid categories: ${categories_str// /, }"
+        exit 1
+    fi
 
     local skill_dir="$SKILLS_DIR/$category/$name"
     local data_dir="$DATA_ROOT/$name"
@@ -303,6 +307,8 @@ case "${1:-}" in
         echo "  $0 list                    List all discovered skills"
         echo "  $0 health [name]           Check skill follows conventions"
         echo ""
-        echo "Categories: system, core, apps, utility, community"
+        echo -n "Categories: "
+        /bin/ls -1 "$SKILLS_DIR" | tr '\n' ' '
+        echo ""
         ;;
 esac
