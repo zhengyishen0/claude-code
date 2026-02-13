@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
-# source ~/.zenix/env.sh
+# source ~/.zenix/env
 
 export ZENIX_ROOT="$HOME/.zenix"
 
 # Add bin/ to PATH (skill commands: zenix, agent, work, etc.)
 export PATH="$ZENIX_ROOT/bin:$PATH"
+
+# Auto-import skill env files marked with @always
+for _skill_env in "$ZENIX_ROOT"/skills/*/*/env; do
+    [[ -f "$_skill_env" ]] && head -3 "$_skill_env" | grep -q '^# @always' && source "$_skill_env"
+done
+unset _skill_env
 
 # Dangerous command aliases (bypass for blocked commands)
 _BLOCKED_YAML="$ZENIX_ROOT/skills/system/work/config/blocked.yaml"
@@ -22,4 +28,4 @@ alias claude-ps='pgrep -fl "^claude"'
 alias claude-kill='pkill -9 "^claude"'
 
 # Proxy init
-eval "$("$ZENIX_ROOT/skills/utility/proxy/run.sh" init 2>/dev/null)"
+eval "$("$ZENIX_ROOT/skills/utility/proxy/run" init 2>/dev/null)"
