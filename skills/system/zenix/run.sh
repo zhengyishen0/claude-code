@@ -8,6 +8,7 @@
 #   zenix <skill> [args]     Run a skill
 #   zenix create <name>      Create new skill in custom/
 #   zenix doctor [name]      Validate skill conventions
+#   zenix setup [cmd]        Install dependencies (delegates to root setup)
 #
 
 set -euo pipefail
@@ -311,6 +312,10 @@ case "${1:-}" in
     doctor)
         cmd_doctor "${2:-}"
         ;;
+    setup)
+        shift
+        exec "$ZENIX_ROOT/setup" "$@"
+        ;;
     -h|--help)
         echo "zenix - Unified CLI dispatcher for zenix skills"
         echo ""
@@ -320,6 +325,7 @@ case "${1:-}" in
         echo "  zenix <skill> [args]     Run a skill"
         echo "  zenix create <name>      Create new skill in custom/"
         echo "  zenix doctor [name]      Validate skill conventions"
+        echo "  zenix setup [cmd]        Install dependencies (run 'zenix setup help')"
         ;;
     *)
         route_skill "$@"
