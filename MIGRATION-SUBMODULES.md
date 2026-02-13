@@ -12,7 +12,7 @@ Before:
 └── ...
 
 After:
-~/.claude-code/skills/
+~/.zenix/skills/
 ├── browser/     → github.com/zhengyi/skill-browser (submodule)
 ├── memory/      → github.com/zhengyi/skill-memory (submodule)
 └── ...
@@ -61,7 +61,7 @@ For each skill:
 ```bash
 SKILL="browser"  # repeat for each skill
 
-cd ~/.claude-code/skills/$SKILL
+cd ~/.zenix/skills/$SKILL
 
 # Initialize git
 git init
@@ -79,7 +79,7 @@ cd ..
 Or as a batch script:
 
 ```bash
-cd ~/.claude-code/skills
+cd ~/.zenix/skills
 
 for skill in browser cli daily diagnose feishu google jj lesson md2pdf memory proxy screenshot vault watchers wechat yt-transcript; do
   echo "=== Processing $skill ==="
@@ -101,7 +101,7 @@ done
 From the main project:
 
 ```bash
-cd ~/.claude-code
+cd ~/.zenix
 
 # Remove the skill folders (keep backup first)
 cp -r skills skills.bak
@@ -121,7 +121,7 @@ git commit -m "Convert skills to submodules"
 Each skill repo should have:
 
 ```gitignore
-# Runtime data (lives in ~/.claude-code/data/)
+# Runtime data (lives in ~/.zenix/data/)
 data/
 profiles/
 cache/
@@ -147,7 +147,7 @@ __pycache__/
 ### Clone Project with Skills
 
 ```bash
-git clone --recurse-submodules git@github.com:zhengyi/claude-code.git
+git clone --recurse-submodules git@github.com:zhengyi/zenix.git
 ```
 
 ### Pull Updates
@@ -163,7 +163,7 @@ git submodule update --remote --merge
 ### Edit a Skill
 
 ```bash
-cd ~/.claude-code/skills/browser
+cd ~/.zenix/skills/browser
 
 # Make changes
 git add .
@@ -171,7 +171,7 @@ git commit -m "Fix: something"
 git push
 
 # Update parent reference
-cd ~/.claude-code
+cd ~/.zenix
 git add skills/browser
 git commit -m "Update browser skill"
 ```

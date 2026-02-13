@@ -4,7 +4,7 @@
 
 set -e
 
-VAULT_DIR="$(cd ~/.claude-code/vault && pwd -P)"
+VAULT_DIR="$(cd ~/.zenix/vault && pwd -P)"
 
 TASK_ID="$1"
 

@@ -112,7 +112,7 @@ memory search "worktree create" --recall "what are the cleanup steps after merge
 
 **Output format (simple mode):**
 ```
-~/Codes/claude-code | 5a4020c4-ab2c-42b6-931e-0105c2060de8 | 3/3 keywords, 47 matches | 2025-12-04T08:59:42.725Z
+~/Codes/zenix | 5a4020c4-ab2c-42b6-931e-0105c2060de8 | 3/3 keywords, 47 matches | 2025-12-04T08:59:42.725Z
 [user] why did you propose the click and input command...
 [asst] I see the button is showing up. Let me try...
 ... and 42 more matches
@@ -122,7 +122,7 @@ Found matches in 10 sessions (searched 3 keywords)
 
 **Output format (strict mode):**
 ```
-~/Codes/claude-code | 5a4020c4-ab2c-42b6-931e-0105c2060de8 | 47 matches | 2025-12-04T08:59:42.725Z
+~/Codes/zenix | 5a4020c4-ab2c-42b6-931e-0105c2060de8 | 47 matches | 2025-12-04T08:59:42.725Z
 [user] why did you propose the click and input command...
 [asst] I see the button is showing up. Let me try...
 ... and 42 more matches

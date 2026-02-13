@@ -10,7 +10,7 @@ import time
 from datetime import datetime, timedelta
 
 # Add the parent directory to path for imports
-sys.path.insert(0, '/Users/zhengyishen/Codes/claude-code/integrations/src')
+sys.path.insert(0, '/Users/zhengyishen/Codes/zenix/integrations/src')
 
 from feishu.plugins import (
     calendar_list_events,

@@ -12,7 +12,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SKILLS_DIR="$(dirname "$SCRIPT_DIR")"
-DATA_ROOT="$HOME/.claude-code/data"
+DATA_ROOT="$HOME/.zenix/data"
 
 # Colors
 RED='\033[0;31m'
