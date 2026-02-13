@@ -22,7 +22,7 @@ if ! jj workspace add --name "${name}" "${path}" 2>/dev/null; then
 fi
 
 cd "${path}"
-jj new main -m "[${sid}] ${task}" >&2
+jj new main -m "[${sid}] ${task}"
 
 echo "Workspace: ${name}" >&2
 echo "Session:   ${sid}" >&2

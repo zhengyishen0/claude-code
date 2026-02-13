@@ -48,3 +48,6 @@ jj workspace forget "${ws}"
 rm -rf "$ws_path" 2>/dev/null
 
 echo "Merged and cleaned up"
+
+# Show graph: recent commits
+jj log -r "::@" -n 5
