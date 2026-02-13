@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # work — agent workspace management with jj
 set -euo pipefail
-: "${ZENIX_ROOT:=$HOME/.zenix}"
 
 case "${1:-}" in
     on|start) shift; "$ZENIX_ROOT/skills/system/work/scripts/work-on.sh" "$@" ;;

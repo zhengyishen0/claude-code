@@ -12,7 +12,6 @@
 
 set -euo pipefail
 
-ZENIX_ROOT="${ZENIX_ROOT:-$HOME/.zenix}"
 SKILLS_DIR="$ZENIX_ROOT/skills"
 DATA_ROOT="$ZENIX_ROOT/data"
 
