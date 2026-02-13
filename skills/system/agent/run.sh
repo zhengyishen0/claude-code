@@ -9,7 +9,5 @@
 #
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-
 # Default to claude-code
-exec "$SCRIPT_DIR/scripts/claude-code.sh" "$@"
+exec "$ZENIX_ROOT/skills/system/agent/scripts/claude-code.sh" "$@"

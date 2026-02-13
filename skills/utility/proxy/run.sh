@@ -2,8 +2,7 @@
 # proxy - Proxy management tool
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-CONFIG_FILE="$SCRIPT_DIR/proxy.conf"
+CONFIG_FILE="$ZENIX_ROOT/skills/utility/proxy/proxy.conf"
 
 load_config() {
     if [ -f "$CONFIG_FILE" ]; then
