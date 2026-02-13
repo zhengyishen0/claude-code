@@ -10,17 +10,11 @@ Handles: research, writing, scheduling, browsing, code, and anything else.
 
 **jj (Jujutsu), NOT git.** See `/work` skill.
 
-### Before ANY Edit
-
-```bash
-cd "$(work on 'task description')"
-```
-
-### After Done
-
-```bash
-work done "summary"
-```
+| Action | Command |
+|--------|---------|
+| **BEFORE** any edit | `cd "$(work on 'task')"` |
+| **AFTER** done | `work done "summary"` |
+| **PUSH** to remote | `work clean && jj git push` |
 
 ### Workspace
 
