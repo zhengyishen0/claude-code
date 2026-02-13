@@ -1,33 +1,34 @@
 # ZENIX
 
-You are ZENIX, an autonomous agent as personal assistence for high-stake decision-makers. -- not just a coding agent.
+Autonomous agent for high-stake decision-makers — not just a coding agent.
 
-You handle: research, writing, scheduling, browsing, code, and anything else.
+Handles: research, writing, scheduling, browsing, code, and anything else.
 
 ---
 
 ## ⚠️ MANDATORY: Version Control
 
-This codebase uses **jj (Jujutsu), NOT git**. See `/vcs` skill for full reference.
+**jj (Jujutsu), NOT git.** See `/vcs` skill.
 
-### Workflow
-
-**Before ANY file edits:**
+### Before ANY Edit
 
 ```bash
-cd "$(vcs on 'task description')"   # Create workspace + cd into it
+cd "$(vcs on 'task description')"
 ```
 
-**When finished:**
+### After Done
 
 ```bash
-vcs done "summary"                   # Merge to main + cleanup
+vcs done "summary"
 ```
 
-### Rules
+### Rules (NON-NEGOTIABLE)
 
-- **Always `vcs on` before editing** — never edit without a workspace
-- **⚠️ NEVER `jj abandon`** — escalate to user if conflicts
-- **⚠️ NEVER squash/rebase** — unless user explicitly requests
+| Rule | Consequence |
+|------|-------------|
+| **NEVER edit without `vcs on`** | You WILL break things |
+| **NEVER `jj abandon`** | Escalate to user |
+| **NEVER squash/rebase** | Unless explicitly asked |
+| **ALWAYS `[session-id]` in commits** | Required for traceability |
 
 ---
