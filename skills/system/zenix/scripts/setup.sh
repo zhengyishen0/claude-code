@@ -4,17 +4,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$SCRIPT_DIR"
+ZENIX_DIR="$(dirname "$SCRIPT_DIR")"
+PROJECT_DIR="$ZENIX_ROOT"
 
-# Colors
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-RED='\033[0;31m'
-NC='\033[0m' # No Color
-
-ok() { echo -e "${GREEN}✓${NC} $1"; }
-warn() { echo -e "${YELLOW}!${NC} $1"; }
-err() { echo -e "${RED}✗${NC} $1"; }
+source "$ZENIX_DIR/lib/output.sh"
 
 show_help() {
     cat <<'HELP'

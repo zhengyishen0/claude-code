@@ -15,18 +15,9 @@ set -euo pipefail
 
 SKILLS_DIR="$ZENIX_ROOT/skills"
 DATA_ROOT="$ZENIX_ROOT/data"
+ZENIX_DIR="$SKILLS_DIR/system/zenix"
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-BLUE='\033[0;34m'
-DIM='\033[0;90m'
-NC='\033[0m'
-
-ok() { echo -e "  ${GREEN}✓${NC} $*"; }
-warn() { echo -e "  ${YELLOW}!${NC} $*"; }
-err() { echo -e "  ${RED}✗${NC} $*"; }
+source "$ZENIX_DIR/lib/output.sh"
 
 # ─────────────────────────────────────────────────────────────
 # list - show all available skills
@@ -314,7 +305,7 @@ case "${1:-}" in
         ;;
     setup)
         shift
-        exec "$ZENIX_ROOT/setup" "$@"
+        exec "$ZENIX_DIR/scripts/setup.sh" "$@"
         ;;
     -h|--help)
         echo "zenix - Unified CLI dispatcher for zenix skills"
