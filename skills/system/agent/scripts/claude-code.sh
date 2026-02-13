@@ -12,6 +12,8 @@
 #
 set -euo pipefail
 
+: "${ZENIX_WORKSPACE:=$HOME/.workspace}"
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 AGENT_DIR="$(dirname "$SCRIPT_DIR")"
 CONFIG_FILE="$AGENT_DIR/config/agents.yaml"
@@ -260,7 +262,7 @@ SKILLS_PROMPT=$(get_skills_prompt "$SETTING")
 # Workspace: generate session ID and grant access
 if [[ "$WORKSPACE" == "true" ]]; then
     CLAUDE_SESSION_ID=$(openssl rand -hex 4)
-    WORKSPACE_PATH="$HOME/.workspace/[${CLAUDE_SESSION_ID}]"
+    WORKSPACE_PATH="$ZENIX_WORKSPACE/[${CLAUDE_SESSION_ID}]"
     export CLAUDE_SESSION_ID
     CLAUDE_ARGS+=("--add-dir" "$WORKSPACE_PATH")
 fi

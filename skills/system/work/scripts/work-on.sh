@@ -3,6 +3,8 @@
 # Usage: cd "$(work on 'task')"
 set -euo pipefail
 
+: "${ZENIX_WORKSPACE:=$HOME/.workspace}"
+
 task="${1:-}"
 if [ -z "$task" ]; then
     echo "Usage: work on \"task description\"" >&2
@@ -14,12 +16,12 @@ sid="${CLAUDE_SESSION_ID:-$(openssl rand -hex 4)}"
 sid="${sid:0:8}"
 
 name="[${sid}]"
-path="$HOME/.workspace/${name}"
+path="$ZENIX_WORKSPACE/${name}"
 
 # Save repo root before creating workspace
 repo_root=$(jj root)
 
-mkdir -p "$HOME/.workspace"
+mkdir -p "$ZENIX_WORKSPACE"
 
 if ! jj workspace add --name "${name}" "${path}" 2>/dev/null; then
     echo "Failed to create workspace" >&2
