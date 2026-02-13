@@ -11,7 +11,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SKILLS_DIR="$(dirname "$SCRIPT_DIR")"
+SKILLS_DIR="$(dirname "$(dirname "$SCRIPT_DIR")")"
 DATA_ROOT="$HOME/.zenix/data"
 
 # Colors
@@ -31,14 +31,27 @@ info() { echo -e "  ${DIM}$*${NC}"; }
 # new - create new skill with full scaffold
 # ─────────────────────────────────────────────────────────────
 cmd_new() {
-    local name="$1"
+    local category="$1"
+    local name="$2"
 
-    if [[ -z "$name" ]]; then
-        echo "Usage: $0 new <name>"
+    if [[ -z "$category" ]] || [[ -z "$name" ]]; then
+        echo "Usage: $0 new <category> <name>"
+        echo ""
+        echo "Categories: system, core, apps, utility, community"
         exit 1
     fi
 
-    local skill_dir="$SKILLS_DIR/$name"
+    # Validate category
+    case "$category" in
+        system|core|apps|utility|community) ;;
+        *)
+            err "Invalid category: $category"
+            echo "Valid categories: system, core, apps, utility, community"
+            exit 1
+            ;;
+    esac
+
+    local skill_dir="$SKILLS_DIR/$category/$name"
     local data_dir="$DATA_ROOT/$name"
 
     if [[ -d "$skill_dir" ]]; then
@@ -112,18 +125,26 @@ EOF
 }
 
 # ─────────────────────────────────────────────────────────────
-# list - discover and list all skills
+# list - discover and list all skills grouped by category
 # ─────────────────────────────────────────────────────────────
 cmd_list() {
-    echo -e "${BLUE}Skills:${NC}"
-    echo ""
-
     local count=0
-    for skill_md in "$SKILLS_DIR"/*/SKILL.md; do
+    local current_category=""
+
+    # Collect all skills with their categories
+    for skill_md in "$SKILLS_DIR"/*/*/SKILL.md; do
         [[ -f "$skill_md" ]] || continue
 
         local skill_dir=$(dirname "$skill_md")
         local name=$(basename "$skill_dir")
+        local category=$(basename "$(dirname "$skill_dir")")
+
+        # Print category header when it changes
+        if [[ "$category" != "$current_category" ]]; then
+            [[ -n "$current_category" ]] && echo ""
+            echo -e "${BLUE}${category}/${NC}"
+            current_category="$category"
+        fi
 
         # Parse description from frontmatter
         local desc=$(grep "^description:" "$skill_md" 2>/dev/null | sed 's/description:[[:space:]]*//' | head -1)
@@ -154,13 +175,19 @@ cmd_health() {
     local exit_code=0
 
     if [[ -n "$name" ]]; then
-        check_skill "$name" || exit_code=1
+        # Find skill by name
+        local skill_dir=$(find "$SKILLS_DIR" -maxdepth 2 -type d -name "$name" | head -1)
+        if [[ -z "$skill_dir" ]]; then
+            err "Skill not found: $name"
+            return 1
+        fi
+        check_skill_dir "$skill_dir" || exit_code=1
     else
         # Check all skills
-        for skill_md in "$SKILLS_DIR"/*/SKILL.md; do
+        for skill_md in "$SKILLS_DIR"/*/*/SKILL.md; do
             [[ -f "$skill_md" ]] || continue
-            local skill_name=$(basename "$(dirname "$skill_md")")
-            check_skill "$skill_name" || exit_code=1
+            local skill_dir=$(dirname "$skill_md")
+            check_skill_dir "$skill_dir" || exit_code=1
             echo ""
         done
     fi
@@ -168,12 +195,13 @@ cmd_health() {
     return $exit_code
 }
 
-check_skill() {
-    local name="$1"
-    local skill_dir="$SKILLS_DIR/$name"
+check_skill_dir() {
+    local skill_dir="$1"
+    local name=$(basename "$skill_dir")
+    local category=$(basename "$(dirname "$skill_dir")")
     local issues=0
 
-    echo -e "${BLUE}$name${NC}"
+    echo -e "${BLUE}${category}/${name}${NC}"
 
     # SKILL.md exists
     if [[ -f "$skill_dir/SKILL.md" ]]; then
@@ -259,7 +287,7 @@ check_skill() {
 # ─────────────────────────────────────────────────────────────
 case "${1:-}" in
     new)
-        cmd_new "${2:-}"
+        cmd_new "${2:-}" "${3:-}"
         ;;
     list)
         cmd_list
@@ -271,8 +299,10 @@ case "${1:-}" in
         echo "Skill manager"
         echo ""
         echo "Usage:"
-        echo "  $0 new <name>      Create new skill with full scaffold"
-        echo "  $0 list            List all discovered skills"
-        echo "  $0 health [name]   Check skill follows conventions"
+        echo "  $0 new <category> <name>   Create new skill"
+        echo "  $0 list                    List all discovered skills"
+        echo "  $0 health [name]           Check skill follows conventions"
+        echo ""
+        echo "Categories: system, core, apps, utility, community"
         ;;
 esac

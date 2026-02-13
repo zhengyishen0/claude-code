@@ -1,9 +1,9 @@
 #!/bin/bash
-# Build .claude/settings.json from skills/*/hooks/settings.yaml
+# Build .claude/settings.json from skills/*/*/hooks/settings.yaml
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 SETTINGS_FILE="$PROJECT_ROOT/.claude/settings.json"
 
 # Read existing settings (preserve env, statusLine, effortLevel)
@@ -20,11 +20,13 @@ fi
 # Collect all hooks from YAML files
 ALL_HOOKS='[]'
 
-for yaml_file in "$PROJECT_ROOT"/skills/*/hooks/settings.yaml; do
+for yaml_file in "$PROJECT_ROOT"/skills/*/*/hooks/settings.yaml; do
     [ -f "$yaml_file" ] || continue
 
     SKILL_DIR=$(dirname "$(dirname "$yaml_file")")
     SKILL_NAME=$(basename "$SKILL_DIR")
+    CATEGORY=$(basename "$(dirname "$SKILL_DIR")")
+    SKILL_PATH="$CATEGORY/$SKILL_NAME"
 
     # Parse YAML to JSON
     if command -v yq &>/dev/null; then
@@ -38,8 +40,8 @@ print(json.dumps(data if data else []))
 " 2>/dev/null || echo '[]')
     fi
 
-    # Add skill name to each entry
-    ENTRIES=$(echo "$ENTRIES" | jq --arg skill "$SKILL_NAME" '[.[] | . + {_skill: $skill}]')
+    # Add skill path (category/name) to each entry
+    ENTRIES=$(echo "$ENTRIES" | jq --arg skill "$SKILL_PATH" '[.[] | . + {_skill: $skill}]')
     ALL_HOOKS=$(echo "$ALL_HOOKS" "$ENTRIES" | jq -s 'add')
 done
 

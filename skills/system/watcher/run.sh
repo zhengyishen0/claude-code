@@ -15,7 +15,7 @@ set -euo pipefail
 
 # Paths
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
+PROJECT_ROOT="$(dirname "$(dirname "$(dirname "$SCRIPT_DIR")")")"
 STATE_DIR="$HOME/.local/state/watchers"
 PID_DIR="$STATE_DIR/pids"
 LOG_DIR="$STATE_DIR/logs"
@@ -620,7 +620,7 @@ case "${1:-}" in
         echo "  $0 stop <name>       Stop specific watcher"
         echo "  $0 logs <name>       Tail logs for a watcher"
         echo ""
-        echo "Watchers are discovered from: skills/*/watch/*.yaml"
+        echo "Watchers are discovered from: skills/*/*/watch/*.yaml"
         echo "State directory: $STATE_DIR"
         ;;
 esac

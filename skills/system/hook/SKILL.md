@@ -10,12 +10,12 @@ Manages Claude Code hooks with YAML config and auto-discovery.
 ## Structure
 
 ```
-skills/*/hooks/
+skills/<category>/<skill>/hooks/
 ├── settings.yaml    # Hook config for this skill
 └── *.sh             # Hook scripts
 
-skills/hook/
-├── hooks/           # Non-skill hooks
+skills/system/hook/
+├── hooks/           # Infrastructure hooks
 │   ├── settings.yaml
 │   └── persist-env.sh
 ├── scripts/
@@ -56,7 +56,7 @@ Add `hooks/settings.yaml` to any skill:
 
 ## How It Works
 
-1. `build.sh` scans all `skills/*/hooks/settings.yaml`
+1. `build.sh` scans all `skills/*/*/hooks/settings.yaml`
 2. Merges hooks into `.claude/settings.json`
 3. Preserves non-hook settings (env, statusLine, effortLevel)
 4. Watcher auto-runs build on any settings.yaml change
