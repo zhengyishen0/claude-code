@@ -13,10 +13,8 @@ Handles: research, writing, scheduling, browsing, code, and anything else.
 ### Before ANY Edit
 
 ```bash
-work on "task description" && cd ~/.workspace/[SESSION_ID]
+cd "$(work on 'task description')"
 ```
-
-SESSION_ID = first 8 chars of your `$CLAUDE_SESSION_ID`.
 
 ### After Done
 

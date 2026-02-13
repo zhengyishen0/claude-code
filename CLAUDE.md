@@ -10,4 +10,4 @@
 
 **Temp files:** Use `.tmp/` (gitignored). Not `./tmp/` or `/tmp/`.
 
-**Dotfiles:** `~/dotfiles/` — ghostty, tmux, nvim (NvChad), karabiner, zsh.
+**Dotfiles:** `~/dotfiles/` — ghostty, wezterm, tmux, nvim, zsh, git, jj, karabiner, vimium, brew.
