@@ -142,7 +142,7 @@ Common fswatch events:
 ## Example: Vault File Watcher
 
 ```yaml
-# skills/core/vault/watch/files.yaml
+# skills/agent/vault/watch/files.yaml
 name: vault-files
 type: fswatch
 path: vault/
