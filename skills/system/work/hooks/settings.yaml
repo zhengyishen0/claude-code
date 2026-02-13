@@ -1,0 +1,9 @@
+# Work skill hooks - enforce workspace usage and sync
+
+- event: PreToolUse
+  matcher: Edit|Write
+  script: guard-main.sh
+
+- event: PostToolUse
+  matcher: Edit|Write
+  script: snapshot.sh
