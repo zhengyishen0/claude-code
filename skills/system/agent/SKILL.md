@@ -1,61 +1,44 @@
 ---
 name: agent
-description: Claude Code wrapper with preconfigured model, permissions, profiles, and session management.
+description: Claude Code wrapper with preconfigured model, permissions, and session management.
 ---
 
 # Agent
 
-Replaces `cc` - launches Claude Code with settings from `config/agents.yaml`.
+Launches Claude Code with settings from `config/agents.yaml`.
 
 ## Usage
 
 ```bash
-agent "prompt"              # New session with config defaults
+agent "prompt"              # New session with 'default' setting
 agent                       # Interactive session
-agent -r                    # Pick from recent sessions (shows summaries)
+agent -r                    # Pick from recent sessions
 agent -r <partial>          # Resume by partial session ID
 agent -c                    # Continue last session
-agent -P <profile> "prompt" # Use named profile
+agent -P <setting> "prompt" # Use named setting
 ```
 
-## Session Management
-
-Find and list sessions by partial ID:
-
-```bash
-# List recent sessions (current project)
-agent -r
-
-# Resume by partial ID
-agent -r abc123
-
-# Direct script access
-scripts/session.sh find <partial>          # Returns full session ID
-scripts/session.sh find <partial> --path   # Also show file path
-scripts/session.sh list [n]                # List recent n sessions
-```
-
-## Profiles
+## Settings
 
 ```yaml
 # config/agents.yaml
-defaults:
-  model: claude-opus-4-5
-  permissions: auto
-
-profiles:
-  research:
-    model: claude-opus-4-6
-    permissions: default
-    system_prompts:
-      - prompts/research.md
-
-  quick:
-    model: claude-haiku-4-5-20251001
+settings:
+  default:
+    model: claude-opus-4-5
     permissions: auto
+    # system_prompts:
+    #   - prompts/base.md
+    # skills:
+    #   - work
+
+  custom:
+    model: claude-opus-4-5
+    permissions: default
+    # system_prompts:
+    #   - prompts/custom.md
 ```
 
-Use with: `agent -P research "deep dive into..."`
+Use with: `agent -P custom "task"`
 
 ## Overrides
 
@@ -71,9 +54,20 @@ agent --permissions default "be careful"
 | `auto` | `--dangerously-skip-permissions` | No prompts |
 | `default` | `--allow-dangerously-skip-permissions` | Prompts, can bypass |
 
+## Session Management
+
+```bash
+agent -r                    # List recent sessions
+agent -r abc123             # Resume by partial ID
+
+# Direct script access
+scripts/session.sh find <partial>
+scripts/session.sh list [n]
+```
+
 ## System Prompts
 
-Multiple files concatenated in order. Paths relative to `config/` or absolute:
+Multiple files concatenated in order. Paths relative to `config/`:
 
 ```yaml
 system_prompts:
@@ -81,19 +75,16 @@ system_prompts:
   - prompts/project.md
 ```
 
-## Skills
+## Skills Injection
 
-Inject SKILL.md content into system prompt. Supports:
+Inject SKILL.md content into system prompt:
 
 ```yaml
 skills:
   - all              # All skills
-  - core             # All skills in core/
-  - vault            # Specific skill by name
-  - core/vault       # Specific skill by path
+  - system           # All skills in system/
+  - work             # Specific skill by name
 ```
-
-Uses `skill content <target>` under the hood.
 
 ## Passthrough
 

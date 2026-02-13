@@ -3,11 +3,11 @@
 # Claude Code wrapper with preconfigured settings
 #
 # Usage:
-#   claude-code.sh "prompt"                    # New session with defaults
+#   claude-code.sh "prompt"                    # New session with 'default' setting
 #   claude-code.sh -r                          # Pick from recent sessions
 #   claude-code.sh -r <partial>                # Resume session by partial ID
 #   claude-code.sh -c                          # Continue last session
-#   claude-code.sh -P <profile> "prompt"       # Use named profile
+#   claude-code.sh -P <setting> "prompt"       # Use named setting
 #   claude-code.sh --model X "prompt"          # Override model
 #
 set -euo pipefail
@@ -18,41 +18,50 @@ CONFIG_FILE="$AGENT_DIR/config/agents.yaml"
 SESSION_SCRIPT="$SCRIPT_DIR/session.sh"
 
 # ─────────────────────────────────────────────────────────────
-# Config parsing
+# Config parsing (settings.<name>.<key>)
 # ─────────────────────────────────────────────────────────────
 
-# Get a simple key: value from config (handles defaults.key and profiles.name.key)
+# Get a value from settings.<name>.<key>
 get_config() {
     local key="$1"
-    local default="${2:-}"
-    local section="${3:-defaults}"
+    local fallback="${2:-}"
+    local name="${3:-default}"
 
     if [[ ! -f "$CONFIG_FILE" ]]; then
-        echo "$default"
+        echo "$fallback"
         return
     fi
 
     local value=""
-    local in_section=false
+    local in_settings=false
+    local in_name=false
 
     while IFS= read -r line; do
-        # Check for section start
-        if [[ "$section" == "defaults" && "$line" =~ ^defaults: ]]; then
-            in_section=true
-            continue
-        elif [[ "$section" != "defaults" && "$line" =~ ^[[:space:]]*${section}: ]]; then
-            in_section=true
+        # Find settings: block
+        if [[ "$line" =~ ^settings: ]]; then
+            in_settings=true
             continue
         fi
 
-        if [[ "$in_section" == true ]]; then
-            # Exit section on non-indented line
-            if [[ "$line" =~ ^[^[:space:]] && ! "$line" =~ ^$ ]]; then
+        # Exit settings on another top-level key
+        if [[ "$in_settings" == true && "$line" =~ ^[a-z] ]]; then
+            break
+        fi
+
+        if [[ "$in_settings" == true ]]; then
+            # Find named setting (2-space indent)
+            if [[ "$line" =~ ^[[:space:]]{2}${name}: ]]; then
+                in_name=true
+                continue
+            fi
+
+            # Exit named setting on another 2-space key
+            if [[ "$in_name" == true && "$line" =~ ^[[:space:]]{2}[a-z] ]]; then
                 break
             fi
 
-            # Look for key
-            if [[ "$line" =~ ^[[:space:]]+${key}:[[:space:]]*(.*)$ ]]; then
+            # Find key (4-space indent)
+            if [[ "$in_name" == true && "$line" =~ ^[[:space:]]{4}${key}:[[:space:]]*(.*)$ ]]; then
                 value="${BASH_REMATCH[1]}"
                 value="${value%%#*}"  # Remove comments
                 value="$(echo "$value" | xargs)"  # Trim
@@ -61,50 +70,57 @@ get_config() {
         fi
     done < "$CONFIG_FILE"
 
-    [[ -n "$value" ]] && echo "$value" || echo "$default"
+    [[ -n "$value" ]] && echo "$value" || echo "$fallback"
 }
 
 # Get system prompts list and concatenate files
 get_system_prompt() {
-    local section="${1:-defaults}"
+    local name="${1:-default}"
     local config_dir
     config_dir="$(dirname "$CONFIG_FILE")"
-    local in_section=false
+    local in_settings=false
+    local in_name=false
     local in_list=false
     local prompt=""
 
+    [[ ! -f "$CONFIG_FILE" ]] && return
+
     while IFS= read -r line; do
-        # Find section
-        if [[ "$section" == "defaults" && "$line" =~ ^defaults: ]]; then
-            in_section=true
-            continue
-        elif [[ "$section" != "defaults" && "$line" =~ ^[[:space:]]*${section}: ]]; then
-            in_section=true
+        # Find settings: block
+        if [[ "$line" =~ ^settings: ]]; then
+            in_settings=true
             continue
         fi
 
-        if [[ "$in_section" == true ]]; then
-            # Exit section on non-indented line
-            if [[ "$line" =~ ^[^[:space:]] && ! "$line" =~ ^$ ]]; then
-                break
-            fi
+        if [[ "$in_settings" == true && "$line" =~ ^[a-z] ]]; then
+            break
+        fi
 
-            # Check for system_prompts list
-            if [[ "$line" =~ ^[[:space:]]+system_prompts: ]]; then
-                in_list=true
+        if [[ "$in_settings" == true ]]; then
+            # Find named setting
+            if [[ "$line" =~ ^[[:space:]]{2}${name}: ]]; then
+                in_name=true
                 continue
             fi
 
-            # If in list, look for "- path" entries
-            if [[ "$in_list" == true ]]; then
-                # Exit list if new key at same indent
-                if [[ "$line" =~ ^[[:space:]]+[a-z_]+: ]]; then
-                    in_list=false
+            if [[ "$in_name" == true && "$line" =~ ^[[:space:]]{2}[a-z] ]]; then
+                break
+            fi
+
+            if [[ "$in_name" == true ]]; then
+                # Check for system_prompts list
+                if [[ "$line" =~ ^[[:space:]]{4}system_prompts: ]]; then
+                    in_list=true
                     continue
                 fi
 
-                # Parse "  - path" entries
-                if [[ "$line" =~ ^[[:space:]]+-[[:space:]]*(.+)$ ]]; then
+                # Exit list if new key at same indent
+                if [[ "$in_list" == true && "$line" =~ ^[[:space:]]{4}[a-z_]+: ]]; then
+                    break
+                fi
+
+                # Parse "      - path" entries (6-space indent)
+                if [[ "$in_list" == true && "$line" =~ ^[[:space:]]{6}-[[:space:]]*(.+)$ ]]; then
                     local path="${BASH_REMATCH[1]}"
                     [[ "$path" =~ ^# ]] && continue
                     path="${path%%#*}"
@@ -130,13 +146,15 @@ get_system_prompt() {
 
 # Get skills list and use skill content command
 get_skills_prompt() {
-    local section="${1:-defaults}"
+    local name="${1:-default}"
     local skill_script="$AGENT_DIR/../skill/run.sh"
-    local in_section=false
+    local in_settings=false
+    local in_name=false
     local in_list=false
     local prompt=""
 
     [[ ! -x "$skill_script" ]] && return
+    [[ ! -f "$CONFIG_FILE" ]] && return
 
     # Helper to fetch and append skill content
     fetch_skill() {
@@ -150,49 +168,52 @@ get_skills_prompt() {
     }
 
     while IFS= read -r line; do
-        # Find section
-        if [[ "$section" == "defaults" && "$line" =~ ^defaults: ]]; then
-            in_section=true
-            continue
-        elif [[ "$section" != "defaults" && "$line" =~ ^[[:space:]]*${section}: ]]; then
-            in_section=true
+        # Find settings: block
+        if [[ "$line" =~ ^settings: ]]; then
+            in_settings=true
             continue
         fi
 
-        if [[ "$in_section" == true ]]; then
-            # Exit section on non-indented line
-            if [[ "$line" =~ ^[^[:space:]] && ! "$line" =~ ^$ ]]; then
+        if [[ "$in_settings" == true && "$line" =~ ^[a-z] ]]; then
+            break
+        fi
+
+        if [[ "$in_settings" == true ]]; then
+            # Find named setting
+            if [[ "$line" =~ ^[[:space:]]{2}${name}: ]]; then
+                in_name=true
+                continue
+            fi
+
+            if [[ "$in_name" == true && "$line" =~ ^[[:space:]]{2}[a-z] ]]; then
                 break
             fi
 
-            # Check for skills - inline format: skills: [a, b, c]
-            if [[ "$line" =~ ^[[:space:]]+skills:[[:space:]]*\[(.+)\] ]]; then
-                local inline="${BASH_REMATCH[1]}"
-                # Split by comma and process each
-                IFS=',' read -ra targets <<< "$inline"
-                for target in "${targets[@]}"; do
-                    target="$(echo "$target" | xargs)"  # trim
-                    [[ -n "$target" ]] && fetch_skill "$target"
-                done
-                continue
-            fi
-
-            # Check for skills list format
-            if [[ "$line" =~ ^[[:space:]]+skills: ]]; then
-                in_list=true
-                continue
-            fi
-
-            # If in list, look for "- target" entries
-            if [[ "$in_list" == true ]]; then
-                # Exit list if new key at same indent
-                if [[ "$line" =~ ^[[:space:]]+[a-z_]+: ]]; then
-                    in_list=false
+            if [[ "$in_name" == true ]]; then
+                # Check for skills - inline format: skills: [a, b, c]
+                if [[ "$line" =~ ^[[:space:]]{4}skills:[[:space:]]*\[(.+)\] ]]; then
+                    local inline="${BASH_REMATCH[1]}"
+                    IFS=',' read -ra targets <<< "$inline"
+                    for target in "${targets[@]}"; do
+                        target="$(echo "$target" | xargs)"
+                        [[ -n "$target" ]] && fetch_skill "$target"
+                    done
                     continue
                 fi
 
-                # Parse "  - target" entries
-                if [[ "$line" =~ ^[[:space:]]+-[[:space:]]*(.+)$ ]]; then
+                # Check for skills list format
+                if [[ "$line" =~ ^[[:space:]]{4}skills: ]]; then
+                    in_list=true
+                    continue
+                fi
+
+                # Exit list if new key at same indent
+                if [[ "$in_list" == true && "$line" =~ ^[[:space:]]{4}[a-z_]+: ]]; then
+                    break
+                fi
+
+                # Parse "      - target" entries
+                if [[ "$in_list" == true && "$line" =~ ^[[:space:]]{6}-[[:space:]]*(.+)$ ]]; then
                     local target="${BASH_REMATCH[1]}"
                     [[ "$target" =~ ^# ]] && continue
                     target="${target%%#*}"
@@ -206,17 +227,16 @@ get_skills_prompt() {
     echo "$prompt"
 }
 
-# Check if profile exists
-profile_exists() {
-    local profile="$1"
-    grep -q "^[[:space:]]*${profile}:" "$CONFIG_FILE" 2>/dev/null
+# Check if setting exists
+setting_exists() {
+    local name="$1"
+    grep -q "^[[:space:]]*${name}:" "$CONFIG_FILE" 2>/dev/null
 }
 
 # ─────────────────────────────────────────────────────────────
 # Session management
 # ─────────────────────────────────────────────────────────────
 
-# Show recent sessions for selection
 show_recent_sessions() {
     if [[ ! -x "$SESSION_SCRIPT" ]]; then
         echo "Session script not found" >&2
@@ -234,13 +254,11 @@ show_recent_sessions() {
 # Main
 # ─────────────────────────────────────────────────────────────
 
-# Defaults
-PROFILE=""
+SETTING="default"
 MODEL=""
 PERMISSIONS=""
 SYSTEM_PROMPT=""
 
-# Build claude args
 CLAUDE_ARGS=()
 PROMPT=""
 RESUME_ID=""
@@ -263,8 +281,8 @@ while [[ $# -gt 0 ]]; do
             CONTINUE=true
             shift
             ;;
-        -P|--profile)
-            PROFILE="$2"
+        -P|--setting)
+            SETTING="$2"
             shift 2
             ;;
         --model)
@@ -300,24 +318,25 @@ if [[ "$SHOW_SESSIONS" == true ]]; then
     exit 0
 fi
 
-# Load from profile or defaults
-SKILLS_PROMPT=""
-if [[ -n "$PROFILE" ]]; then
-    if ! profile_exists "$PROFILE"; then
-        echo "Profile not found: $PROFILE" >&2
-        exit 1
-    fi
-    [[ -z "$MODEL" ]] && MODEL=$(get_config "model" "" "$PROFILE")
-    [[ -z "$PERMISSIONS" ]] && PERMISSIONS=$(get_config "permissions" "" "$PROFILE")
-    SYSTEM_PROMPT=$(get_system_prompt "$PROFILE")
-    SKILLS_PROMPT=$(get_skills_prompt "$PROFILE")
+# Load from setting
+if ! setting_exists "$SETTING"; then
+    echo "Setting not found: $SETTING" >&2
+    exit 1
 fi
 
-# Fall back to defaults
-[[ -z "$MODEL" ]] && MODEL=$(get_config "model" "claude-sonnet-4-5-20250929" "defaults")
-[[ -z "$PERMISSIONS" ]] && PERMISSIONS=$(get_config "permissions" "default" "defaults")
-[[ -z "$SYSTEM_PROMPT" ]] && SYSTEM_PROMPT=$(get_system_prompt "defaults")
-[[ -z "$SKILLS_PROMPT" ]] && SKILLS_PROMPT=$(get_skills_prompt "defaults")
+[[ -z "$MODEL" ]] && MODEL=$(get_config "model" "claude-opus-4-5" "$SETTING")
+[[ -z "$PERMISSIONS" ]] && PERMISSIONS=$(get_config "permissions" "auto" "$SETTING")
+WORKSPACE=$(get_config "workspace" "false" "$SETTING")
+SYSTEM_PROMPT=$(get_system_prompt "$SETTING")
+SKILLS_PROMPT=$(get_skills_prompt "$SETTING")
+
+# Workspace: generate session ID and grant access
+if [[ "$WORKSPACE" == "true" ]]; then
+    CLAUDE_SESSION_ID=$(openssl rand -hex 4)
+    WORKSPACE_PATH="$HOME/.workspace/[${CLAUDE_SESSION_ID}]"
+    export CLAUDE_SESSION_ID
+    CLAUDE_ARGS+=("--add-dir" "$WORKSPACE_PATH")
+fi
 
 # Combine system prompt and skills
 if [[ -n "$SKILLS_PROMPT" ]]; then

@@ -1,27 +1,16 @@
-# Agent configuration
-# Override with flags: agent --model X --permissions auto "prompt"
-# Use profile: agent -P research "prompt"
+# Agent settings
+# Usage: agent -P <name> "prompt"
+# No -P flag uses 'default'
 
-defaults:
-  model: claude-opus-4-5
-  permissions: auto  # auto (skip all) | default (allow skip)
-  # system_prompts:
-  #   - prompts/base.md
-  # skills:
-  #   - vault
-  #   - memory
-
-profiles:
+settings:
   default:
     model: claude-opus-4-5
     permissions: auto
+    workspace: true
+    skills: [all]
 
-  # research:
-  #   model: claude-opus-4-6
-  #   permissions: default
-  #   system_prompts:
-  #     - prompts/research.md
-  #
-  # quick:
-  #   model: claude-haiku-4-5-20251001
-  #   permissions: auto
+  custom:
+    model: claude-opus-4-5
+    permissions: default
+    workspace: true
+    # skills: [all]

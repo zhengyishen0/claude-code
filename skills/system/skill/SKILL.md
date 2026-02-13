@@ -9,8 +9,10 @@ How to create reusable, inter-powering skills.
 
 ## Structure
 
+Skills live in `~/.zenix/skills/<category>/<name>/` (repo is symlinked to `~/.zenix`).
+
 ```
-skills/<name>/
+skills/<category>/<name>/
 ├── SKILL.md              # Context for AI (required)
 ├── run.sh                # Main entry point
 ├── config/               # YAML configuration files
@@ -22,6 +24,8 @@ skills/<name>/
 ├── lib/                  # Shared code (sourced, not executed)
 └── data -> ~/.zenix/data/<name>/   # Symlink to persistent storage
 ```
+
+**Categories:** `core`, `system`, `service`, `utility`, `custom` (for user-created skills)
 
 ## Layers
 
@@ -64,6 +68,19 @@ What this skill does.
 ## Configuration
 ```
 
+## Config (config/*.yaml)
+
+Skill-specific configuration. Format varies by skill, but typically:
+
+```yaml
+# config/settings.yaml
+enabled: true
+options:
+  key: value
+```
+
+Scripts read config via: `yq '.options.key' "$SCRIPT_DIR/config/settings.yaml"`
+
 ## Watcher (watch/*.yaml)
 
 ```yaml
@@ -94,9 +111,13 @@ action: scripts/periodic.sh
 ## Creating a New Skill
 
 ```bash
-mkdir -p skills/<name>/{scripts,prompts,templates}
+# Recommended: use the skill manager
+~/.zenix/skills/system/skill/run.sh new <name>
 
-cat > skills/<name>/SKILL.md << 'EOF'
+# Manual (if needed)
+mkdir -p ~/.zenix/skills/custom/<name>/{scripts,prompts,templates,config}
+
+cat > ~/.zenix/skills/custom/<name>/SKILL.md << 'EOF'
 ---
 name: <name>
 description: What it does
@@ -107,10 +128,7 @@ EOF
 
 # Data (if needed)
 mkdir -p ~/.zenix/data/<name>
-ln -s ~/.zenix/data/<name> skills/<name>/data
-
-# Watcher (if needed)
-mkdir -p skills/<name>/watch
+ln -s ~/.zenix/data/<name> ~/.zenix/skills/custom/<name>/data
 ```
 
 ## Examples

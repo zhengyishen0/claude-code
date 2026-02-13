@@ -1,20 +1,17 @@
 #!/usr/bin/env bash
-# vcs done - Merge current workspace to main and clean up
-# Usage: vcs done ["summary"]
+# work done - Merge current workspace to main and clean up
+# Usage: work done ["summary"]
 set -euo pipefail
 
-# Find workspace name: explicit arg, or from session ID, or detect from cwd
-if [ -n "${1:-}" ] && [[ "$1" == "["* ]]; then
-    ws="$1"
-    summary="${2:-Merge ${ws}}"
-elif [ -n "${CLAUDE_SESSION_ID:-}" ]; then
+# Find workspace name from session ID or current directory
+if [ -n "${CLAUDE_SESSION_ID:-}" ]; then
     ws="[${CLAUDE_SESSION_ID:0:8}]"
     summary="${1:-Merge ${ws}}"
 else
     # Try to detect from current directory name
     ws="$(basename "$PWD")"
     if [[ "$ws" != "["*"]" ]]; then
-        echo "Usage: vcs done [\"summary\"]"
+        echo "Usage: work done [\"summary\"]"
         echo "  Run from workspace dir, or set CLAUDE_SESSION_ID"
         echo ""
         echo "Active workspaces:"
@@ -24,12 +21,19 @@ else
     summary="${1:-Merge ${ws}}"
 fi
 
-ws_path="$(dirname ~/.zenix)/${ws}"
+ws_path="$HOME/.workspace/${ws}"
 
 if [ ! -d "$ws_path" ]; then
     echo "Workspace not found: $ws_path"
     exit 1
 fi
+
+# Read repo root saved by work-on
+if [ ! -f "$ws_path/.repo_root" ]; then
+    echo "Missing .repo_root file in workspace"
+    exit 1
+fi
+repo_root=$(cat "$ws_path/.repo_root")
 
 change=$(cd "$ws_path" && jj log -r @ --no-graph -T 'change_id.short()')
 
@@ -40,7 +44,7 @@ fi
 
 echo "Merging ${change} from ${ws}..."
 
-cd ~/.zenix && \
+cd "$repo_root" && \
 jj new main "${change}" -m "${summary}" && \
 jj bookmark set main -r @ && \
 jj workspace forget "${ws}"

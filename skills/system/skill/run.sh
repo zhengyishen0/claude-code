@@ -3,9 +3,10 @@
 # Skill manager - create, list, health check
 #
 # Usage:
-#   run.sh new <name>      Create new skill with full scaffold
-#   run.sh list            List all discovered skills
-#   run.sh health [name]   Check skill follows conventions
+#   run.sh new <name>       Create new skill in custom/ category
+#   run.sh list             List all discovered skills
+#   run.sh health [name]    Check skill follows conventions
+#   run.sh content <target> Output SKILL.md content for injection
 #
 
 set -euo pipefail
@@ -28,32 +29,19 @@ err() { echo -e "  ${RED}✗${NC} $*"; }
 info() { echo -e "  ${DIM}$*${NC}"; }
 
 # ─────────────────────────────────────────────────────────────
-# new - create new skill with full scaffold
+# new - create new skill with full scaffold (always in custom/)
 # ─────────────────────────────────────────────────────────────
 cmd_new() {
-    local category="$1"
-    local name="$2"
+    local name="$1"
 
-    # Discover categories dynamically
-    local categories=()
-    for dir in "$SKILLS_DIR"/*/; do
-        [[ -d "$dir" ]] && categories+=("$(basename "$dir")")
-    done
-    local categories_str="${categories[*]}"
-
-    if [[ -z "$category" ]] || [[ -z "$name" ]]; then
-        echo "Usage: $0 new <category> <name>"
-        echo ""
-        echo "Categories: ${categories_str// /, }"
+    if [[ -z "$name" ]]; then
+        echo "Usage: $0 new <name>"
         exit 1
     fi
 
-    # Validate category exists
-    if [[ ! -d "$SKILLS_DIR/$category" ]]; then
-        err "Invalid category: $category"
-        echo "Valid categories: ${categories_str// /, }"
-        exit 1
-    fi
+    # Always create in custom/ category
+    local category="custom"
+    mkdir -p "$SKILLS_DIR/$category"
 
     local skill_dir="$SKILLS_DIR/$category/$name"
     local data_dir="$DATA_ROOT/$name"
@@ -342,7 +330,7 @@ cmd_content() {
 # ─────────────────────────────────────────────────────────────
 case "${1:-}" in
     new)
-        cmd_new "${2:-}" "${3:-}"
+        cmd_new "${2:-}"
         ;;
     list)
         cmd_list
@@ -353,11 +341,11 @@ case "${1:-}" in
     content)
         cmd_content "${2:-}"
         ;;
-    *)
+    -h|--help|*)
         echo "Skill manager"
         echo ""
         echo "Usage:"
-        echo "  $0 new <category> <name>   Create new skill"
+        echo "  $0 new <name>              Create new skill (in custom/)"
         echo "  $0 list                    List all discovered skills"
         echo "  $0 health [name]           Check skill follows conventions"
         echo "  $0 content <target>        Output SKILL.md content"
@@ -367,9 +355,5 @@ case "${1:-}" in
         echo "  <category>       All skills in category (e.g., core)"
         echo "  <name>           Specific skill (e.g., vault)"
         echo "  <cat/name>       Specific skill (e.g., core/vault)"
-        echo ""
-        echo -n "Categories: "
-        /bin/ls -1 "$SKILLS_DIR" | tr '\n' ' '
-        echo ""
         ;;
 esac
