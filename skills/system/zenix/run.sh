@@ -1,13 +1,13 @@
 #!/bin/bash
 #
-# next - Unified CLI dispatcher for zenix skills
+# zenix - Unified CLI dispatcher for zenix skills
 #
 # Usage:
-#   next                    List available skills
-#   next list               Same as above
-#   next <skill> [args]     Run a skill
-#   next create <name>      Create new skill in custom/
-#   next doctor [name]      Validate skill conventions
+#   zenix                    List available skills
+#   zenix list               Same as above
+#   zenix <skill> [args]     Run a skill
+#   zenix create <name>      Create new skill in custom/
+#   zenix doctor [name]      Validate skill conventions
 #
 
 set -euo pipefail
@@ -60,7 +60,7 @@ cmd_list() {
     done
 
     echo ""
-    echo -e "${DIM}Use \`next <skill>\` to run a skill.${NC}"
+    echo -e "${DIM}Use \`zenix <skill>\` to run a skill.${NC}"
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -70,7 +70,7 @@ cmd_create() {
     local name="$1"
 
     if [[ -z "$name" ]]; then
-        echo "Usage: next create <name>"
+        echo "Usage: zenix create <name>"
         exit 1
     fi
 
@@ -151,7 +151,7 @@ EOF
     echo "Next steps:"
     echo "  1. Edit $skill_dir/SKILL.md"
     echo "  2. Edit $skill_dir/run.sh"
-    echo "  3. Run: next $name"
+    echo "  3. Run: zenix $name"
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -290,7 +290,7 @@ route_skill() {
         else
             err "Skill not found: $skill_name"
             echo ""
-            echo "Run 'next' to see available skills."
+            echo "Run 'zenix' to see available skills."
         fi
         exit 1
     fi
@@ -312,14 +312,14 @@ case "${1:-}" in
         cmd_doctor "${2:-}"
         ;;
     -h|--help)
-        echo "next - Unified CLI dispatcher for zenix skills"
+        echo "zenix - Unified CLI dispatcher for zenix skills"
         echo ""
         echo "Usage:"
-        echo "  next                    List available skills"
-        echo "  next list               Same as above"
-        echo "  next <skill> [args]     Run a skill"
-        echo "  next create <name>      Create new skill in custom/"
-        echo "  next doctor [name]      Validate skill conventions"
+        echo "  zenix                    List available skills"
+        echo "  zenix list               Same as above"
+        echo "  zenix <skill> [args]     Run a skill"
+        echo "  zenix create <name>      Create new skill in custom/"
+        echo "  zenix doctor [name]      Validate skill conventions"
         ;;
     *)
         route_skill "$@"

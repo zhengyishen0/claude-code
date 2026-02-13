@@ -1,20 +1,20 @@
 ---
-name: next
+name: zenix
 description: Unified CLI dispatcher. MUST READ when creating new skills.
 ---
 
-# next
+# zenix
 
 Unified command dispatcher for the zenix skill system.
 
 ## Usage
 
 ```bash
-next                    # List available skills
-next list               # Same as above
-next <skill> [args]     # Run a skill
-next create <name>      # Create new skill in custom/
-next doctor [name]      # Validate skill conventions
+zenix                    # List available skills
+zenix list               # Same as above
+zenix <skill> [args]     # Run a skill
+zenix create <name>      # Create new skill in custom/
+zenix doctor [name]      # Validate skill conventions
 ```
 
 ## Setup
@@ -28,12 +28,12 @@ export PATH="$HOME/.zenix/bin:$PATH"
 ## Examples
 
 ```bash
-next                    # See all available skills
-next work on "task"     # Start working on a task
-next browser open       # Open browser
-next create my-tool     # Create new skill
-next doctor             # Check all skills
-next doctor vault       # Check specific skill
+zenix                    # See all available skills
+zenix work on "task"     # Start working on a task
+zenix browser open       # Open browser
+zenix create my-tool     # Create new skill
+zenix doctor             # Check all skills
+zenix doctor vault       # Check specific skill
 ```
 
 ---
@@ -65,7 +65,7 @@ skills/<category>/<name>/
 | File | Purpose | Discovery |
 |------|---------|-----------|
 | SKILL.md | AI context when `/skill` invoked | By name |
-| run.sh | CLI entry point | Via `next <skill>` |
+| run.sh | CLI entry point | Via `zenix <skill>` |
 | watch/*.yaml | Event triggers | Auto by watcher |
 | hooks/*.sh | Claude Code lifecycle | Via `.claude/settings.json` |
 

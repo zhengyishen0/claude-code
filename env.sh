@@ -3,7 +3,7 @@
 
 export ZENIX_ROOT="$HOME/.zenix"
 
-# Add bin/ to PATH (skill commands: work, browser, next, etc.)
+# Add bin/ to PATH (skill commands: zenix, agent, work, etc.)
 export PATH="$ZENIX_ROOT/bin:$PATH"
 
 # Dangerous command aliases (bypass for blocked commands)
@@ -17,6 +17,7 @@ fi
 unset _BLOCKED_YAML _alias _cmd
 
 # Additional aliases
+alias zz='agent'
 alias claude-ps='pgrep -fl "^claude"'
 alias claude-kill='pkill -9 "^claude"'
 
