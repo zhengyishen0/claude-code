@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 
 SEARCH_SCRIPT = Path(__file__).parent.parent / "search.sh"
-INDEX_FILE = Path.home() / ".claude" / "projects" / ".." / ".." / "Codes/claude-code/memory/data/memory-index.tsv"
+INDEX_FILE = Path.home() / ".claude" / "projects" / ".." / ".." / "Codes/zenix/memory/data/memory-index.tsv"
 
 # Use the symlinked index in the worktree
 INDEX_FILE = Path(__file__).parent.parent / "data" / "memory-index.tsv"

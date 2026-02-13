@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# source ~/.claude-code/env.sh
+# source ~/.zenix/env.sh
 
 # Skill aliases (skills/*/run → command name)
-for _skill in ~/.claude-code/skills/*/run; do
+for _skill in ~/.zenix/skills/*/run; do
     [[ -x "$_skill" ]] || continue
     _name=$(basename "$(dirname "$_skill")")
     alias $_name="$_skill"
@@ -16,11 +16,11 @@ cc() {
         if [[ -z "$partial" ]]; then
             echo "Usage: cc -r <partial-session-id>" >&2
             echo "" >&2
-            ~/.claude-code/skills/session/run list 5
+            ~/.zenix/skills/session/run list 5
             return 1
         fi
         local session_id
-        session_id=$(~/.claude-code/skills/session/run find "$partial") || return 1
+        session_id=$(~/.zenix/skills/session/run find "$partial") || return 1
         echo "Resuming: $session_id" >&2
         shift 2
         command claude --resume "$session_id" "$@" --model claude-opus-4-5 --allow-dangerously-skip-permissions
@@ -31,4 +31,4 @@ cc() {
 
 alias claude-ps='pgrep -fl "^claude"'
 alias claude-kill='pkill -9 "^claude"'
-eval "$(~/.claude-code/skills/proxy/run init 2>/dev/null)"
+eval "$(~/.zenix/skills/proxy/run init 2>/dev/null)"

@@ -6,8 +6,8 @@
 
 set -e
 
-SKILL_DIR=~/.claude-code/skills/vault
-VAULT_DIR="$(cd ~/.claude-code/vault && pwd -P)"
+SKILL_DIR=~/.zenix/skills/vault
+VAULT_DIR="$(cd ~/.zenix/vault && pwd -P)"
 
 # Get absolute path for note (before cd'ing later)
 NOTE_PATH="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"

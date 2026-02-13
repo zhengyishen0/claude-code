@@ -1,6 +1,6 @@
 # Data & Structure Migration Plan
 
-Restructure the project as `~/.claude-code` with centralized data management.
+Restructure the project as `~/.zenix` with centralized data management.
 
 ## Overview
 
@@ -15,13 +15,13 @@ Before:
 ├── projects/                 # Auto-memory per project
 └── settings.json
 
-/Users/zhengyishen/Codes/claude-code/
+/Users/zhengyishen/Codes/zenix/
 ├── .claude/
 │   └── skills -> ~/.claude/skills  # Symlink
 └── ...
 
 After:
-~/.claude-code/               # Single source of truth
+~/.zenix/               # Single source of truth
 ├── skills/                   # Code only (submodules)
 ├── data/                     # All runtime data (gitignored)
 │   ├── browser/
@@ -33,15 +33,15 @@ After:
 ├── vault/
 └── settings.json
 
-~/.claude -> ~/.claude-code   # Symlink for Claude compatibility
+~/.claude -> ~/.zenix   # Symlink for Claude compatibility
 ```
 
 ## Why This Structure
 
 1. **Separation of concerns** - Code vs data clearly separated
-2. **Single location** - Everything under `~/.claude-code`
+2. **Single location** - Everything under `~/.zenix`
 3. **Git-friendly** - `data/` gitignored, skills as submodules
-4. **Portable paths** - All skills use `~/.claude-code/data/SKILL/`
+4. **Portable paths** - All skills use `~/.zenix/data/SKILL/`
 
 ## Data Inventory
 
@@ -67,7 +67,7 @@ After:
 ## Step 1: Create New Structure
 
 ```bash
-cd /Users/zhengyishen/Codes/claude-code
+cd /Users/zhengyishen/Codes/zenix
 
 # Create data directory structure
 mkdir -p data/{browser,memory,google,feishu}
@@ -115,7 +115,7 @@ mv ~/.config/api/feishu/* ./data/feishu/
 
 ## Step 4: Update Skills to Use New Paths
 
-Each skill needs to look for data in `~/.claude-code/data/SKILL/`.
+Each skill needs to look for data in `~/.zenix/data/SKILL/`.
 
 ### browser/SKILL.md or browser/*.py
 
@@ -124,7 +124,7 @@ Each skill needs to look for data in `~/.claude-code/data/SKILL/`.
 DATA_DIR = Path(__file__).parent / 'data'
 
 # After
-DATA_DIR = Path.home() / '.claude-code' / 'data' / 'browser'
+DATA_DIR = Path.home() / '.zenix' / 'data' / 'browser'
 ```
 
 ### memory/SKILL.md or memory/*.sh
@@ -134,7 +134,7 @@ DATA_DIR = Path.home() / '.claude-code' / 'data' / 'browser'
 DATA_DIR="$(dirname "$0")/data"
 
 # After
-DATA_DIR="$HOME/.claude-code/data/memory"
+DATA_DIR="$HOME/.zenix/data/memory"
 ```
 
 ### google/auth.py
@@ -144,7 +144,7 @@ DATA_DIR="$HOME/.claude-code/data/memory"
 CONFIG_DIR = Path.home() / '.config' / 'api' / 'google'
 
 # After
-CONFIG_DIR = Path.home() / '.claude-code' / 'data' / 'google'
+CONFIG_DIR = Path.home() / '.zenix' / 'data' / 'google'
 ```
 
 ### feishu/auth.py
@@ -154,7 +154,7 @@ CONFIG_DIR = Path.home() / '.claude-code' / 'data' / 'google'
 CONFIG_DIR = Path.home() / '.config' / 'api' / 'feishu'
 
 # After
-CONFIG_DIR = Path.home() / '.claude-code' / 'data' / 'feishu'
+CONFIG_DIR = Path.home() / '.zenix' / 'data' / 'feishu'
 ```
 
 ## Step 5: Set Up Symlink
@@ -164,10 +164,10 @@ CONFIG_DIR = Path.home() / '.claude-code' / 'data' / 'feishu'
 mv ~/.claude ~/.claude.bak
 
 # Create symlink
-ln -s /Users/zhengyishen/Codes/claude-code ~/.claude-code
+ln -s /Users/zhengyishen/Codes/zenix ~/.zenix
 
 # Also link as ~/.claude for Claude compatibility
-ln -s ~/.claude-code ~/.claude
+ln -s ~/.zenix ~/.claude
 ```
 
 ## Step 6: Update Project References
@@ -177,9 +177,9 @@ ln -s ~/.claude-code ~/.claude
 ```markdown
 ## Environment
 
-Project root: `~/.claude-code/`
-Skills: `~/.claude-code/skills/`
-Data: `~/.claude-code/data/`
+Project root: `~/.zenix/`
+Skills: `~/.zenix/skills/`
+Data: `~/.zenix/data/`
 ```
 
 ### hooks/
@@ -189,7 +189,7 @@ Update any hooks that reference old paths.
 ## Final Structure
 
 ```
-~/.claude-code/
+~/.zenix/
 ├── skills/                    # Git submodules
 │   ├── browser/
 │   ├── memory/
@@ -215,7 +215,7 @@ Update any hooks that reference old paths.
 ├── .gitignore
 └── settings.json
 
-~/.claude -> ~/.claude-code    # Symlink
+~/.claude -> ~/.zenix    # Symlink
 ```
 
 ## Verification Checklist
@@ -223,7 +223,7 @@ Update any hooks that reference old paths.
 - [ ] `data/` folder created with correct structure
 - [ ] All runtime data moved from skills to data/
 - [ ] Skills updated to use new data paths
-- [ ] Symlink `~/.claude` -> `~/.claude-code` works
+- [ ] Symlink `~/.claude` -> `~/.zenix` works
 - [ ] `data/` is gitignored
 - [ ] Skills still function correctly:
   - [ ] `/browser` can launch Chrome
@@ -236,7 +236,7 @@ Update any hooks that reference old paths.
 
 ```bash
 # Restore original structure
-rm ~/.claude ~/.claude-code
+rm ~/.claude ~/.zenix
 mv ~/.claude.bak ~/.claude
 
 # Restore data to original locations

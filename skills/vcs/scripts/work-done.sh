@@ -24,7 +24,7 @@ else
     summary="${1:-Merge ${ws}}"
 fi
 
-ws_path="$(dirname ~/.claude-code)/${ws}"
+ws_path="$(dirname ~/.zenix)/${ws}"
 
 if [ ! -d "$ws_path" ]; then
     echo "Workspace not found: $ws_path"
@@ -40,7 +40,7 @@ fi
 
 echo "Merging ${change} from ${ws}..."
 
-cd ~/.claude-code && \
+cd ~/.zenix && \
 jj new main "${change}" -m "${summary}" && \
 jj bookmark set main -r @ && \
 jj workspace forget "${ws}"

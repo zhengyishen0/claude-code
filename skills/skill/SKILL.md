@@ -19,7 +19,7 @@ skills/<name>/
 ├── templates/            # Document templates
 ├── scripts/              # Standalone executables
 ├── lib/                  # Shared code (sourced, not executed)
-└── data -> ~/.claude-code/data/<name>/   # Symlink to persistent storage
+└── data -> ~/.zenix/data/<name>/   # Symlink to persistent storage
 ```
 
 ## Layers
@@ -34,8 +34,8 @@ skills/<name>/
 ## Data Convention
 
 ```bash
-mkdir -p ~/.claude-code/data/<name>
-ln -s ~/.claude-code/data/<name> skills/<name>/data
+mkdir -p ~/.zenix/data/<name>
+ln -s ~/.zenix/data/<name> skills/<name>/data
 ```
 
 Scripts use relative `./data` — portable, no hardcoded paths.
@@ -43,7 +43,7 @@ Scripts use relative `./data` — portable, no hardcoded paths.
 | Location | Contains | In Git |
 |----------|----------|--------|
 | `skills/<name>/` | Code, config, prompts | Yes |
-| `~/.claude-code/data/<name>/` | Runtime data, state | No |
+| `~/.zenix/data/<name>/` | Runtime data, state | No |
 | `skills/<name>/data` | Symlink | Yes (link only) |
 
 ## SKILL.md Format
@@ -105,8 +105,8 @@ description: What it does
 EOF
 
 # Data (if needed)
-mkdir -p ~/.claude-code/data/<name>
-ln -s ~/.claude-code/data/<name> skills/<name>/data
+mkdir -p ~/.zenix/data/<name>
+ln -s ~/.zenix/data/<name> skills/<name>/data
 
 # Watcher (if needed)
 mkdir -p skills/<name>/watch

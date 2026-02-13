@@ -14,7 +14,7 @@ sid="${CLAUDE_SESSION_ID:-$(openssl rand -hex 4)}"
 sid="${sid:0:8}"
 
 name="[${sid}]"
-path="$(dirname ~/.claude-code)/${name}"
+path="$(dirname ~/.zenix)/${name}"
 
 if ! jj workspace add --name "${name}" "${path}" 2>/dev/null; then
     echo "Failed to create workspace" >&2

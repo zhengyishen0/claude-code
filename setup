@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# setup - Unified installation for claude-code
+# setup - Unified installation for zenix
 
 set -euo pipefail
 
@@ -18,7 +18,7 @@ err() { echo -e "${RED}✗${NC} $1"; }
 
 show_help() {
     cat <<'HELP'
-setup - Install and configure claude-code
+setup - Install and configure zenix
 
 USAGE:
     setup                 Show installation status
@@ -50,7 +50,7 @@ check_deps() {
 }
 
 check_shell() {
-    grep -q "source.*claude-code/env.sh" ~/.zshrc 2>/dev/null
+    grep -q "source.*zenix/env.sh" ~/.zshrc 2>/dev/null
 }
 
 check_git_hooks() {
@@ -69,7 +69,7 @@ check_daemon() {
 }
 
 show_status() {
-    echo "=== claude-code Setup Status ==="
+    echo "=== zenix Setup Status ==="
     echo ""
 
     if check_deps; then
@@ -139,7 +139,7 @@ install_shell() {
 
     local source_line="source \"$PROJECT_DIR/env.sh\""
 
-    if grep -q "source.*claude-code/env.sh" ~/.zshrc 2>/dev/null; then
+    if grep -q "source.*zenix/env.sh" ~/.zshrc 2>/dev/null; then
         ok "env.sh already in ~/.zshrc"
     else
         echo "" >> ~/.zshrc
@@ -180,7 +180,7 @@ install_daemon() {
 }
 
 install_all() {
-    echo "=== Installing claude-code ==="
+    echo "=== Installing zenix ==="
     echo ""
     install_deps
     echo ""
@@ -196,7 +196,7 @@ install_all() {
 }
 
 uninstall_all() {
-    echo "=== Uninstalling claude-code ==="
+    echo "=== Uninstalling zenix ==="
     echo ""
 
     # Remove daemon
