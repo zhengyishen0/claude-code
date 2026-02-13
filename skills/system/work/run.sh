@@ -8,7 +8,7 @@ case "${1:-}" in
     done|end) shift; "$ZENIX_ROOT/skills/system/work/scripts/work-done.sh" "$@" ;;
     *)
         echo "Usage: work <on|done> [args]"
-        echo "  on \"task\"        Create workspace (use: eval \"\$(work on 'task')\")"
+        echo "  on \"task\"        Create workspace (use: cd \"\$(work on 'task')\")"
         echo "  done [\"summary\"]  Merge to main and cleanup"
         exit 1
         ;;
