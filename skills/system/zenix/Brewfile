@@ -1,0 +1,19 @@
+# Agent Brewfile - minimal tools for AI agents
+# Install: brew bundle --file=skills/system/cli/Brewfile
+
+# Version control (mandatory)
+brew "jj"            # jujutsu - next-gen VCS
+brew "gh"            # github cli
+
+# Data processing
+brew "yq"            # yaml processor (used in hooks)
+brew "jaq"           # json processor
+brew "xsv"           # csv toolkit
+
+# File operations
+brew "fd"            # fast find
+brew "ripgrep"       # fast grep
+brew "fswatch"       # file watcher (daemon)
+
+# Build & runtime
+brew "uv"            # python package manager
