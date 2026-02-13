@@ -2,11 +2,9 @@
 # work — agent workspace management with jj
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-
 case "${1:-}" in
-    on|start) shift; "$SCRIPT_DIR/scripts/work-on.sh" "$@" ;;
-    done|end) shift; "$SCRIPT_DIR/scripts/work-done.sh" "$@" ;;
+    on|start) shift; "$ZENIX_ROOT/skills/system/work/scripts/work-on.sh" "$@" ;;
+    done|end) shift; "$ZENIX_ROOT/skills/system/work/scripts/work-done.sh" "$@" ;;
     *)
         echo "Usage: work <on|done> [args]"
         echo "  on \"task\"       Create workspace, then cd to it"

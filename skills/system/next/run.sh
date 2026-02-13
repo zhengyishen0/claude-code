@@ -128,11 +128,9 @@ EOF
 #!/bin/bash
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-
 case "${1:-}" in
     *)
-        echo "Usage: next $SKILL_NAME <command>"
+        echo "Usage: $SKILL_NAME <command>"
         echo ""
         echo "Commands:"
         echo "  TODO: Add commands"
