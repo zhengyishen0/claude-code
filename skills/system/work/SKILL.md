@@ -20,11 +20,11 @@ work done "summary"
 work drop
 
 # Detect orphans, clean empty leaf
-work clean      # interactive
+work clean      # interactive (pre-push check)
 work clean -y   # auto-confirm (for scripts/agents)
 
-# Push (clean first)
-work clean -y && jj git push
+# Push (with pre-push check)
+work clean && jj git push
 ```
 
 ## Example
@@ -80,7 +80,7 @@ work done "fixed login validation"
 | Log | `git log` | `jj log` |
 | Commit | `git add && git commit` | `jj new -m "msg"` |
 | Amend | `git commit --amend` | `jj describe -m "msg"` |
-| Push | `git push` | `work clean -y && jj git push` |
+| Push | `git push` | `work clean && jj git push` |
 
 ### Critical Difference
 

@@ -12,7 +12,7 @@ case "${1:-}" in
         echo "  on \"task\"        Create workspace (use: cd \"\$(work on 'task')\")"
         echo "  done [\"summary\"]  Merge to main and cleanup"
         echo "  drop              Abandon workspace without merging"
-        echo "  clean [-y]        Detect orphans, clean empty leaf"
+        echo "  clean [-y]        Detect orphans, clean empty leaf (pre-push check)"
         exit 1
         ;;
 esac
