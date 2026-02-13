@@ -1,47 +1,19 @@
-# Modern CLI Tools Brewfile
-# Install: brew bundle --file=skills/cli/Brewfile
+# Agent Brewfile - minimal tools for AI agents
+# Install: brew bundle --file=skills/system/cli/Brewfile
 
-# Core replacements
-brew "bat"           # cat replacement - syntax highlighting
-brew "eza"           # ls replacement - colors, git, icons
-brew "fd"            # find replacement - faster, simpler
-brew "ripgrep"       # grep replacement - fastest
-brew "sd"            # sed replacement - intuitive
-brew "dust"          # du replacement - visual
-brew "duf"           # df replacement - beautiful
-brew "btop"          # top replacement - gorgeous
-brew "procs"         # ps replacement - colorful
-brew "git-delta"     # diff replacement - syntax aware
-brew "choose"        # cut replacement - simpler
-brew "jaq"           # jq replacement - faster
-brew "xh"            # curl replacement - colorful
-brew "zoxide"        # cd replacement - smart jump
-brew "tealdeer"      # man replacement - practical examples
-brew "hexyl"         # hexdump replacement - colorful
-
-# Productivity
-brew "fzf"           # fuzzy finder
-brew "yazi"          # terminal file manager
-brew "lazygit"       # git TUI
-brew "lazyjj"        # jj TUI
-brew "starship"      # cross-shell prompt
-brew "just"          # modern make
-brew "tokei"         # code statistics
-brew "xsv"           # csv toolkit
-brew "entr"          # run on file change
-brew "watchexec"     # file watcher
-brew "gping"         # ping with graph
-brew "cheat"         # cheatsheets
-
-# Version control
+# Version control (mandatory)
 brew "jj"            # jujutsu - next-gen VCS
 brew "gh"            # github cli
 
-# Shells and shell enhancements
-brew "zsh-autosuggestions"
-brew "zsh-syntax-highlighting"
-brew "zsh-history-substring-search"
+# Data processing
+brew "yq"            # yaml processor (used in hooks)
+brew "jaq"           # json processor
+brew "xsv"           # csv toolkit
 
-# Optional but nice
-brew "neovim"        # better vim
-brew "tmux"          # terminal multiplexer
+# File operations
+brew "fd"            # fast find
+brew "ripgrep"       # fast grep
+brew "fswatch"       # file watcher (daemon)
+
+# Build & runtime
+brew "uv"            # python package manager
