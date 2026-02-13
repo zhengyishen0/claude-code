@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # work on - Create a jj workspace for agent session
-# Usage: work on "task" && cd ~/.workspace/[session-id]
+# Usage: eval "$(work on 'task')"
 set -euo pipefail
 
 task="${1:-}"
@@ -32,6 +32,9 @@ echo "$repo_root" > "${path}/.repo_root"
 cd "${path}"
 jj new main -m "[${sid}] ${task}"
 
-echo "Workspace: ${name}"
-echo "Session:   ${sid}"
-echo "Path:      ${path}"
+echo "Workspace: ${name}" >&2
+echo "Session:   ${sid}" >&2
+echo "Path:      ${path}" >&2
+
+# Output cd command for eval
+echo "cd '${path}'"
