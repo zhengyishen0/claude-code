@@ -18,6 +18,23 @@ agent -c                    # Continue last session
 agent -P <profile> "prompt" # Use named profile
 ```
 
+## Session Management
+
+Find and list sessions by partial ID:
+
+```bash
+# List recent sessions (current project)
+agent -r
+
+# Resume by partial ID
+agent -r abc123
+
+# Direct script access
+scripts/session.sh find <partial>          # Returns full session ID
+scripts/session.sh find <partial> --path   # Also show file path
+scripts/session.sh list [n]                # List recent n sessions
+```
+
 ## Profiles
 
 ```yaml
