@@ -13,6 +13,7 @@ How to create reusable, inter-powering skills.
 skills/<name>/
 ├── SKILL.md              # Context for AI (required)
 ├── run.sh                # Main entry point
+├── config/               # YAML configuration files
 ├── watch/*.yaml          # Triggers (auto-discovered by watcher)
 ├── hooks/*.sh            # Claude Code lifecycle hooks
 ├── prompts/              # AI system prompts for sub-sessions

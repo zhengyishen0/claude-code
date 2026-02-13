@@ -66,7 +66,7 @@ cmd_new() {
     echo -e "${BLUE}Creating skill:${NC} $name"
 
     # Create all directories
-    mkdir -p "$skill_dir"/{scripts,prompts,templates,watch,hooks,lib}
+    mkdir -p "$skill_dir"/{scripts,prompts,templates,watch,hooks,lib,config}
     ok "Created directories"
 
     # Create data directory and symlink
@@ -287,6 +287,57 @@ check_skill_dir() {
 }
 
 # ─────────────────────────────────────────────────────────────
+# content - output SKILL.md content for injection
+# ─────────────────────────────────────────────────────────────
+cmd_content() {
+    local target="${1:-}"
+    local output=""
+
+    if [[ -z "$target" ]]; then
+        echo "Usage: $0 content <all|category|skill-name|category/skill>" >&2
+        exit 1
+    fi
+
+    # Helper to append skill content
+    append_skill() {
+        local skill_md="$1"
+        [[ -f "$skill_md" ]] || return
+        local skill_dir=$(dirname "$skill_md")
+        local name=$(basename "$skill_dir")
+        local category=$(basename "$(dirname "$skill_dir")")
+
+        if [[ -n "$output" ]]; then
+            output+=$'\n\n---\n\n'
+        fi
+        output+="# ${category}/${name}"$'\n\n'
+        # Skip frontmatter (between --- markers)
+        output+=$(awk '/^---$/{if(++c==2)next}c>=2' "$skill_md")
+    }
+
+    if [[ "$target" == "all" ]]; then
+        # All skills
+        for skill_md in "$SKILLS_DIR"/*/*/SKILL.md; do
+            append_skill "$skill_md"
+        done
+    elif [[ -d "$SKILLS_DIR/$target" ]]; then
+        # Category name (e.g., "core")
+        for skill_md in "$SKILLS_DIR/$target"/*/SKILL.md; do
+            append_skill "$skill_md"
+        done
+    elif [[ "$target" == */* ]]; then
+        # category/skill format
+        local skill_md="$SKILLS_DIR/$target/SKILL.md"
+        append_skill "$skill_md"
+    else
+        # Just skill name - search all categories
+        local skill_md=$(find "$SKILLS_DIR" -maxdepth 3 -path "*/$target/SKILL.md" 2>/dev/null | head -1)
+        append_skill "$skill_md"
+    fi
+
+    echo "$output"
+}
+
+# ─────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────
 case "${1:-}" in
@@ -299,6 +350,9 @@ case "${1:-}" in
     health)
         cmd_health "${2:-}"
         ;;
+    content)
+        cmd_content "${2:-}"
+        ;;
     *)
         echo "Skill manager"
         echo ""
@@ -306,6 +360,13 @@ case "${1:-}" in
         echo "  $0 new <category> <name>   Create new skill"
         echo "  $0 list                    List all discovered skills"
         echo "  $0 health [name]           Check skill follows conventions"
+        echo "  $0 content <target>        Output SKILL.md content"
+        echo ""
+        echo "Content targets:"
+        echo "  all              All skills"
+        echo "  <category>       All skills in category (e.g., core)"
+        echo "  <name>           Specific skill (e.g., vault)"
+        echo "  <cat/name>       Specific skill (e.g., core/vault)"
         echo ""
         echo -n "Categories: "
         /bin/ls -1 "$SKILLS_DIR" | tr '\n' ' '
