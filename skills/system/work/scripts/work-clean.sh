@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # work clean - Remove empty leaf orphan commits
-# Usage: work clean
+# Usage: work clean [-y]
 set -euo pipefail
+
+auto_yes=false
+[[ "${1:-}" == "-y" ]] && auto_yes=true
 
 # Find empty leaf orphans: heads that are empty and not ancestors of any bookmark
 revset='heads(all()) & empty() & ~::bookmarks()'
@@ -17,13 +20,17 @@ count=$(echo "$commits" | wc -l | tr -d ' ')
 echo "Found $count empty leaf orphan(s):"
 jj log -r "$revset" --no-graph
 
-echo ""
-read -p "Abandon these commits? [y/N] " -n 1 -r
-echo ""
-
-if [[ $REPLY =~ ^[Yy]$ ]]; then
+if [[ "$auto_yes" == "true" ]]; then
     jj abandon -r "$revset"
     echo "Cleaned up $count commit(s)"
 else
-    echo "Aborted"
+    echo ""
+    read -p "Abandon these commits? [y/N] " -n 1 -r
+    echo ""
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        jj abandon -r "$revset"
+        echo "Cleaned up $count commit(s)"
+    else
+        echo "Aborted"
+    fi
 fi
