@@ -3,8 +3,8 @@
 
 export ZENIX_ROOT="$HOME/.zenix"
 
-# Load skill aliases from agent skill
-source "$ZENIX_ROOT/skills/system/agent/scripts/alias.sh"
+# Main CLI
+alias next='$ZENIX_ROOT/skills/system/next/run.sh'
 
 # Additional aliases
 alias claude-ps='pgrep -fl "^claude"'

@@ -1,12 +1,13 @@
 #!/bin/bash
 #
-# Skill manager - create, list, health check
+# next - Unified CLI dispatcher for zenix skills
 #
 # Usage:
-#   run.sh new <name>       Create new skill in custom/ category
-#   run.sh list             List all discovered skills
-#   run.sh health [name]    Check skill follows conventions
-#   run.sh content <target> Output SKILL.md content for injection
+#   next                    List available skills
+#   next list               Same as above
+#   next <skill> [args]     Run a skill
+#   next create <name>      Create new skill in custom/
+#   next doctor [name]      Validate skill conventions
 #
 
 set -euo pipefail
@@ -26,18 +27,61 @@ NC='\033[0m'
 ok() { echo -e "  ${GREEN}✓${NC} $*"; }
 warn() { echo -e "  ${YELLOW}!${NC} $*"; }
 err() { echo -e "  ${RED}✗${NC} $*"; }
-info() { echo -e "  ${DIM}$*${NC}"; }
 
 # ─────────────────────────────────────────────────────────────
-# new - create new skill with full scaffold (always in custom/)
+# list - show all available skills
 # ─────────────────────────────────────────────────────────────
-cmd_new() {
+cmd_list() {
+    local current_category=""
+
+    for skill_md in "$SKILLS_DIR"/*/*/SKILL.md; do
+        [[ -f "$skill_md" ]] || continue
+
+        local skill_dir=$(dirname "$skill_md")
+        local name=$(basename "$skill_dir")
+        local category=$(basename "$(dirname "$skill_dir")")
+
+        # Print category header when it changes
+        if [[ "$category" != "$current_category" ]]; then
+            [[ -n "$current_category" ]] && echo ""
+            echo -e "${BLUE}[${category}]${NC}"
+            current_category="$category"
+        fi
+
+        # Parse description from frontmatter
+        local desc=$(grep "^description:" "$skill_md" 2>/dev/null | sed 's/description:[[:space:]]*//' | head -1)
+        [[ -z "$desc" ]] && desc="(no description)"
+
+        # Check if run.sh exists
+        if [[ -x "$skill_dir/run.sh" ]]; then
+            echo -e "${GREEN}${name}${NC}: $desc"
+        else
+            echo -e "${GREEN}${name}${NC} ${DIM}(info only)${NC}: $desc"
+        fi
+    done
+
+    echo ""
+    echo -e "${DIM}Use \`next <skill>\` to run a skill.${NC}"
+}
+
+# ─────────────────────────────────────────────────────────────
+# create - create new skill with full scaffold (always in custom/)
+# ─────────────────────────────────────────────────────────────
+cmd_create() {
     local name="$1"
 
     if [[ -z "$name" ]]; then
-        echo "Usage: $0 new <name>"
+        echo "Usage: next create <name>"
         exit 1
     fi
+
+    # Reserved names
+    case "$name" in
+        list|create|doctor|help|-h|--help)
+            err "Cannot create skill with reserved name: $name"
+            exit 1
+            ;;
+    esac
 
     # Always create in custom/ category
     local category="custom"
@@ -88,13 +132,15 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 case "${1:-}" in
     *)
-        echo "Usage: $0 <command>"
+        echo "Usage: next $SKILL_NAME <command>"
         echo ""
         echo "Commands:"
         echo "  TODO: Add commands"
         ;;
 esac
 EOF
+    # Replace placeholder with actual skill name
+    sed -i '' "s/\$SKILL_NAME/$name/" "$skill_dir/run.sh"
     chmod +x "$skill_dir/run.sh"
     ok "Created run.sh"
 
@@ -102,67 +148,19 @@ EOF
     echo "data" > "$skill_dir/.gitignore"
     ok "Created .gitignore"
 
-    # Create empty watch yaml
-    cat > "$skill_dir/watch/.gitkeep" << EOF
-# Add watcher yaml files here
-# Example: main.yaml
-EOF
-    ok "Created watch/"
-
     echo ""
     echo -e "${GREEN}Skill created:${NC} $skill_dir"
     echo ""
-    echo "Structure:"
-    ls -la "$skill_dir" | tail -n +2 | sed 's/^/  /'
+    echo "Next steps:"
+    echo "  1. Edit $skill_dir/SKILL.md"
+    echo "  2. Edit $skill_dir/run.sh"
+    echo "  3. Run: next $name"
 }
 
 # ─────────────────────────────────────────────────────────────
-# list - discover and list all skills grouped by category
+# doctor - verify skill follows conventions
 # ─────────────────────────────────────────────────────────────
-cmd_list() {
-    local count=0
-    local current_category=""
-
-    # Collect all skills with their categories
-    for skill_md in "$SKILLS_DIR"/*/*/SKILL.md; do
-        [[ -f "$skill_md" ]] || continue
-
-        local skill_dir=$(dirname "$skill_md")
-        local name=$(basename "$skill_dir")
-        local category=$(basename "$(dirname "$skill_dir")")
-
-        # Print category header when it changes
-        if [[ "$category" != "$current_category" ]]; then
-            [[ -n "$current_category" ]] && echo ""
-            echo -e "${BLUE}${category}/${NC}"
-            current_category="$category"
-        fi
-
-        # Parse description from frontmatter
-        local desc=$(grep "^description:" "$skill_md" 2>/dev/null | sed 's/description:[[:space:]]*//' | head -1)
-        [[ -z "$desc" ]] && desc="${DIM}(no description)${NC}"
-
-        # Check for components
-        local components=""
-        [[ -f "$skill_dir/run.sh" ]] && components+="run "
-        [[ -d "$skill_dir/watch" && -n "$(ls -A "$skill_dir/watch" 2>/dev/null | grep -v gitkeep)" ]] && components+="watch "
-        [[ -d "$skill_dir/hooks" && -n "$(ls -A "$skill_dir/hooks" 2>/dev/null)" ]] && components+="hooks "
-        [[ -L "$skill_dir/data" ]] && components+="data "
-
-        printf "  ${GREEN}%-15s${NC} %s\n" "$name" "$desc"
-        [[ -n "$components" ]] && printf "  ${DIM}%-15s [%s]${NC}\n" "" "${components% }"
-
-        ((count++))
-    done
-
-    echo ""
-    echo -e "${DIM}Total: $count skills${NC}"
-}
-
-# ─────────────────────────────────────────────────────────────
-# health - verify skill follows conventions
-# ─────────────────────────────────────────────────────────────
-cmd_health() {
+cmd_doctor() {
     local name="${1:-}"
     local exit_code=0
 
@@ -173,13 +171,13 @@ cmd_health() {
             err "Skill not found: $name"
             return 1
         fi
-        check_skill_dir "$skill_dir" || exit_code=1
+        check_skill "$skill_dir" || exit_code=1
     else
         # Check all skills
         for skill_md in "$SKILLS_DIR"/*/*/SKILL.md; do
             [[ -f "$skill_md" ]] || continue
             local skill_dir=$(dirname "$skill_md")
-            check_skill_dir "$skill_dir" || exit_code=1
+            check_skill "$skill_dir" || exit_code=1
             echo ""
         done
     fi
@@ -187,13 +185,13 @@ cmd_health() {
     return $exit_code
 }
 
-check_skill_dir() {
+check_skill() {
     local skill_dir="$1"
     local name=$(basename "$skill_dir")
     local category=$(basename "$(dirname "$skill_dir")")
     local issues=0
 
-    echo -e "${BLUE}${category}/${name}${NC}"
+    echo -e "${BLUE}[${category}/${name}]${NC}"
 
     # SKILL.md exists
     if [[ -f "$skill_dir/SKILL.md" ]]; then
@@ -275,85 +273,58 @@ check_skill_dir() {
 }
 
 # ─────────────────────────────────────────────────────────────
-# content - output SKILL.md content for injection
+# route - find and execute a skill
 # ─────────────────────────────────────────────────────────────
-cmd_content() {
-    local target="${1:-}"
-    local output=""
+route_skill() {
+    local skill_name="$1"
+    shift
 
-    if [[ -z "$target" ]]; then
-        echo "Usage: $0 content <all|category|skill-name|category/skill>" >&2
+    # Find skill run.sh
+    local run_sh=$(find "$SKILLS_DIR" -maxdepth 3 -path "*/$skill_name/run.sh" 2>/dev/null | head -1)
+
+    if [[ -z "$run_sh" ]] || [[ ! -x "$run_sh" ]]; then
+        # Check if skill exists but has no run.sh
+        local skill_md=$(find "$SKILLS_DIR" -maxdepth 3 -path "*/$skill_name/SKILL.md" 2>/dev/null | head -1)
+        if [[ -n "$skill_md" ]]; then
+            err "'$skill_name' is info-only (no run.sh)"
+            echo ""
+            echo "View documentation:"
+            echo "  cat $(dirname "$skill_md")/SKILL.md"
+        else
+            err "Skill not found: $skill_name"
+            echo ""
+            echo "Run 'next' to see available skills."
+        fi
         exit 1
     fi
 
-    # Helper to append skill content
-    append_skill() {
-        local skill_md="$1"
-        [[ -f "$skill_md" ]] || return
-        local skill_dir=$(dirname "$skill_md")
-        local name=$(basename "$skill_dir")
-        local category=$(basename "$(dirname "$skill_dir")")
-
-        if [[ -n "$output" ]]; then
-            output+=$'\n\n---\n\n'
-        fi
-        output+="# ${category}/${name}"$'\n\n'
-        # Skip frontmatter (between --- markers)
-        output+=$(awk '/^---$/{if(++c==2)next}c>=2' "$skill_md")
-    }
-
-    if [[ "$target" == "all" ]]; then
-        # All skills
-        for skill_md in "$SKILLS_DIR"/*/*/SKILL.md; do
-            append_skill "$skill_md"
-        done
-    elif [[ -d "$SKILLS_DIR/$target" ]]; then
-        # Category name (e.g., "core")
-        for skill_md in "$SKILLS_DIR/$target"/*/SKILL.md; do
-            append_skill "$skill_md"
-        done
-    elif [[ "$target" == */* ]]; then
-        # category/skill format
-        local skill_md="$SKILLS_DIR/$target/SKILL.md"
-        append_skill "$skill_md"
-    else
-        # Just skill name - search all categories
-        local skill_md=$(find "$SKILLS_DIR" -maxdepth 3 -path "*/$target/SKILL.md" 2>/dev/null | head -1)
-        append_skill "$skill_md"
-    fi
-
-    echo "$output"
+    exec "$run_sh" "$@"
 }
 
 # ─────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────
 case "${1:-}" in
-    new)
-        cmd_new "${2:-}"
-        ;;
-    list)
+    ""|list)
         cmd_list
         ;;
-    health)
-        cmd_health "${2:-}"
+    create)
+        cmd_create "${2:-}"
         ;;
-    content)
-        cmd_content "${2:-}"
+    doctor)
+        cmd_doctor "${2:-}"
         ;;
-    -h|--help|*)
-        echo "Skill manager"
+    -h|--help)
+        echo "next - Unified CLI dispatcher for zenix skills"
         echo ""
         echo "Usage:"
-        echo "  $0 new <name>              Create new skill (in custom/)"
-        echo "  $0 list                    List all discovered skills"
-        echo "  $0 health [name]           Check skill follows conventions"
-        echo "  $0 content <target>        Output SKILL.md content"
-        echo ""
-        echo "Content targets:"
-        echo "  all              All skills"
-        echo "  <category>       All skills in category (e.g., core)"
-        echo "  <name>           Specific skill (e.g., vault)"
-        echo "  <cat/name>       Specific skill (e.g., core/vault)"
+        echo "  next                    List available skills"
+        echo "  next list               Same as above"
+        echo "  next <skill> [args]     Run a skill"
+        echo "  next create <name>      Create new skill in custom/"
+        echo "  next doctor [name]      Validate skill conventions"
+        ;;
+    *)
+        route_skill "$@"
         ;;
 esac

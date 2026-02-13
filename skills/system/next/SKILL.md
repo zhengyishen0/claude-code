@@ -1,11 +1,44 @@
 ---
-name: skill
-description: How to create reusable, inter-powering skills
+name: next
+description: Unified CLI dispatcher. MUST READ when creating new skills.
 ---
 
-# Skill
+# next
 
-How to create reusable, inter-powering skills.
+Unified command dispatcher for the zenix skill system.
+
+## Usage
+
+```bash
+next                    # List available skills
+next list               # Same as above
+next <skill> [args]     # Run a skill
+next create <name>      # Create new skill in custom/
+next doctor [name]      # Validate skill conventions
+```
+
+## Setup
+
+Add to PATH (one-time):
+
+```bash
+export PATH="$HOME/.zenix/bin:$PATH"
+```
+
+## Examples
+
+```bash
+next                    # See all available skills
+next work on "task"     # Start working on a task
+next browser open       # Open browser
+next create my-tool     # Create new skill
+next doctor             # Check all skills
+next doctor vault       # Check specific skill
+```
+
+---
+
+# Creating Skills
 
 ## Structure
 
@@ -32,8 +65,8 @@ skills/<category>/<name>/
 | File | Purpose | Discovery |
 |------|---------|-----------|
 | SKILL.md | AI context when `/skill` invoked | By name |
-| run.sh | CLI entry point | Manual or by other skills |
-| watch/*.yaml | Event triggers | Auto by `skills/watcher/run.sh` |
+| run.sh | CLI entry point | Via `next <skill>` |
+| watch/*.yaml | Event triggers | Auto by watcher |
 | hooks/*.sh | Claude Code lifecycle | Via `.claude/settings.json` |
 
 ## Data Convention
@@ -108,30 +141,7 @@ action: scripts/periodic.sh
 3. **Shared data** — skills read/write to known paths
 4. **Scripts** — one skill calls another's `scripts/`
 
-## Creating a New Skill
-
-```bash
-# Recommended: use the skill manager
-~/.zenix/skills/system/skill/run.sh new <name>
-
-# Manual (if needed)
-mkdir -p ~/.zenix/skills/custom/<name>/{scripts,prompts,templates,config}
-
-cat > ~/.zenix/skills/custom/<name>/SKILL.md << 'EOF'
----
-name: <name>
-description: What it does
----
-# <Name>
-...
-EOF
-
-# Data (if needed)
-mkdir -p ~/.zenix/data/<name>
-ln -s ~/.zenix/data/<name> ~/.zenix/skills/custom/<name>/data
-```
-
-## Examples
+## Skill Examples
 
 | Skill | Demonstrates |
 |-------|--------------|

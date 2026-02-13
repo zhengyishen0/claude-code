@@ -144,87 +144,14 @@ get_system_prompt() {
     echo "$prompt"
 }
 
-# Get skills list and use skill content command
+# Get skills list using next list
 get_skills_prompt() {
-    local name="${1:-default}"
-    local skill_script="$AGENT_DIR/../skill/run.sh"
-    local in_settings=false
-    local in_name=false
-    local in_list=false
-    local prompt=""
+    local next_script="$AGENT_DIR/../next/run.sh"
 
-    [[ ! -x "$skill_script" ]] && return
-    [[ ! -f "$CONFIG_FILE" ]] && return
+    [[ ! -x "$next_script" ]] && return
 
-    # Helper to fetch and append skill content
-    fetch_skill() {
-        local target="$1"
-        local content
-        content=$("$skill_script" content "$target" 2>/dev/null) || return
-        if [[ -n "$content" ]]; then
-            [[ -n "$prompt" ]] && prompt+=$'\n\n'
-            prompt+="$content"
-        fi
-    }
-
-    while IFS= read -r line; do
-        # Find settings: block
-        if [[ "$line" =~ ^settings: ]]; then
-            in_settings=true
-            continue
-        fi
-
-        if [[ "$in_settings" == true && "$line" =~ ^[a-z] ]]; then
-            break
-        fi
-
-        if [[ "$in_settings" == true ]]; then
-            # Find named setting
-            if [[ "$line" =~ ^[[:space:]]{2}${name}: ]]; then
-                in_name=true
-                continue
-            fi
-
-            if [[ "$in_name" == true && "$line" =~ ^[[:space:]]{2}[a-z] ]]; then
-                break
-            fi
-
-            if [[ "$in_name" == true ]]; then
-                # Check for skills - inline format: skills: [a, b, c]
-                if [[ "$line" =~ ^[[:space:]]{4}skills:[[:space:]]*\[(.+)\] ]]; then
-                    local inline="${BASH_REMATCH[1]}"
-                    IFS=',' read -ra targets <<< "$inline"
-                    for target in "${targets[@]}"; do
-                        target="$(echo "$target" | xargs)"
-                        [[ -n "$target" ]] && fetch_skill "$target"
-                    done
-                    continue
-                fi
-
-                # Check for skills list format
-                if [[ "$line" =~ ^[[:space:]]{4}skills: ]]; then
-                    in_list=true
-                    continue
-                fi
-
-                # Exit list if new key at same indent
-                if [[ "$in_list" == true && "$line" =~ ^[[:space:]]{4}[a-z_]+: ]]; then
-                    break
-                fi
-
-                # Parse "      - target" entries
-                if [[ "$in_list" == true && "$line" =~ ^[[:space:]]{6}-[[:space:]]*(.+)$ ]]; then
-                    local target="${BASH_REMATCH[1]}"
-                    [[ "$target" =~ ^# ]] && continue
-                    target="${target%%#*}"
-                    target="$(echo "$target" | xargs)"
-                    fetch_skill "$target"
-                fi
-            fi
-        fi
-    done < "$CONFIG_FILE"
-
-    echo "$prompt"
+    # Run next list and strip ANSI colors
+    "$next_script" list 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g'
 }
 
 # Check if setting exists
