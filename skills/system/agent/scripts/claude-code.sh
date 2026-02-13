@@ -15,7 +15,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 AGENT_DIR="$(dirname "$SCRIPT_DIR")"
 CONFIG_FILE="$AGENT_DIR/config/agents.yaml"
-SESSION_SCRIPT="$AGENT_DIR/../session/run.sh"
+SESSION_SCRIPT="$SCRIPT_DIR/session.sh"
 
 # ─────────────────────────────────────────────────────────────
 # Config parsing
