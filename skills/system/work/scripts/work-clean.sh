@@ -11,9 +11,10 @@ orphans='~::bookmarks()'
 empty_leaf='heads(all()) & empty() & ~::bookmarks()'
 other='(~::bookmarks()) ~ (heads(all()) & empty() & ~::bookmarks())'
 
-# Count
-empty_leaf_count=$(jj log -r "$empty_leaf" --no-graph -T 'change_id.short() ++ "\n"' 2>/dev/null | grep -c -v '^$' || echo 0)
-other_count=$(jj log -r "$other" --no-graph -T 'change_id.short() ++ "\n"' 2>/dev/null | grep -c -v '^$' || echo 0)
+# Count (wc -c is more reliable than grep -c)
+empty_leaf_count=$(jj log -r "$empty_leaf" --no-graph -T 'x' 2>/dev/null | wc -c | tr -d '[:space:]')
+other_count=$(jj log -r "$other" --no-graph -T 'x' 2>/dev/null | wc -c | tr -d '[:space:]')
+: "${empty_leaf_count:=0}" "${other_count:=0}"
 
 if [[ "$empty_leaf_count" -eq 0 ]] && [[ "$other_count" -eq 0 ]]; then
     echo "No orphan commits"
