@@ -3,8 +3,16 @@
 
 export ZENIX_ROOT="$HOME/.zenix"
 
-# Main CLI
-alias next='$ZENIX_ROOT/skills/system/next/run.sh'
+# Direct aliases for all skills with run.sh
+for _skill in "$ZENIX_ROOT"/skills/*/*/run.sh; do
+    [[ -x "$_skill" ]] || continue
+    _name=$(basename "$(dirname "$_skill")")
+    alias "$_name=$_skill"
+done
+unset _skill _name
+
+# Dispatcher (list, create, doctor)
+alias next="$ZENIX_ROOT/skills/system/next/run.sh"
 
 # Dangerous command aliases (bypass for blocked commands)
 _BLOCKED_YAML="$ZENIX_ROOT/skills/system/work/config/blocked.yaml"
