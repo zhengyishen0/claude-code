@@ -18,7 +18,7 @@ if [ -f "$TRANSCRIPT" ] && [ $(wc -l < "$TRANSCRIPT") -gt 5 ]; then
 fi
 
 # Run memory hint
-HINTS=$("$ZENIX_ROOT/skills/agent/memory/hint.sh" "$PROMPT" 2>/dev/null)
+HINTS=$("$ZENIX_ROOT/skills/core/memory/hint.sh" "$PROMPT" 2>/dev/null)
 
 if [ -n "$HINTS" ]; then
   echo "<memory-hint>"
