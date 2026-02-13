@@ -34,9 +34,8 @@ echo "$repo_root" > "${path}/.repo_root"
 cd "${path}"
 jj new main -m "[${sid}] ${task}"
 
-echo "Workspace: ${name}" >&2
-echo "Session:   ${sid}" >&2
-echo "Path:      ${path}" >&2
+echo "task: ${task}" >&2
+echo "cwd:  ${path} (persistent)" >&2
 
 # Output path for cd
 echo "${path}"

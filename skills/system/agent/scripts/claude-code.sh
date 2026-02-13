@@ -264,7 +264,7 @@ if [[ "$WORKSPACE" == "true" ]]; then
     CLAUDE_SESSION_ID=$(openssl rand -hex 4)
     WORKSPACE_PATH="$ZENIX_WORKSPACE/[${CLAUDE_SESSION_ID}]"
     export CLAUDE_SESSION_ID
-    CLAUDE_ARGS+=("--add-dir" "$WORKSPACE_PATH")
+    CLAUDE_ARGS+=("--add-dir" "$HOME/.workspace")
 fi
 
 # Combine system prompt and skills
