@@ -51,8 +51,8 @@ cmd_list() {
         local desc=$(grep "^description:" "$skill_md" 2>/dev/null | sed 's/description:[[:space:]]*//' | head -1)
         [[ -z "$desc" ]] && desc="(no description)"
 
-        # Check if run.sh exists
-        if [[ -x "$skill_dir/run.sh" ]]; then
+        # Check if run script exists
+        if [[ -x "$skill_dir/run" ]]; then
             echo -e "${GREEN}${name}${NC}: $desc"
         else
             echo -e "${GREEN}${name}${NC} ${DIM}(info only)${NC}: $desc"
@@ -122,8 +122,8 @@ TODO: How to use this skill.
 EOF
     ok "Created SKILL.md"
 
-    # Create run.sh
-    cat > "$skill_dir/run.sh" << 'EOF'
+    # Create run
+    cat > "$skill_dir/run" << 'EOF'
 #!/bin/bash
 set -euo pipefail
 
@@ -137,9 +137,19 @@ case "${1:-}" in
 esac
 EOF
     # Replace placeholder with actual skill name
-    sed -i '' "s/\$SKILL_NAME/$name/" "$skill_dir/run.sh"
-    chmod +x "$skill_dir/run.sh"
-    ok "Created run.sh"
+    sed -i '' "s/\$SKILL_NAME/$name/" "$skill_dir/run"
+    chmod +x "$skill_dir/run"
+    ok "Created run"
+
+    # Create env
+    cat > "$skill_dir/env" << 'EOF'
+# Uncomment next line to load at shell startup (not just skill invocation)
+# @always
+
+# Export skill-specific environment variables here
+# export MY_VAR="value"
+EOF
+    ok "Created env"
 
     # Create .gitignore
     echo "data" > "$skill_dir/.gitignore"
@@ -150,8 +160,9 @@ EOF
     echo ""
     echo "Next steps:"
     echo "  1. Edit $skill_dir/SKILL.md"
-    echo "  2. Edit $skill_dir/run.sh"
-    echo "  3. Run: zenix $name"
+    echo "  2. Edit $skill_dir/run"
+    echo "  3. Add env vars to $skill_dir/env (optional)"
+    echo "  4. Run: zenix $name"
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -211,12 +222,12 @@ check_skill() {
         ((issues++))
     fi
 
-    # run.sh is executable (if exists)
-    if [[ -f "$skill_dir/run.sh" ]]; then
-        if [[ -x "$skill_dir/run.sh" ]]; then
-            ok "run.sh executable"
+    # run is executable (if exists)
+    if [[ -f "$skill_dir/run" ]]; then
+        if [[ -x "$skill_dir/run" ]]; then
+            ok "run executable"
         else
-            err "run.sh not executable"
+            err "run not executable"
             ((issues++))
         fi
     fi
@@ -276,14 +287,14 @@ route_skill() {
     local skill_name="$1"
     shift
 
-    # Find skill run.sh
-    local run_sh=$(find "$SKILLS_DIR" -maxdepth 3 -path "*/$skill_name/run.sh" 2>/dev/null | head -1)
+    # Find skill run script
+    local run_script=$(find "$SKILLS_DIR" -maxdepth 3 -path "*/$skill_name/run" 2>/dev/null | head -1)
 
-    if [[ -z "$run_sh" ]] || [[ ! -x "$run_sh" ]]; then
-        # Check if skill exists but has no run.sh
+    if [[ -z "$run_script" ]] || [[ ! -x "$run_script" ]]; then
+        # Check if skill exists but has no run script
         local skill_md=$(find "$SKILLS_DIR" -maxdepth 3 -path "*/$skill_name/SKILL.md" 2>/dev/null | head -1)
         if [[ -n "$skill_md" ]]; then
-            err "'$skill_name' is info-only (no run.sh)"
+            err "'$skill_name' is info-only (no run script)"
             echo ""
             echo "View documentation:"
             echo "  cat $(dirname "$skill_md")/SKILL.md"
@@ -295,7 +306,12 @@ route_skill() {
         exit 1
     fi
 
-    exec "$run_sh" "$@"
+    # Source skill's env if exists (lazy loading)
+    local skill_dir=$(dirname "$run_script")
+    local skill_env="$skill_dir/env"
+    [[ -f "$skill_env" ]] && source "$skill_env"
+
+    exec "$run_script" "$@"
 }
 
 # ─────────────────────────────────────────────────────────────

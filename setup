@@ -24,7 +24,7 @@ USAGE:
     setup                 Show installation status
     setup all             Install everything
     setup deps            Install brew dependencies (fswatch, yq)
-    setup shell           Add env.sh to ~/.zshrc
+    setup shell           Add env to ~/.zshrc
     setup git-hooks       Set core.hooksPath (works in worktrees)
     setup claude-hooks    Symlink .claude/hooks → hooks/claude
     setup daemon          Install world-watch LaunchAgent
@@ -32,7 +32,7 @@ USAGE:
 
 COMPONENTS:
     deps          fswatch, yq (via Homebrew)
-    shell         source env.sh in ~/.zshrc
+    shell         source env in ~/.zshrc
     git-hooks     post-commit, post-merge logging
     claude-hooks  session-start, session-end, main-branch-guard
     daemon        world-watch LaunchAgent (background task watcher)
@@ -50,7 +50,7 @@ check_deps() {
 }
 
 check_shell() {
-    grep -q "source.*zenix/env.sh" ~/.zshrc 2>/dev/null
+    grep -q "source.*zenix/env" ~/.zshrc 2>/dev/null
 }
 
 check_git_hooks() {
@@ -79,7 +79,7 @@ show_status() {
     fi
 
     if check_shell; then
-        ok "shell: env.sh sourced in ~/.zshrc"
+        ok "shell: env sourced in ~/.zshrc"
     else
         warn "shell: not configured (run: setup shell)"
     fi
@@ -137,15 +137,15 @@ install_deps() {
 install_shell() {
     echo "Configuring shell..."
 
-    local source_line="source \"$PROJECT_DIR/env.sh\""
+    local source_line="source \"$PROJECT_DIR/env\""
 
-    if grep -q "source.*zenix/env.sh" ~/.zshrc 2>/dev/null; then
-        ok "env.sh already in ~/.zshrc"
+    if grep -q "source.*zenix/env" ~/.zshrc 2>/dev/null; then
+        ok "env already in ~/.zshrc"
     else
         echo "" >> ~/.zshrc
         echo "# Claude Code" >> ~/.zshrc
         echo "$source_line" >> ~/.zshrc
-        ok "Added env.sh to ~/.zshrc"
+        ok "Added env to ~/.zshrc"
         warn "Run 'source ~/.zshrc' or restart terminal"
     fi
 }
