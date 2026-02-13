@@ -11,17 +11,21 @@ orphans='~::bookmarks()'
 empty_leaf='heads(all()) & empty() & ~::bookmarks()'
 other='(~::bookmarks()) ~ (heads(all()) & empty() & ~::bookmarks())'
 
-# Count (wc -c is more reliable than grep -c)
-empty_leaf_count=$(jj log -r "$empty_leaf" --no-graph -T 'x' 2>/dev/null | wc -c | tr -d '[:space:]')
-other_count=$(jj log -r "$other" --no-graph -T 'x' 2>/dev/null | wc -c | tr -d '[:space:]')
-: "${empty_leaf_count:=0}" "${other_count:=0}"
+# Detect all orphans first
+orphan_count=$(jj log -r "$orphans" --no-graph -T '"x"' 2>/dev/null | wc -c | tr -d '[:space:]')
+: "${orphan_count:=0}"
 
-if [[ "$empty_leaf_count" -eq 0 ]] && [[ "$other_count" -eq 0 ]]; then
-    echo "No orphan commits"
+if [[ "$orphan_count" -eq 0 ]]; then
+    echo "Your work is clean"
     exit 0
 fi
 
-echo "Orphan commits detected:"
+# Categorize orphans
+empty_leaf_count=$(jj log -r "$empty_leaf" --no-graph -T '"x"' 2>/dev/null | wc -c | tr -d '[:space:]')
+other_count=$(jj log -r "$other" --no-graph -T '"x"' 2>/dev/null | wc -c | tr -d '[:space:]')
+: "${empty_leaf_count:=0}" "${other_count:=0}"
+
+echo "Orphan commits detected: $orphan_count"
 echo ""
 
 if [[ "$empty_leaf_count" -gt 0 ]]; then
