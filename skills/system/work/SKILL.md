@@ -20,7 +20,11 @@ work done "summary"
 work drop
 
 # Clean up empty leaf orphans
-work clean
+work clean      # interactive
+work clean -y   # auto-confirm (for scripts/agents)
+
+# Push to remote (checks for orphans first)
+work push
 ```
 
 ## Example
@@ -59,11 +63,18 @@ work done "fixed login validation"
 2. Deletes workspace directory
 3. No merge - change stays in repo but disconnected (will be GC'd)
 
-### `work clean`
+### `work clean [-y]`
 
 1. Finds empty leaf orphans: `heads(all()) & empty() & ~::bookmarks()`
-2. Shows commits and prompts for confirmation
+2. Shows commits and prompts for confirmation (skip with `-y`)
 3. Abandons them if confirmed
+
+### `work push`
+
+1. Checks for all orphan commits
+2. If empty leaf orphans: suggests `work clean -y`
+3. If other orphans: suggests manual cleanup, aborts
+4. If clean: runs `jj git push`
 
 ## jj Quick Reference
 
@@ -74,7 +85,7 @@ work done "fixed login validation"
 | Log | `git log` | `jj log` |
 | Commit | `git add && git commit` | `jj new -m "msg"` |
 | Amend | `git commit --amend` | `jj describe -m "msg"` |
-| Push | `git push` | `jj git push` |
+| Push | `git push` | `work push` |
 
 ### Critical Difference
 
