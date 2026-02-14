@@ -1,3 +1,3 @@
-[submodule "skills/service/wechat"]
-	path = skills/service/wechat
-	url = https://github.com/zhengyishen0/wechat-windows-tools.git
+[submodule "skills/community/wechat"]
+	path = skills/community/wechat
+	url = https://github.com/zhengyishen0/zenix-wechat.git
