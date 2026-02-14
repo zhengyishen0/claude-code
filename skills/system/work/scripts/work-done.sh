@@ -37,21 +37,15 @@ echo "Merging ${change} from ${ws_name}..."
 
 cd "$repo_root"
 
-if main_is_protected; then
-    # Main is [PROTECTED]: merge behind it, rebase to tip
-    jj new "main-" "${change}" -m "[merge] ${summary}"
-    jj rebase -r main -d @
-else
-    # Main is not [PROTECTED]: merge, then create [PROTECTED]
-    jj new main "${change}" -m "[merge] ${summary}"
-    jj bookmark set main -r @
-    jj new -m "[PROTECTED] do not edit — use \`work on\`"
-    jj bookmark set main -r @
-fi
+# Create merge node with main and current work
+jj new main "${change}" -m "[merge] ${summary}"
+jj bookmark set main -r @
 
-# Sync both @ to [PROTECTED]
-jj edit main
+# Ensure default@ is on [PROTECTED] (child of main)
+ensure_protected_for_default "$repo_root"
+
+# Leave ws@ at merge (main)
 cd "$ws_path" && jj edit main
 
 echo "Merged. Ready for next task."
-jj log -r "main-..main" -n 5
+jj log -r @ --limit 1
