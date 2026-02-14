@@ -25,6 +25,17 @@ fi
 cd "$ws_path"
 repo_root=$(cat .repo_root 2>/dev/null || jj root)
 
+# Check if workspace is detached (@ points to abandoned commit)
+if ! jj log -r @ --no-graph -T 'change_id' &>/dev/null; then
+    echo "Workspace detached. Re-attaching to main..." >&2
+    jj workspace update-stale 2>/dev/null || true
+    jj new main -m "${tag} ${task}"
+    echo "task: ${task}" >&2
+    echo "cwd:  ${ws_path} (persistent)" >&2
+    echo "${ws_path}"
+    exit 0
+fi
+
 # Ensure [PROTECTED] exists (this may cd to repo_root)
 ensure_protected "$repo_root"
 
@@ -32,12 +43,13 @@ ensure_protected "$repo_root"
 cd "$ws_path"
 
 # Determine action based on current state
-if is_protected; then
-    # On [PROTECTED]: branch from main (actual content)
-    jj new main -m "${tag} ${task}"
-else
-    # On task or merge: create child (stack or continue from merge)
+msg=$(jj log -r @ --no-graph -T 'description' 2>/dev/null || echo "")
+if [[ "$msg" == "${tag}"* ]]; then
+    # On own task commit: stack
     jj new -m "${tag} ${task}"
+else
+    # On anything else (PROTECTED, merge, empty orphan): branch from main
+    jj new main -m "${tag} ${task}"
 fi
 
 echo "task: ${task}" >&2
