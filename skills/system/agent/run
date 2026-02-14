@@ -9,15 +9,53 @@
 #   agent -r                          # Resume session picker
 #   agent -r <partial>                # Resume by partial ID
 #   agent -c                          # Continue last session
+#   agent list                        # List available agents
 #
 set -euo pipefail
 
 # Resolve symlinks to get actual script directory
 SCRIPT_PATH="$0"
-[[ -L "$SCRIPT_PATH" ]] && SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"
-[[ "$SCRIPT_PATH" != /* ]] && SCRIPT_PATH="$(dirname "$0")/$SCRIPT_PATH"
+if [[ -L "$SCRIPT_PATH" ]]; then
+    SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"
+    [[ "$SCRIPT_PATH" != /* ]] && SCRIPT_PATH="$(dirname "$0")/$SCRIPT_PATH"
+fi
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
-AGENTS_DIR="$SCRIPT_DIR/agents"
+
+# ─────────────────────────────────────────────────────────────
+# Agent discovery (searches all skills for agents/*.md)
+# ─────────────────────────────────────────────────────────────
+
+find_agent() {
+    local name="$1"
+    for f in "$ZENIX_ROOT/skills"/*/*/agents/"${name}.md"; do
+        [[ -f "$f" ]] && echo "$f" && return 0
+    done
+    return 1
+}
+
+list_agents() {
+    local found=false
+    for f in "$ZENIX_ROOT/skills"/*/*/agents/*.md; do
+        [[ -f "$f" ]] || continue
+        found=true
+        local name=$(basename "$f" .md)
+        local skill=$(basename "$(dirname "$(dirname "$f")")")
+        local desc=$(grep "^description:" "$f" 2>/dev/null | sed 's/description:[[:space:]]*//' | head -1)
+        printf "%-15s [%s] %s\n" "$name" "$skill" "${desc:-(no description)}"
+    done
+    $found || echo "No agents found. Create one in skills/<category>/<skill>/agents/*.md"
+}
+
+# ─────────────────────────────────────────────────────────────
+# Subcommands
+# ─────────────────────────────────────────────────────────────
+
+case "${1:-}" in
+    list)
+        list_agents
+        exit 0
+        ;;
+esac
 
 # ─────────────────────────────────────────────────────────────
 # Skills resolution
@@ -145,12 +183,11 @@ SYSTEM_PROMPT=""
 SKILLS_SPEC="all"  # Default: all skills
 
 if [[ -n "$AGENT_NAME" ]]; then
-    AGENT_FILE="$AGENTS_DIR/${AGENT_NAME}.md"
-
-    if [[ ! -f "$AGENT_FILE" ]]; then
-        echo "Agent not found: $AGENT_FILE" >&2
+    AGENT_FILE=$(find_agent "$AGENT_NAME") || {
+        echo "Agent not found: $AGENT_NAME" >&2
+        echo "Run 'agent list' to see available agents." >&2
         exit 1
-    fi
+    }
 
     # Parse frontmatter
     AGENT_MODEL=$(parse_frontmatter "$AGENT_FILE" "model")
