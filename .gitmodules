@@ -1,0 +1,3 @@
+[submodule "skills/service/wechat"]
+	path = skills/service/wechat
+	url = https://github.com/zhengyishen0/wechat-windows-tools.git
