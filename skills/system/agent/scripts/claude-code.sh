@@ -78,10 +78,36 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Show sessions if requested
+# Show sessions if requested (interactive with fzf)
 if [[ "$SHOW_SESSIONS" == true ]]; then
-    show_recent_sessions
-    exit 0
+    # Get sessions, strip ANSI for fzf
+    SESSIONS=$("$SESSION_SCRIPT" list 20 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g')
+
+    if [[ -z "$SESSIONS" || "$SESSIONS" == *"no sessions"* ]]; then
+        echo "No recent sessions" >&2
+        exit 0
+    fi
+
+    if command -v fzf &>/dev/null; then
+        SELECTED=$(echo "$SESSIONS" | fzf \
+            --prompt="Resume session: " \
+            --height=~15 \
+            --reverse \
+            --no-info) || exit 0
+
+        [[ -z "$SELECTED" ]] && exit 0
+
+        # Extract short ID (first field) and find full ID
+        SHORT_ID=$(echo "$SELECTED" | awk '{print $1}')
+        RESUME_ID=$("$SESSION_SCRIPT" find "$SHORT_ID" 2>/dev/null) || {
+            echo "Session not found: $SHORT_ID" >&2
+            exit 1
+        }
+        # Fall through to resume logic below
+    else
+        show_recent_sessions
+        exit 0
+    fi
 fi
 
 # Model
