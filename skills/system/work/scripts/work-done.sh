@@ -1,27 +1,19 @@
 #!/usr/bin/env bash
-# work done - Merge current workspace to main and clean up
+# work done - Merge current node to main, keep workspace for next task
 # Usage: work done ["summary"]
 set -euo pipefail
 
-# Find workspace name from session ID or current directory
-if [ -n "${CLAUDE_SESSION_ID:-}" ]; then
-    ws="[${CLAUDE_SESSION_ID:0:8}]"
-    summary="${1:-Merge ${ws}}"
-else
-    # Try to detect from current directory name
-    ws="$(basename "$PWD")"
-    if [[ "$ws" != "["*"]" ]]; then
-        echo "Usage: work done [\"summary\"]"
-        echo "  Run from workspace dir, or set CLAUDE_SESSION_ID"
-        echo ""
-        echo "Active workspaces:"
-        jj workspace list
-        exit 1
-    fi
-    summary="${1:-Merge ${ws}}"
-fi
+# Workspace path from env (set by spawn) or current directory
+ws_path="${ZENIX_WORKSPACE_PATH:-$PWD}"
+ws_name=$(basename "$ws_path")    # cc-a1b2c3d4
+tag="[${ws_name}]"                # [cc-a1b2c3d4]
+summary="${1:-Merge ${tag}}"
 
-ws_path="$HOME/.workspace/${ws}"
+# Validate workspace
+if [[ ! "$ws_name" =~ ^[a-z]+-[a-f0-9]+$ ]]; then
+    echo "Not in a workspace. Set ZENIX_WORKSPACE_PATH or cd to workspace." >&2
+    exit 1
+fi
 
 if [ ! -d "$ws_path" ]; then
     echo "Workspace not found: $ws_path"
@@ -44,15 +36,21 @@ fi
 
 echo "Merging ${change} from ${ws}..."
 
-cd "$repo_root" && \
-jj new main "${change}" -m "[merge] ${summary}" && \
-jj bookmark set main -r @ && \
-jj new && \
-jj workspace forget "${ws}"
+cd "$repo_root"
 
-rm -rf "$ws_path" 2>/dev/null
+# Merge behind [PROTECTED]: parent of main + workspace change
+jj new "main^" "${change}" -m "[merge] ${summary}"
 
-echo "Merged and cleaned up"
+# Move [PROTECTED] to tip
+jj rebase -r main -d @
 
-# Show graph: recent commits
-jj log -r "::@" -n 5
+# Repo @ stays on [PROTECTED]
+jj edit main
+
+# Sync workspace to [PROTECTED]
+cd "$ws_path" && jj edit main
+
+echo "Merged. Ready for next task."
+
+# Show graph
+jj log -r "main^..main" -n 5

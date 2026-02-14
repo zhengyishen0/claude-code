@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# work on - Create a jj workspace for agent session
+# work on - Attach to workspace and create a new node for task
 # Usage: cd "$(work on 'task')"
+# Can call multiple times per session - each task gets its own node
 set -euo pipefail
-
-: "${ZENIX_WORKSPACE:=$HOME/.workspace}"
 
 task="${1:-}"
 if [ -z "$task" ]; then
@@ -11,28 +10,28 @@ if [ -z "$task" ]; then
     exit 1
 fi
 
-# Use agent session ID if available, otherwise generate one
-sid="${CLAUDE_SESSION_ID:-$(openssl rand -hex 4)}"
-sid="${sid:0:8}"
+# Workspace path from env (set by spawn) or current directory
+ws_path="${ZENIX_WORKSPACE_PATH:-$PWD}"
+ws_name=$(basename "$ws_path")    # cc-a1b2c3d4
+tag="[${ws_name}]"                # [cc-a1b2c3d4]
 
-name="[${sid}]"
-path="$ZENIX_WORKSPACE/${name}"
-
-# Save repo root before creating workspace
-repo_root=$(jj root)
-
-mkdir -p "$ZENIX_WORKSPACE"
-
-if ! jj workspace add --name "${name}" "${path}" 2>/dev/null; then
-    echo "Failed to create workspace" >&2
+# Validate workspace name pattern
+if [[ ! "$ws_name" =~ ^[a-z]+-[a-f0-9]+$ ]]; then
+    echo "Not in a workspace. Set ZENIX_WORKSPACE_PATH or cd to workspace." >&2
     exit 1
 fi
 
-# Store repo root for work done
-echo "$repo_root" > "${path}/.repo_root"
+cd "$ws_path"
 
-cd "${path}"
-jj new main -m "[${sid}] ${task}"
+# Branch from behind [PROTECTED], or stack if on task
+msg=$(jj log -r @ --no-graph -T 'description')
+if [[ "$msg" == *"[PROTECTED]"* ]]; then
+    # On [PROTECTED]: branch from its parent
+    jj new @^ -m "${tag} ${task}"
+else
+    # On task commit: stack on current
+    jj new -m "${tag} ${task}"
+fi
 
 echo "task: ${task}" >&2
 echo "cwd:  ${path} (persistent)" >&2

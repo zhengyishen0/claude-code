@@ -3,25 +3,15 @@
 # Usage: work drop
 set -euo pipefail
 
-: "${ZENIX_WORKSPACE:=$HOME/.workspace}"
+# Workspace path from env (set by spawn) or current directory
+ws_path="${ZENIX_WORKSPACE_PATH:-$PWD}"
+ws_name=$(basename "$ws_path")    # cc-a1b2c3d4
 
-# Find workspace name from session ID or current directory
-if [ -n "${CLAUDE_SESSION_ID:-}" ]; then
-    ws="[${CLAUDE_SESSION_ID:0:8}]"
-else
-    # Try to detect from current directory name
-    ws="$(basename "$PWD")"
-    if [[ "$ws" != "["*"]" ]]; then
-        echo "Usage: work drop"
-        echo "  Run from workspace dir, or set CLAUDE_SESSION_ID"
-        echo ""
-        echo "Active workspaces:"
-        jj workspace list
-        exit 1
-    fi
+# Validate workspace
+if [[ ! "$ws_name" =~ ^[a-z]+-[a-f0-9]+$ ]]; then
+    echo "Not in a workspace. Set ZENIX_WORKSPACE_PATH or cd to workspace." >&2
+    exit 1
 fi
-
-ws_path="$ZENIX_WORKSPACE/${ws}"
 
 if [ ! -d "$ws_path" ]; then
     echo "Workspace not found: $ws_path"
@@ -35,10 +25,10 @@ if [ ! -f "$ws_path/.repo_root" ]; then
 fi
 repo_root=$(cat "$ws_path/.repo_root")
 
-echo "Dropping workspace ${ws}..."
+echo "Dropping workspace ${ws_name}..."
 
 # Forget workspace (change becomes orphaned, not abandoned)
-cd "$repo_root" && jj workspace forget "${ws}"
+cd "$repo_root" && jj workspace forget "${ws_name}"
 
 rm -rf "$ws_path" 2>/dev/null
 
