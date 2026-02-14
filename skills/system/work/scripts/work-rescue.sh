@@ -43,5 +43,8 @@ jj new --insert-before @ -m "${tag} ${task}"
 # Move changes from [PROTECTED] (now @+) into new commit (now @)
 jj squash --from @+
 
+# Recreate [PROTECTED] as new leaf
+jj new main -m "[PROTECTED] do not edit — use \`work on\`"
+
 echo "" >&2
 echo "Rescued to: ${tag} ${task}" >&2
