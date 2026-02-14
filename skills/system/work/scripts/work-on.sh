@@ -25,8 +25,11 @@ fi
 cd "$ws_path"
 repo_root=$(cat .repo_root 2>/dev/null || jj root)
 
-# Ensure [PROTECTED] exists
+# Ensure [PROTECTED] exists (this may cd to repo_root)
 ensure_protected "$repo_root"
+
+# Return to workspace context
+cd "$ws_path"
 
 # Sync workspace to main (which should be [PROTECTED] now)
 jj edit main 2>/dev/null || true
