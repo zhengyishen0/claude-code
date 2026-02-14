@@ -34,7 +34,7 @@ else
 fi
 
 echo "task: ${task}" >&2
-echo "cwd:  ${path} (persistent)" >&2
+echo "cwd:  ${ws_path} (persistent)" >&2
 
 # Output path for cd
-echo "${path}"
+echo "${ws_path}"
