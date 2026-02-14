@@ -6,7 +6,7 @@
 protected_exists() {
     local repo_root="${1:-$(jj root 2>/dev/null || pwd)}"
     cd "$repo_root"
-    local found=$(jj log -r 'all()' --no-graph -T 'if(description.contains("[PROTECTED]"), "yes", "")' 2>/dev/null | head -1)
+    local found=$(jj log -r 'all()' --no-graph -T 'if(description.starts_with("[PROTECTED]"), "yes", "")' 2>/dev/null | head -1)
     [[ -n "$found" ]]
 }
 
@@ -28,11 +28,11 @@ ensure_protected() {
 # Check if current @ is [PROTECTED]
 is_protected() {
     local msg=$(jj log -r @ --no-graph -T 'description' 2>/dev/null)
-    [[ "$msg" == *"[PROTECTED]"* ]]
+    [[ "$msg" == "[PROTECTED]"* ]]
 }
 
 # Check if main is [PROTECTED]
 main_is_protected() {
     local msg=$(jj log -r main --no-graph -T 'description' 2>/dev/null)
-    [[ "$msg" == *"[PROTECTED]"* ]]
+    [[ "$msg" == "[PROTECTED]"* ]]
 }
