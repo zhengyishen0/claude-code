@@ -129,4 +129,4 @@ work done "bump <skill>"        # Commits new pointer
 5. **Finish with `work done`** — merges to main, keeps workspace at main
 6. **Never `jj abandon`** — escalate to user instead
 7. **Submodule edits don't need workspace** — cd into submodule, use its jj
-8. **Always use `-m` with jj commands** — `jj squash -m`, `jj describe -m`, `jj commit -m` (interactive editors don't work)
+8. **Always use `-m` with `jj squash` and `jj new`** — without it, source commit message is silently dropped
