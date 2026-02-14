@@ -31,14 +31,21 @@ ensure_protected "$repo_root"
 # Return to workspace context
 cd "$ws_path"
 
-# Sync workspace to main (which should be [PROTECTED] now)
-jj edit main 2>/dev/null || true
-
-# Branch from behind [PROTECTED], or stack if on task
+# Determine action based on current state
 if is_protected; then
+    # On [PROTECTED]: branch from parent
     jj new @- -m "${tag} ${task}"
 else
-    jj new -m "${tag} ${task}"
+    # Check if on a task commit (description starts with [)
+    msg=$(jj log -r @ --no-graph -T 'description')
+    if [[ "$msg" == "["* ]]; then
+        # On task commit: stack
+        jj new -m "${tag} ${task}"
+    else
+        # Fresh workspace or unknown: sync to [PROTECTED], then branch
+        jj edit main 2>/dev/null || true
+        jj new @- -m "${tag} ${task}"
+    fi
 fi
 
 echo "task: ${task}" >&2
