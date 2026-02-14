@@ -10,29 +10,48 @@ protected_exists() {
     [[ -n "$found" ]]
 }
 
-# Create [PROTECTED] at tip of main if not exists
+# Get the revision ID of [PROTECTED] commit
+get_protected_rev() {
+    jj log -r 'all()' --no-graph -T 'if(description.starts_with("[PROTECTED]"), change_id.short(), "")' 2>/dev/null | head -1
+}
+
+# Create [PROTECTED] as child of main if not exists
 ensure_protected() {
     local repo_root="${1:-$(jj root 2>/dev/null || pwd)}"
     cd "$repo_root"
-    
+
     if protected_exists "$repo_root"; then
         return 0
     fi
-    
+
     echo "Creating [PROTECTED] buffer..." >&2
     jj new main -m "[PROTECTED] do not edit — use \`work on\`"
-    jj bookmark set main -r @
-    echo "Created [PROTECTED] at main" >&2
+    echo "Created [PROTECTED] as child of main" >&2
+}
+
+# Ensure default@ is on [PROTECTED] (rebase if needed, create if missing)
+ensure_protected_for_default() {
+    local repo_root="${1:-$(jj root 2>/dev/null || pwd)}"
+    cd "$repo_root"
+
+    local protected_rev=$(get_protected_rev)
+
+    if [[ -n "$protected_rev" ]]; then
+        # Rebase existing [PROTECTED] onto new main
+        jj rebase -r "$protected_rev" -d main 2>/dev/null || true
+    else
+        # Create new [PROTECTED] as child of main
+        jj new main -m "[PROTECTED] do not edit — use \`work on\`"
+        protected_rev=$(jj log -r @ --no-graph -T 'change_id.short()')
+    fi
+
+    # Move default@ to [PROTECTED]
+    jj workspace update-stale 2>/dev/null || true
+    cd "$repo_root" && jj edit "$protected_rev" 2>/dev/null || true
 }
 
 # Check if current @ is [PROTECTED]
 is_protected() {
     local msg=$(jj log -r @ --no-graph -T 'description' 2>/dev/null)
-    [[ "$msg" == "[PROTECTED]"* ]]
-}
-
-# Check if main is [PROTECTED]
-main_is_protected() {
-    local msg=$(jj log -r main --no-graph -T 'description' 2>/dev/null)
     [[ "$msg" == "[PROTECTED]"* ]]
 }

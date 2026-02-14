@@ -33,19 +33,11 @@ cd "$ws_path"
 
 # Determine action based on current state
 if is_protected; then
-    # On [PROTECTED]: branch from parent
-    jj new @- -m "${tag} ${task}"
+    # On [PROTECTED]: branch from main (actual content)
+    jj new main -m "${tag} ${task}"
 else
-    # Check if on a task commit (description starts with [)
-    msg=$(jj log -r @ --no-graph -T 'description')
-    if [[ "$msg" == "["* ]]; then
-        # On task commit: stack
-        jj new -m "${tag} ${task}"
-    else
-        # Fresh workspace or unknown: sync to [PROTECTED], then branch
-        jj edit main 2>/dev/null || true
-        jj new @- -m "${tag} ${task}"
-    fi
+    # On task or merge: create child (stack or continue from merge)
+    jj new -m "${tag} ${task}"
 fi
 
 echo "task: ${task}" >&2
