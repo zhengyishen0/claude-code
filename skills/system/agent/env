@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# @always
+
+alias zz='agent'
