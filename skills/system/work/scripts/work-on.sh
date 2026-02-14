@@ -23,7 +23,22 @@ if [[ ! "$ws_name" =~ ^[a-z]+-[a-f0-9]+$ ]]; then
 fi
 
 cd "$ws_path"
-repo_root=$(cat .repo_root 2>/dev/null || jj root)
+repo_root=$(cat .repo_root 2>/dev/null || echo "")
+
+# If no repo_root file, we can't proceed
+if [[ -z "$repo_root" ]]; then
+    echo "No .repo_root file found. Cannot determine repository." >&2
+    exit 1
+fi
+
+# Check if jj workspace exists (lazy creation from dispatch)
+if ! (cd "$repo_root" && jj workspace list 2>/dev/null | grep -q "^${ws_name}:"); then
+    echo "Creating jj workspace..." >&2
+    (cd "$repo_root" && jj workspace add --name "$ws_name" "$ws_path") || {
+        echo "Failed to create jj workspace" >&2
+        exit 1
+    }
+fi
 
 # Check if workspace is detached (@ points to abandoned commit)
 if ! jj log -r @ --no-graph -T 'change_id' &>/dev/null; then

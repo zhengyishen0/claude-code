@@ -57,24 +57,24 @@ case "$mode" in
         ;;
     --space)
         if [[ "$space_count" -gt 0 ]]; then
-            # Get list of workspace names that will be affected
+            # Get list of workspace names and commit IDs that will be affected
             workspaces=$(jj log -r "$space_revset" --no-graph -T 'if(working_copies, working_copies ++ "\n", "")' 2>/dev/null | grep -v '^$' | sort -u)
+            commit_ids=$(jj log -r "$space_revset" --no-graph -T 'commit_id ++ "\n"' 2>/dev/null | grep -v '^$')
 
-            # Abandon the commits
-            jj abandon -r "$space_revset"
-
-            # Move each affected workspace to main
+            # Forget each workspace (removes from jj, keeps directory)
             for ws in $workspaces; do
                 ws_name="${ws%@}"  # Remove trailing @
                 if [[ "$ws_name" != "default" ]]; then
-                    ws_path="$HOME/.workspace/$ws_name"
-                    if [[ -d "$ws_path" ]]; then
-                        (cd "$ws_path" && jj edit main 2>/dev/null) || true
-                    fi
+                    jj workspace forget "$ws_name" 2>/dev/null || true
                 fi
             done
 
-            echo "Cleaned $space_count workspace leftover(s)"
+            # Abandon the orphaned commits
+            for commit_id in $commit_ids; do
+                jj abandon "$commit_id" 2>/dev/null || true
+            done
+
+            echo "Cleaned $space_count workspace(s) - use 'work on' to reattach"
         else
             echo "Nothing to clean with --space"
         fi
