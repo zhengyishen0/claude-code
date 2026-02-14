@@ -3,10 +3,11 @@
 # Usage: work done ["summary"]
 set -euo pipefail
 
-# Workspace path from env (set by spawn) or current directory
+source "$(dirname "$0")/../lib/protected.sh"
+
 ws_path="${ZENIX_WORKSPACE_PATH:-$PWD}"
-ws_name=$(basename "$ws_path")    # cc-a1b2c3d4
-tag="[${ws_name}]"                # [cc-a1b2c3d4]
+ws_name=$(basename "$ws_path")
+tag="[${ws_name}]"
 summary="${1:-Merge ${tag}}"
 
 # Validate workspace
@@ -16,41 +17,41 @@ if [[ ! "$ws_name" =~ ^[a-z]+-[a-f0-9]+$ ]]; then
 fi
 
 if [ ! -d "$ws_path" ]; then
-    echo "Workspace not found: $ws_path"
+    echo "Workspace not found: $ws_path" >&2
     exit 1
 fi
 
-# Read repo root saved by work-on
-if [ ! -f "$ws_path/.repo_root" ]; then
-    echo "Missing .repo_root file in workspace"
+repo_root=$(cat "$ws_path/.repo_root" 2>/dev/null)
+if [ -z "$repo_root" ]; then
+    echo "Missing .repo_root file in workspace" >&2
     exit 1
 fi
-repo_root=$(cat "$ws_path/.repo_root")
 
 change=$(cd "$ws_path" && jj log -r @ --no-graph -T 'change_id.short()')
-
 if [ -z "$change" ]; then
-    echo "Could not find change ID in workspace"
+    echo "Could not find change ID in workspace" >&2
     exit 1
 fi
 
-echo "Merging ${change} from ${ws}..."
+echo "Merging ${change} from ${ws_name}..."
 
 cd "$repo_root"
 
-# Merge behind [PROTECTED]: parent of main + workspace change
-jj new "main^" "${change}" -m "[merge] ${summary}"
+if main_is_protected; then
+    # Main is [PROTECTED]: merge behind it, rebase to tip
+    jj new "main-" "${change}" -m "[merge] ${summary}"
+    jj rebase -r main -d @
+else
+    # Main is not [PROTECTED]: merge, then create [PROTECTED]
+    jj new main "${change}" -m "[merge] ${summary}"
+    jj bookmark set main -r @
+    jj new -m "[PROTECTED] do not edit — use \`work on\`"
+    jj bookmark set main -r @
+fi
 
-# Move [PROTECTED] to tip
-jj rebase -r main -d @
-
-# Repo @ stays on [PROTECTED]
+# Sync both @ to [PROTECTED]
 jj edit main
-
-# Sync workspace to [PROTECTED]
 cd "$ws_path" && jj edit main
 
 echo "Merged. Ready for next task."
-
-# Show graph
-jj log -r "main^..main" -n 5
+jj log -r "main-..main" -n 5

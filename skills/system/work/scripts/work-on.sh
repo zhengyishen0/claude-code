@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # work on - Attach to workspace and create a new node for task
 # Usage: cd "$(work on 'task')"
-# Can call multiple times per session - each task gets its own node
 set -euo pipefail
+
+source "$(dirname "$0")/../lib/protected.sh"
 
 task="${1:-}"
 if [ -z "$task" ]; then
@@ -12,8 +13,8 @@ fi
 
 # Workspace path from env (set by spawn) or current directory
 ws_path="${ZENIX_WORKSPACE_PATH:-$PWD}"
-ws_name=$(basename "$ws_path")    # cc-a1b2c3d4
-tag="[${ws_name}]"                # [cc-a1b2c3d4]
+ws_name=$(basename "$ws_path")
+tag="[${ws_name}]"
 
 # Validate workspace name pattern
 if [[ ! "$ws_name" =~ ^[a-z]+-[a-f0-9]+$ ]]; then
@@ -22,19 +23,21 @@ if [[ ! "$ws_name" =~ ^[a-z]+-[a-f0-9]+$ ]]; then
 fi
 
 cd "$ws_path"
+repo_root=$(cat .repo_root 2>/dev/null || jj root)
+
+# Ensure [PROTECTED] exists
+ensure_protected "$repo_root"
+
+# Sync workspace to main (which should be [PROTECTED] now)
+jj edit main 2>/dev/null || true
 
 # Branch from behind [PROTECTED], or stack if on task
-msg=$(jj log -r @ --no-graph -T 'description')
-if [[ "$msg" == *"[PROTECTED]"* ]]; then
-    # On [PROTECTED]: branch from its parent
-    jj new @^ -m "${tag} ${task}"
+if is_protected; then
+    jj new @- -m "${tag} ${task}"
 else
-    # On task commit: stack on current
     jj new -m "${tag} ${task}"
 fi
 
 echo "task: ${task}" >&2
 echo "cwd:  ${ws_path} (persistent)" >&2
-
-# Output path for cd
 echo "${ws_path}"
