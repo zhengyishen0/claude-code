@@ -10,19 +10,21 @@ Async collaboration between human and AI through shared documents.
 ## Structure
 
 ```
-vault/
-├── index.md          # Task list
-├── tasks/            # Task files (NNN-slug.md)
-├── files/            # All outputs (NNN-slug/)
-├── journal/          # Daily logs (YYYY-MM-DD.md)
-└── archive/          # Done tasks
+Vault/
+├── index.md          # Overview
+├── Tasks/            # Task files (symlink to task skill data)
+├── Files/            # Work outputs
+├── Daily/            # Daily logs (YYYY-MM-DD.md)
+├── Archive/          # Done tasks
+├── Private/          # Private notes
+└── Public/           # Shared notes
 ```
 
 ## Two Entry Points
 
 | Mode | Trigger | Best for |
 |------|---------|----------|
-| Async | Human drops note in vault/, watch.sh triggers AI | Long research, overnight |
+| Async | Human drops note in vault/, watcher triggers AI | Long research, overnight |
 | Sync | Human chats with Claude directly | Quick tasks, real-time |
 
 Both modes read/write to the same vault.
@@ -31,73 +33,29 @@ Both modes read/write to the same vault.
 
 | What | Where | Example |
 |------|-------|---------|
-| Task tracking | `tasks/NNN-slug.md` | Status, idea, progress, feedback |
-| Work outputs | `files/NNN-slug/` | Research, code, screenshots, reports |
-| Daily log | `journal/YYYY-MM-DD.md` | Session summaries, milestones |
+| Task tracking | `Tasks/NNN-slug.md` | Task definition |
+| Work outputs | `Files/NNN-slug/` | Research, code, screenshots |
+| Daily log | `Daily/YYYY-MM-DD.md` | Session summaries |
 
-## Task File Format
+## Task Execution
 
-```markdown
----
-status: new | working | waiting | done | dropped
-submit: false
-created: YYYY-MM-DD
----
+Tasks are managed by the `task` skill. See `zenix task --help`.
 
-## Idea
-[Raw note from human]
-
-## Understanding
-[What human wants, why, what success looks like]
-
-## Progress
-(AI updates as work proceeds)
-
-## Resources
-(links to files/NNN-slug/)
-
----
-
-## Feedback
-(Human writes here)
-
-## Lessons
-(What was learned)
+```bash
+task exec <id>    # Execute a task
+task list         # List tasks
 ```
-
-## Status Flow
-
-```
-new → working → waiting ⟷ working → done
-                  ↓
-               dropped
-```
-
-- `new` — just created
-- `working` — AI in progress
-- `waiting` — needs human input (set `submit: false`)
-- `done` — complete
-- `dropped` — abandoned
 
 ## Human Actions
 
-1. **Create task**: Drop note in vault root (async) or ask Claude (sync)
-2. **Review**: Read task file, check AI's understanding
-3. **Feedback**: Write in Feedback section
-4. **Submit**: Set `submit: true` to continue work
-5. **Done**: AI sets status to `done`, human can archive
+1. **Create task**: Drop note in vault root or create in Tasks/
+2. **Review**: Read task file, provide feedback
+3. **Execute**: Run `task exec <id>` when ready
+4. **Archive**: Move to Archive/ when done
 
-## AI Actions
+## AI Actions (async mode)
 
-1. **New note**: Create `tasks/NNN-slug.md` + `files/NNN-slug/`
-2. **Work**: Research, execute, save outputs to `files/`
-3. **Update**: Keep Progress section current
-4. **Wait**: Set `waiting` + `submit: false` when need human input
-5. **Complete**: Set `done` when finished
-
-## In This Session
-
-When working on a tracked task:
-1. Update `tasks/NNN-slug.md` Progress section
-2. Save outputs to `files/NNN-slug/`
-3. Link resources from task file
+1. **New note**: Process into task
+2. **Work**: Research, save to Files/
+3. **Update**: Keep task file current
+4. **Wait**: Set `submit: false` when need human input

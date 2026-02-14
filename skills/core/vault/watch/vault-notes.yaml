@@ -5,7 +5,7 @@ events: [Created, Updated, AttributeModified, Renamed]
 exclude:
   - "\.DS_Store"
   - "\.obsidian"
-  - "/files/"
+  - "/Files/"
 debounce: 15
 
 rules:
@@ -14,7 +14,7 @@ rules:
     exclude: "^index\\.md$"
     action: skills/agent/vault/scripts/new-note.sh
 
-  # Submit in active/ when submit: true
-  - match: "^active/.*\\.md$"
+  # Submit in Tasks/ when submit: true
+  - match: "^Tasks/.*\\.md$"
     condition: "grep -q '^submit: true'"
     action: skills/agent/vault/scripts/submit.sh

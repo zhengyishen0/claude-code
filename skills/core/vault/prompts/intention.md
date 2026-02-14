@@ -48,7 +48,7 @@ Before writing:
 
 ## Step 2: Create task folder(s)
 
-For each logical task group, create: `vault/active/NNN-slug/`
+For each logical task group, create: `vault/Tasks/NNN-slug/`
 
 Use consecutive numbers starting from the provided next number.
 
