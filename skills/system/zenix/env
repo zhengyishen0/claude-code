@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# @always
+
+alias claude-ps='pgrep -fl "^claude"'
+alias claude-kill='pkill -9 "^claude"'

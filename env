@@ -2,13 +2,10 @@
 # source ~/.zenix/env
 
 export ZENIX_ROOT="$HOME/.zenix"
-
-# Add bin/ to PATH (skill commands: zenix, agent, work, etc.)
 export PATH="$ZENIX_ROOT/bin:$PATH"
 
 # Auto-import skill env files marked with @always
 if [[ -n "$ZSH_VERSION" ]]; then
-    # (N) = null glob qualifier, returns empty if no matches
     for _skill_env in "$ZENIX_ROOT"/skills/*/*/env(N); do
         [[ -f "$_skill_env" ]] && head -3 "$_skill_env" | grep -q '^# @always' && source "$_skill_env"
     done
@@ -19,21 +16,3 @@ elif [[ -n "$BASH_VERSION" ]]; then
     done
 fi
 unset _skill_env
-
-# Dangerous command aliases (bypass for blocked commands)
-_BLOCKED_YAML="$ZENIX_ROOT/skills/system/work/config/blocked.yaml"
-if [[ -f "$_BLOCKED_YAML" ]] && command -v yq &>/dev/null; then
-    while IFS=$'\t' read -r _alias _cmd; do
-        [[ -n "$_alias" && -n "$_cmd" ]] || continue
-        eval "$_alias() { $_cmd \"\$@\"; }"
-    done < <(yq -r '.[] | "\(.alias)\t\(.command)"' "$_BLOCKED_YAML" 2>/dev/null)
-fi
-unset _BLOCKED_YAML _alias _cmd
-
-# Additional aliases
-alias zz='agent'
-alias claude-ps='pgrep -fl "^claude"'
-alias claude-kill='pkill -9 "^claude"'
-
-# Proxy init
-eval "$("$ZENIX_ROOT/skills/utility/proxy/run" init 2>/dev/null)"
