@@ -45,7 +45,7 @@ fi
 echo "Merging ${change} from ${ws}..."
 
 cd "$repo_root" && \
-jj new main "${change}" -m "${summary}" && \
+jj new main "${change}" -m "[merge] ${summary}" && \
 jj bookmark set main -r @ && \
 jj new && \
 jj workspace forget "${ws}"
