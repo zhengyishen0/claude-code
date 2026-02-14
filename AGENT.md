@@ -31,7 +31,7 @@ Each agent session has **one workspace**: `~/.workspace/[session-id]`
 | **NEVER edit without `work on`** | You WILL break things |
 | **NEVER `jj abandon`** | Escalate to user |
 | **NEVER squash/rebase** | Unless explicitly asked |
-| **ALWAYS `-m` with jj commands** | Interactive editors don't work |
+| **ALWAYS `-m` with `jj squash/new`** | Source message silently dropped without it |
 | **ALWAYS `[session-id]` in commits** | Required for traceability |
 | **ONE workspace per session** | Finish work before starting new |
 | **Keep `@` empty on main** | Safety buffer for accidental edits |
