@@ -345,7 +345,7 @@ export ZENIX_SKILLS="$SKILLS"
 
 FRAMEWORK_SCRIPT="$SCRIPT_DIR/${FRAMEWORK}.sh"
 if [[ -x "$FRAMEWORK_SCRIPT" ]]; then
-    exec "$FRAMEWORK_SCRIPT" "${PASSTHROUGH_ARGS[@]}"
+    exec "$FRAMEWORK_SCRIPT" ${PASSTHROUGH_ARGS[@]+"${PASSTHROUGH_ARGS[@]}"}
 else
     echo "Framework script not found: $FRAMEWORK_SCRIPT" >&2
     exit 1
