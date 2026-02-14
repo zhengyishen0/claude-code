@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # @always
 
+# Disable interactive editor for jj (agents can't use interactive editors)
+export JJ_EDITOR=true
+
 # Dangerous command aliases (bypass for blocked commands)
 _BLOCKED_YAML="$ZENIX_ROOT/skills/system/work/config/blocked.yaml"
 if [[ -f "$_BLOCKED_YAML" ]] && command -v yq &>/dev/null; then
