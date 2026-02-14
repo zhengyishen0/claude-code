@@ -158,7 +158,7 @@ if [[ -n "$AGENT_NAME" ]]; then
     AGENT_PROMPT=$(get_prompt_body "$AGENT_FILE")
 
     # Add to dispatch args (frontmatter values, can be overridden by CLI)
-    [[ -n "$AGENT_MODEL" ]] && DISPATCH_ARGS=("--model" "$AGENT_MODEL" "${DISPATCH_ARGS[@]}")
+    [[ -n "$AGENT_MODEL" ]] && DISPATCH_ARGS=("--model" "$AGENT_MODEL" ${DISPATCH_ARGS[@]+"${DISPATCH_ARGS[@]}"})
     [[ -n "$AGENT_PERMISSIONS" ]] && DISPATCH_ARGS+=("--permissions" "$AGENT_PERMISSIONS")
     [[ -n "$AGENT_FRAMEWORK" ]] && DISPATCH_ARGS+=("--framework" "$AGENT_FRAMEWORK")
 
@@ -184,5 +184,5 @@ if [[ -n "$SYSTEM_PROMPT" ]]; then
     DISPATCH_ARGS+=("--system-prompt" "$SYSTEM_PROMPT")
 fi
 
-# Execute dispatch
-exec "$SCRIPT_DIR/scripts/dispatch.sh" "${DISPATCH_ARGS[@]}" "${PASSTHROUGH_ARGS[@]}"
+# Execute dispatch (use + syntax to handle empty arrays with set -u)
+exec "$SCRIPT_DIR/scripts/dispatch.sh" ${DISPATCH_ARGS[@]+"${DISPATCH_ARGS[@]}"} ${PASSTHROUGH_ARGS[@]+"${PASSTHROUGH_ARGS[@]}"}
