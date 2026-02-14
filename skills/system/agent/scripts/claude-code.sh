@@ -1,166 +1,20 @@
 #!/bin/bash
 #
-# Claude Code wrapper with preconfigured settings
+# Claude Code framework parser
+# Translates ZENIX_* env vars to claude CLI flags
 #
-# Usage:
-#   claude-code.sh "prompt"                    # New session with 'default' setting
-#   claude-code.sh -r                          # Pick from recent sessions
-#   claude-code.sh -r <partial>                # Resume session by partial ID
-#   claude-code.sh -c                          # Continue last session
-#   claude-code.sh -P <setting> "prompt"       # Use named setting
-#   claude-code.sh --model X "prompt"          # Override model
+# Expected env vars (from dispatch.sh):
+#   ZENIX_SESSION_ID        - Session identifier
+#   ZENIX_WORKSPACE_PATH    - Full workspace path
+#   ZENIX_WORKSPACE_ENABLED - true | false
+#   ZENIX_MODEL_ID          - Actual model ID
+#   ZENIX_PERMISSIONS       - auto | prompt
+#   ZENIX_SYSTEM_PROMPT     - System prompt text
 #
 set -euo pipefail
 
-: "${ZENIX_WORKSPACE:=$HOME/.workspace}"
-
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-AGENT_DIR="$(dirname "$SCRIPT_DIR")"
-CONFIG_FILE="$AGENT_DIR/config/agents.yaml"
-SESSION_SCRIPT="$SCRIPT_DIR/session.sh"
-
-# ─────────────────────────────────────────────────────────────
-# Config parsing (settings.<name>.<key>)
-# ─────────────────────────────────────────────────────────────
-
-# Get a value from settings.<name>.<key>
-get_config() {
-    local key="$1"
-    local fallback="${2:-}"
-    local name="${3:-default}"
-
-    if [[ ! -f "$CONFIG_FILE" ]]; then
-        echo "$fallback"
-        return
-    fi
-
-    local value=""
-    local in_settings=false
-    local in_name=false
-
-    while IFS= read -r line; do
-        # Find settings: block
-        if [[ "$line" =~ ^settings: ]]; then
-            in_settings=true
-            continue
-        fi
-
-        # Exit settings on another top-level key
-        if [[ "$in_settings" == true && "$line" =~ ^[a-z] ]]; then
-            break
-        fi
-
-        if [[ "$in_settings" == true ]]; then
-            # Find named setting (2-space indent)
-            if [[ "$line" =~ ^[[:space:]]{2}${name}: ]]; then
-                in_name=true
-                continue
-            fi
-
-            # Exit named setting on another 2-space key
-            if [[ "$in_name" == true && "$line" =~ ^[[:space:]]{2}[a-z] ]]; then
-                break
-            fi
-
-            # Find key (4-space indent)
-            if [[ "$in_name" == true && "$line" =~ ^[[:space:]]{4}${key}:[[:space:]]*(.*)$ ]]; then
-                value="${BASH_REMATCH[1]}"
-                value="${value%%#*}"  # Remove comments
-                value="$(echo "$value" | xargs)"  # Trim
-                break
-            fi
-        fi
-    done < "$CONFIG_FILE"
-
-    [[ -n "$value" ]] && echo "$value" || echo "$fallback"
-}
-
-# Get system prompts list and concatenate files
-get_system_prompt() {
-    local name="${1:-default}"
-    local config_dir
-    config_dir="$(dirname "$CONFIG_FILE")"
-    local in_settings=false
-    local in_name=false
-    local in_list=false
-    local prompt=""
-
-    [[ ! -f "$CONFIG_FILE" ]] && return
-
-    while IFS= read -r line; do
-        # Find settings: block
-        if [[ "$line" =~ ^settings: ]]; then
-            in_settings=true
-            continue
-        fi
-
-        if [[ "$in_settings" == true && "$line" =~ ^[a-z] ]]; then
-            break
-        fi
-
-        if [[ "$in_settings" == true ]]; then
-            # Find named setting
-            if [[ "$line" =~ ^[[:space:]]{2}${name}: ]]; then
-                in_name=true
-                continue
-            fi
-
-            if [[ "$in_name" == true && "$line" =~ ^[[:space:]]{2}[a-z] ]]; then
-                break
-            fi
-
-            if [[ "$in_name" == true ]]; then
-                # Check for system_prompts list
-                if [[ "$line" =~ ^[[:space:]]{4}system_prompts: ]]; then
-                    in_list=true
-                    continue
-                fi
-
-                # Exit list if new key at same indent
-                if [[ "$in_list" == true && "$line" =~ ^[[:space:]]{4}[a-z_]+: ]]; then
-                    break
-                fi
-
-                # Parse "      - path" entries (6-space indent)
-                if [[ "$in_list" == true && "$line" =~ ^[[:space:]]{6}-[[:space:]]*(.+)$ ]]; then
-                    local path="${BASH_REMATCH[1]}"
-                    [[ "$path" =~ ^# ]] && continue
-                    path="${path%%#*}"
-                    path="$(echo "$path" | xargs)"
-
-                    # Resolve relative paths
-                    if [[ "$path" != /* ]]; then
-                        path="$config_dir/$path"
-                    fi
-
-                    # Concatenate file content
-                    if [[ -f "$path" ]]; then
-                        [[ -n "$prompt" ]] && prompt+=$'\n\n'
-                        prompt+="$(cat "$path")"
-                    fi
-                fi
-            fi
-        fi
-    done < "$CONFIG_FILE"
-
-    echo "$prompt"
-}
-
-# Get skills list using next list
-get_skills_prompt() {
-    local next_script="$AGENT_DIR/../next/run.sh"
-
-    [[ ! -x "$next_script" ]] && return
-
-    # Run next list and strip ANSI colors
-    "$next_script" list 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g'
-}
-
-# Check if setting exists
-setting_exists() {
-    local name="$1"
-    grep -q "^[[:space:]]*${name}:" "$CONFIG_FILE" 2>/dev/null
-}
+SESSION_SCRIPT="$SCRIPT_DIR/claude-session.sh"
 
 # ─────────────────────────────────────────────────────────────
 # Session management
@@ -180,21 +34,16 @@ show_recent_sessions() {
 }
 
 # ─────────────────────────────────────────────────────────────
-# Main
+# Build claude command
 # ─────────────────────────────────────────────────────────────
 
-SETTING="default"
-MODEL=""
-PERMISSIONS=""
-SYSTEM_PROMPT=""
-
 CLAUDE_ARGS=()
-PROMPT=""
 RESUME_ID=""
 CONTINUE=false
 SHOW_SESSIONS=false
+PROMPT=""
 
-# Parse arguments
+# Parse passthrough arguments
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -r|--resume)
@@ -209,18 +58,6 @@ while [[ $# -gt 0 ]]; do
         -c|--continue)
             CONTINUE=true
             shift
-            ;;
-        -P|--setting)
-            SETTING="$2"
-            shift 2
-            ;;
-        --model)
-            MODEL="$2"
-            shift 2
-            ;;
-        --permissions)
-            PERMISSIONS="$2"
-            shift 2
             ;;
         -p)
             CLAUDE_ARGS+=("-p" "$2")
@@ -247,51 +84,29 @@ if [[ "$SHOW_SESSIONS" == true ]]; then
     exit 0
 fi
 
-# Load from setting
-if ! setting_exists "$SETTING"; then
-    echo "Setting not found: $SETTING" >&2
-    exit 1
+# Model
+if [[ -n "${ZENIX_MODEL_ID:-}" ]]; then
+    CLAUDE_ARGS+=("--model" "$ZENIX_MODEL_ID")
 fi
 
-[[ -z "$MODEL" ]] && MODEL=$(get_config "model" "claude-opus-4-5" "$SETTING")
-[[ -z "$PERMISSIONS" ]] && PERMISSIONS=$(get_config "permissions" "auto" "$SETTING")
-WORKSPACE=$(get_config "workspace" "false" "$SETTING")
-SYSTEM_PROMPT=$(get_system_prompt "$SETTING")
-SKILLS_PROMPT=$(get_skills_prompt "$SETTING")
-
-# Workspace: generate session ID and grant access
-if [[ "$WORKSPACE" == "true" ]]; then
-    CLAUDE_SESSION_ID=$(openssl rand -hex 4)
-    WORKSPACE_PATH="$ZENIX_WORKSPACE/[${CLAUDE_SESSION_ID}]"
-    export CLAUDE_SESSION_ID
-    CLAUDE_ARGS+=("--add-dir" "$HOME/.workspace")
-fi
-
-# Combine system prompt and skills
-if [[ -n "$SKILLS_PROMPT" ]]; then
-    if [[ -n "$SYSTEM_PROMPT" ]]; then
-        SYSTEM_PROMPT+=$'\n\n# Skills\n\n'"$SKILLS_PROMPT"
-    else
-        SYSTEM_PROMPT="# Skills"$'\n\n'"$SKILLS_PROMPT"
-    fi
-fi
-
-# Add model
-CLAUDE_ARGS+=("--model" "$MODEL")
-
-# Add permissions
-case "$PERMISSIONS" in
+# Permissions
+case "${ZENIX_PERMISSIONS:-auto}" in
     auto)
         CLAUDE_ARGS+=("--dangerously-skip-permissions")
         ;;
-    default)
+    prompt)
         CLAUDE_ARGS+=("--allow-dangerously-skip-permissions")
         ;;
 esac
 
-# Add system prompt if configured
-if [[ -n "$SYSTEM_PROMPT" ]]; then
-    CLAUDE_ARGS+=("--append-system-prompt" "$SYSTEM_PROMPT")
+# Workspace access
+if [[ "${ZENIX_WORKSPACE_ENABLED:-false}" == "true" ]]; then
+    CLAUDE_ARGS+=("--add-dir" "$HOME/.workspace")
+fi
+
+# System prompt
+if [[ -n "${ZENIX_SYSTEM_PROMPT:-}" ]]; then
+    CLAUDE_ARGS+=("--append-system-prompt" "$ZENIX_SYSTEM_PROMPT")
 fi
 
 # Handle resume/continue

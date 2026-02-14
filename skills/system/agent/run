@@ -3,11 +3,186 @@
 # Agent - unified interface for AI coding agents
 #
 # Usage:
-#   agent "prompt"              # Claude Code (default)
-#   agent -r                    # Resume session picker
-#   agent -P <profile> "prompt" # Use named profile
+#   agent "prompt"                    # Default model
+#   agent --model sonnet "prompt"     # Use model alias
+#   agent -A code-reviewer "prompt"   # Use agent from agents/
+#   agent -r                          # Resume session picker
+#   agent -r <partial>                # Resume by partial ID
+#   agent -c                          # Continue last session
 #
 set -euo pipefail
 
-# Default to claude-code
-exec "$ZENIX_ROOT/skills/system/agent/scripts/claude-code.sh" "$@"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+AGENTS_DIR="$SCRIPT_DIR/agents"
+
+# ─────────────────────────────────────────────────────────────
+# Skills resolution
+# ─────────────────────────────────────────────────────────────
+
+resolve_skills() {
+    local skills_spec="$1"
+
+    # Empty or none
+    [[ -z "$skills_spec" || "$skills_spec" == "none" ]] && return
+
+    # Parse comma or space separated list
+    local filters=()
+    IFS=', ' read -ra filters <<< "$skills_spec"
+
+    # "all" means no filter
+    if [[ "${filters[0]}" == "all" ]]; then
+        filters=()
+    fi
+
+    # Call zenix list with filters, strip ANSI codes
+    if [[ ${#filters[@]} -eq 0 ]]; then
+        zenix list 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g'
+    else
+        zenix list "${filters[@]}" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g'
+    fi
+}
+
+# ─────────────────────────────────────────────────────────────
+# Frontmatter parser for agents/*.md
+# ─────────────────────────────────────────────────────────────
+
+parse_frontmatter() {
+    local file="$1"
+    local key="$2"
+    local value=""
+    local in_frontmatter=false
+
+    while IFS= read -r line; do
+        if [[ "$line" == "---" ]]; then
+            if [[ "$in_frontmatter" == false ]]; then
+                in_frontmatter=true
+                continue
+            else
+                break
+            fi
+        fi
+
+        if [[ "$in_frontmatter" == true ]]; then
+            if [[ "$line" =~ ^${key}:[[:space:]]*(.*)$ ]]; then
+                value="${BASH_REMATCH[1]}"
+                value="${value%%#*}"
+                value="$(echo "$value" | xargs)"
+                break
+            fi
+        fi
+    done < "$file"
+
+    echo "$value"
+}
+
+get_prompt_body() {
+    local file="$1"
+    local in_frontmatter=false
+    local past_frontmatter=false
+    local body=""
+
+    while IFS= read -r line; do
+        if [[ "$line" == "---" ]]; then
+            if [[ "$in_frontmatter" == false ]]; then
+                in_frontmatter=true
+                continue
+            else
+                past_frontmatter=true
+                continue
+            fi
+        fi
+
+        if [[ "$past_frontmatter" == true ]]; then
+            [[ -n "$body" ]] && body+=$'\n'
+            body+="$line"
+        fi
+    done < "$file"
+
+    # Trim leading newlines
+    echo "$body" | sed '/./,$!d'
+}
+
+# ─────────────────────────────────────────────────────────────
+# Main
+# ─────────────────────────────────────────────────────────────
+
+AGENT_NAME=""
+DISPATCH_ARGS=()
+PASSTHROUGH_ARGS=()
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -A|--agent)
+            AGENT_NAME="$2"
+            shift 2
+            ;;
+        --model|-m)
+            DISPATCH_ARGS+=("--model" "$2")
+            shift 2
+            ;;
+        --framework|-f)
+            DISPATCH_ARGS+=("--framework" "$2")
+            shift 2
+            ;;
+        --permissions)
+            DISPATCH_ARGS+=("--permissions" "$2")
+            shift 2
+            ;;
+        *)
+            PASSTHROUGH_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+# Load agent config from agents/*.md
+SYSTEM_PROMPT=""
+SKILLS_SPEC="all"  # Default: all skills
+
+if [[ -n "$AGENT_NAME" ]]; then
+    AGENT_FILE="$AGENTS_DIR/${AGENT_NAME}.md"
+
+    if [[ ! -f "$AGENT_FILE" ]]; then
+        echo "Agent not found: $AGENT_FILE" >&2
+        exit 1
+    fi
+
+    # Parse frontmatter
+    AGENT_MODEL=$(parse_frontmatter "$AGENT_FILE" "model")
+    AGENT_PERMISSIONS=$(parse_frontmatter "$AGENT_FILE" "permissions")
+    AGENT_FRAMEWORK=$(parse_frontmatter "$AGENT_FILE" "framework")
+    AGENT_SKILLS=$(parse_frontmatter "$AGENT_FILE" "skills")
+
+    # Get prompt body
+    AGENT_PROMPT=$(get_prompt_body "$AGENT_FILE")
+
+    # Add to dispatch args (frontmatter values, can be overridden by CLI)
+    [[ -n "$AGENT_MODEL" ]] && DISPATCH_ARGS=("--model" "$AGENT_MODEL" "${DISPATCH_ARGS[@]}")
+    [[ -n "$AGENT_PERMISSIONS" ]] && DISPATCH_ARGS+=("--permissions" "$AGENT_PERMISSIONS")
+    [[ -n "$AGENT_FRAMEWORK" ]] && DISPATCH_ARGS+=("--framework" "$AGENT_FRAMEWORK")
+
+    # Set skills spec from agent config
+    [[ -n "$AGENT_SKILLS" ]] && SKILLS_SPEC="$AGENT_SKILLS"
+
+    # Start with agent prompt
+    SYSTEM_PROMPT="$AGENT_PROMPT"
+fi
+
+# Resolve skills and append to system prompt
+SKILLS_CONTENT=$(resolve_skills "$SKILLS_SPEC")
+if [[ -n "$SKILLS_CONTENT" ]]; then
+    if [[ -n "$SYSTEM_PROMPT" ]]; then
+        SYSTEM_PROMPT+=$'\n\n# Skills\n\n'"$SKILLS_CONTENT"
+    else
+        SYSTEM_PROMPT="# Skills"$'\n\n'"$SKILLS_CONTENT"
+    fi
+fi
+
+# Add system prompt to dispatch args
+if [[ -n "$SYSTEM_PROMPT" ]]; then
+    DISPATCH_ARGS+=("--system-prompt" "$SYSTEM_PROMPT")
+fi
+
+# Execute dispatch
+exec "$SCRIPT_DIR/scripts/dispatch.sh" "${DISPATCH_ARGS[@]}" "${PASSTHROUGH_ARGS[@]}"
