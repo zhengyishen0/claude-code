@@ -96,3 +96,4 @@ jj new -m "msg"          # Create NEW commit (changes stay in parent)
 3. **Tag commits with session ID** - `jj new -m "[session-id] description"`
 4. **Finish before starting new work** - one task at a time
 5. **Never `jj abandon`** - escalate to user instead
+6. **`@` empty on main** - `work done` leaves a buffer; accidental edits are isolated

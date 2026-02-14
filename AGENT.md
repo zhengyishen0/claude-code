@@ -33,5 +33,6 @@ Each agent session has **one workspace**: `~/.workspace/[session-id]`
 | **NEVER squash/rebase** | Unless explicitly asked |
 | **ALWAYS `[session-id]` in commits** | Required for traceability |
 | **ONE workspace per session** | Finish work before starting new |
+| **Keep `@` empty on main** | Safety buffer for accidental edits |
 
 ---
