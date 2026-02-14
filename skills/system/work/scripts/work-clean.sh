@@ -12,8 +12,9 @@ mode="${1:-}"
 protected='description(substring:"[PROTECTED] do not edit")'
 # Safe: empty orphan leaves without any workspace @
 safe_revset="(heads(all()) & empty() & ~::bookmarks()) ~ working_copies() ~ ($protected)"
-# Space: empty workspace leaves that are NOT [PROTECTED]
-space_revset="heads(all()) & empty() & working_copies() ~ ($protected)"
+# Space: empty workspace leaves that are NOT [PROTECTED] and NOT direct children of main
+# (children of main after push is expected state, not something to clean)
+space_revset="heads(all()) & empty() & working_copies() ~ ($protected) ~ children(bookmarks())"
 # Other: orphans that are not empty leaves, excluding [PROTECTED]
 other_revset="((~::bookmarks()) ~ (heads(all()) & empty())) ~ ($protected)"
 

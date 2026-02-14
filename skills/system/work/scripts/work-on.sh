@@ -52,6 +52,11 @@ else
     jj new main -m "${tag} ${task}"
 fi
 
-echo "task: ${task}" >&2
-echo "cwd:  ${ws_path} (persistent)" >&2
+echo "" >&2
+echo "╭─ WORKSPACE READY ─────────────────────╮" >&2
+echo "│  task: ${task}" >&2
+echo "│  path: ${ws_path}" >&2
+echo "├────────────────────────────────────────┤" >&2
+echo "│  You are HERE. Run commands directly. │" >&2
+echo "╰────────────────────────────────────────╯" >&2
 echo "${ws_path}"
