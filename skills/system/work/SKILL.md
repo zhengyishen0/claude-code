@@ -10,22 +10,26 @@ Agent workspace management using jj workspaces.
 ## Usage
 
 ```bash
-# Start work (creates isolated workspace, cd is persistent)
+# Start work — ALWAYS use cd "$(...)"; workspace path is persistent
 cd "$(work on 'task description')"
 
-# Finish work (merges to main, cleans up)
+# Stack another task on current work
+cd "$(work on 'another task')"
+
+# Finish work (merges to main)
 work done "summary"
 
-# Abandon work (removes workspace, change becomes orphaned)
-work drop
+# Clean up
+work clean          # dry run — show what would be cleaned
+work clean --safe   # clean empty orphans (no workspace @)
+work clean --space  # clean empty workspace leftovers
 
-# Detect orphans, clean empty leaf
-work clean      # interactive (pre-push check)
-work clean -y   # auto-confirm (for scripts/agents)
-
-# Push (with pre-push check)
-work clean && jj git push
+# Push
+jj git push
 ```
+
+> **IMPORTANT**: Always use `cd "$(work on ...)"` — the command outputs the workspace path.
+> Never do `cd ~/.workspace/xxx && work on` — this breaks the workflow.
 
 ## Example
 
@@ -63,13 +67,12 @@ work done "fixed login validation"
 2. Deletes workspace directory
 3. No merge - change stays in repo but disconnected (will be GC'd)
 
-### `work clean [-y]`
+### `work clean [--safe | --space]`
 
-1. Detects ALL orphan commits, categorized:
-   - **Empty leaf**: safe to auto-clean
-   - **Other**: needs manual cleanup (has content or descendants)
-2. With `-y`: auto-cleans empty leaf orphans
-3. Exits with error if other orphans remain
+1. No args: dry run — shows what would be cleaned
+2. `--safe`: cleans empty orphan leaves (no workspace @)
+3. `--space`: cleans empty workspace leftovers, moves workspaces to main
+4. Never touches [PROTECTED] (default@ safety buffer)
 
 ## jj Quick Reference
 
@@ -119,10 +122,10 @@ work done "bump <skill>"        # Commits new pointer
 
 ## Rules for AI
 
-1. **Always `work on` before editing** - creates isolated workspace
-2. **One workspace per session** - `~/.workspace/[session-id]`
-3. **Tag commits with session ID** - `jj new -m "[session-id] description"`
-4. **Finish before starting new work** - one task at a time
-5. **Never `jj abandon`** - escalate to user instead
-6. **`@` empty on main** - `work done` leaves a buffer; accidental edits are isolated
-7. **Submodule edits don't need workspace** - cd into submodule, use its jj
+1. **Always `cd "$(work on ...)"` before editing** — this creates workspace AND changes directory
+2. **Never `cd ~/.workspace/... && work on`** — this breaks the workflow
+3. **One workspace per session** — `~/.workspace/[session-id]`, path is persistent
+4. **Stack with `cd "$(work on ...)"` again** — creates child commit
+5. **Finish with `work done`** — merges to main, keeps workspace at main
+6. **Never `jj abandon`** — escalate to user instead
+7. **Submodule edits don't need workspace** — cd into submodule, use its jj
