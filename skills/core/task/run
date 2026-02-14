@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# task - Task management and execution
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+case "${1:-}" in
+    exec)
+        shift
+        exec "$SCRIPT_DIR/scripts/exec.sh" "$@"
+        ;;
+    list)
+        shift
+        exec "$SCRIPT_DIR/scripts/list.sh" "$@"
+        ;;
+    *)
+        echo "Usage: task <exec|list> [args]"
+        echo ""
+        echo "Commands:"
+        echo "  exec <id>    Execute a task"
+        echo "  list         List tasks"
+        exit 1
+        ;;
+esac

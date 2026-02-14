@@ -13,8 +13,8 @@ if [[ -z "$TASK_ID" ]]; then
     exit 1
 fi
 
-TASK_DIR="$VAULT_DIR/active/$TASK_ID"
-ARCHIVE_DIR="$VAULT_DIR/archive/$TASK_ID"
+TASK_DIR="$VAULT_DIR/Tasks/$TASK_ID"
+ARCHIVE_DIR="$VAULT_DIR/Archive/$TASK_ID"
 
 if [[ ! -d "$TASK_DIR" ]]; then
     echo "Error: Task not found: $TASK_DIR"
