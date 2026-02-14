@@ -39,12 +39,27 @@ cd "$repo_root"
 
 # Create merge node with main and current work
 jj new main "${change}" -m "[merge] ${summary}"
+merge_rev=$(jj log -r @ --no-graph -T 'change_id.short()')
 
 # Move main bookmark to merge
 jj bookmark set main -r @
 
-# Move ws@ to merge
-cd "$ws_path" && jj edit main
+# Ensure [PROTECTED] exists as child of main, move default@ there
+protected_rev=$(get_protected_rev)
+if [[ -n "$protected_rev" ]]; then
+    # Rebase existing [PROTECTED] onto new main
+    jj rebase -r "$protected_rev" -d main
+else
+    # Create new [PROTECTED]
+    jj new main -m "[PROTECTED] do not edit — use \`work on\`"
+    protected_rev=$(jj log -r @ --no-graph -T 'change_id.short()')
+fi
+
+# default@ is in repo_root, move it to [PROTECTED]
+cd "$repo_root" && jj edit "$protected_rev"
+
+# Move ws@ to merge (main)
+cd "$ws_path" && jj edit "$merge_rev"
 
 echo "Merged. Ready for next task."
 jj log -r @ --limit 1
