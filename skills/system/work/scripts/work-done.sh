@@ -39,12 +39,11 @@ cd "$repo_root"
 
 # Create merge node with main and current work
 jj new main "${change}" -m "[merge] ${summary}"
+
+# Move main bookmark to merge
 jj bookmark set main -r @
 
-# Ensure default@ is on [PROTECTED] (child of main)
-ensure_protected_for_default "$repo_root"
-
-# Leave ws@ at merge (main)
+# Move ws@ to merge
 cd "$ws_path" && jj edit main
 
 echo "Merged. Ready for next task."
