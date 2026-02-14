@@ -20,10 +20,41 @@ ZENIX_DIR="$SKILLS_DIR/system/zenix"
 source "$ZENIX_DIR/lib/output.sh"
 
 # ─────────────────────────────────────────────────────────────
-# list - show all available skills
+# list - show available skills (with optional filtering)
+#
+# Usage:
+#   zenix list                  # all skills
+#   zenix list system           # category filter
+#   zenix list work browser     # individual skills
+#   zenix list system browser   # mixed: category + individual
 # ─────────────────────────────────────────────────────────────
 cmd_list() {
+    local filters=("$@")
     local current_category=""
+    local has_output=false
+
+    # Get all categories for filter matching
+    local categories=()
+    for dir in "$SKILLS_DIR"/*/; do
+        [[ -d "$dir" ]] && categories+=("$(basename "$dir")")
+    done
+
+    # Check if a filter matches category or skill name
+    matches_filter() {
+        local name="$1"
+        local category="$2"
+
+        # No filters = match all
+        [[ ${#filters[@]} -eq 0 ]] && return 0
+
+        for filter in "${filters[@]}"; do
+            # Match category
+            [[ "$category" == "$filter" ]] && return 0
+            # Match skill name
+            [[ "$name" == "$filter" ]] && return 0
+        done
+        return 1
+    }
 
     for skill_md in "$SKILLS_DIR"/*/*/SKILL.md; do
         [[ -f "$skill_md" ]] || continue
@@ -32,11 +63,15 @@ cmd_list() {
         local name=$(basename "$skill_dir")
         local category=$(basename "$(dirname "$skill_dir")")
 
+        # Apply filter
+        matches_filter "$name" "$category" || continue
+
         # Print category header when it changes
         if [[ "$category" != "$current_category" ]]; then
-            [[ -n "$current_category" ]] && echo ""
+            [[ "$has_output" == true ]] && echo ""
             echo -e "${BLUE}[${category}]${NC}"
             current_category="$category"
+            has_output=true
         fi
 
         # Parse description from frontmatter
@@ -51,8 +86,11 @@ cmd_list() {
         fi
     done
 
-    echo ""
-    echo -e "${DIM}Use \`zenix <skill>\` to run a skill.${NC}"
+    # Footer only if no filters (interactive use)
+    if [[ ${#filters[@]} -eq 0 ]]; then
+        echo ""
+        echo -e "${DIM}Use \`zenix <skill>\` to run a skill.${NC}"
+    fi
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -310,8 +348,12 @@ route_skill() {
 # Main
 # ─────────────────────────────────────────────────────────────
 case "${1:-}" in
-    ""|list)
+    "")
         cmd_list
+        ;;
+    list)
+        shift
+        cmd_list "$@"
         ;;
     create)
         cmd_create "${2:-}"
@@ -327,12 +369,17 @@ case "${1:-}" in
         echo "zenix - Unified CLI dispatcher for zenix skills"
         echo ""
         echo "Usage:"
-        echo "  zenix                    List available skills"
-        echo "  zenix list               Same as above"
-        echo "  zenix <skill> [args]     Run a skill"
-        echo "  zenix create <name>      Create new skill in custom/"
-        echo "  zenix doctor [name]      Validate skill conventions"
-        echo "  zenix setup [cmd]        Install dependencies (run 'zenix setup help')"
+        echo "  zenix                          List all skills"
+        echo "  zenix list [filter...]         List skills (filter by category or name)"
+        echo "  zenix <skill> [args]           Run a skill"
+        echo "  zenix create <name>            Create new skill in custom/"
+        echo "  zenix doctor [name]            Validate skill conventions"
+        echo "  zenix setup [cmd]              Install dependencies (run 'zenix setup help')"
+        echo ""
+        echo "Examples:"
+        echo "  zenix list system              List system category"
+        echo "  zenix list work browser        List specific skills"
+        echo "  zenix list system browser      Mixed: category + skill"
         ;;
     *)
         route_skill "$@"

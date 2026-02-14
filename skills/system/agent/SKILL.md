@@ -1,136 +1,216 @@
 ---
 name: agent
-description: Claude Code wrapper with preconfigured model, permissions, and session management.
+description: Multi-framework agent launcher with unified configuration.
 ---
 
 # Agent
 
-Launches Claude Code with settings from `config/agents.yaml`.
+Launches agentic coding tools (Claude Code, Open Code, Codex, etc.) with unified configuration.
 
 ## Usage
 
 ```bash
-agent "prompt"              # New session with 'default' setting
-agent                       # Interactive session
-agent -r                    # Pick from recent sessions
-agent -r <partial>          # Resume by partial session ID
-agent -c                    # Continue last session
-agent -P <setting> "prompt" # Use named setting
+agent "prompt"                    # New session with default model
+agent                             # Interactive session
+agent --model sonnet "task"       # Use specific model alias
+agent -r                          # Pick from recent sessions
+agent -r <partial>                # Resume by partial session ID
+agent -c                          # Continue last session
 ```
 
-## Settings
+## Architecture
+
+```
+run (entry point)
+ │
+ ├── parses user args, loads agents/*.md
+ │
+ └── dispatch.sh
+      │
+      ├── reads config/provider.yaml
+      ├── resolves model alias → framework
+      ├── derives workspace prefix
+      ├── exports ZENIX_* env vars
+      │
+      └── <framework>.sh (e.g., claude-code.sh)
+           │
+           ├── translates env vars to CLI flags
+           │
+           └── exec <command> [flags]
+```
+
+## Configuration
+
+### config/provider.yaml
 
 ```yaml
-# config/agents.yaml
-settings:
-  default:
+models:
+  opus:
+    provider: anthropic
     model: claude-opus-4-5
-    permissions: auto
-    # system_prompts:
-    #   - prompts/base.md
-    # skills:
-    #   - work
+    framework: claude-code
 
-  custom:
-    model: claude-opus-4-5
-    permissions: default
-    # system_prompts:
-    #   - prompts/custom.md
+  sonnet:
+    provider: anthropic
+    model: claude-sonnet-4-5-20250929
+    framework: claude-code
+
+frameworks:
+  claude-code:
+    command: claude
+    permissions:
+      auto: --dangerously-skip-permissions
+      prompt: --allow-dangerously-skip-permissions
+    flags:
+      model: --model
+      system_prompt: --append-system-prompt
+      add_dir: --add-dir
+
+defaults:
+  model: opus
+  permissions: auto
+  workspace: true
+  skills: [all]
 ```
 
-Use with: `agent -P custom "task"`
+### agents/*.md (Subagents)
 
-## Overrides
+```markdown
+---
+name: code-reviewer
+description: Reviews code for quality
+model: sonnet
+permissions: prompt
+---
+
+You are a senior code reviewer...
+```
+
+## Unified Interface
+
+dispatch.sh exports these env vars for all framework parsers:
 
 ```bash
-agent --model claude-haiku-4-5-20251001 "quick task"
-agent --permissions default "be careful"
+# Identity
+ZENIX_SESSION_ID=a1b2c3d4
+ZENIX_FRAMEWORK=claude-code
+
+# Workspace
+ZENIX_WORKSPACE_PATH=~/.workspace/cc-a1b2c3d4
+ZENIX_WORKSPACE_ENABLED=true
+
+# Model
+ZENIX_MODEL_ALIAS=sonnet
+ZENIX_MODEL_ID=claude-sonnet-4-5-20250929
+
+# Behavior
+ZENIX_PERMISSIONS=auto    # auto | prompt
+
+# Content
+ZENIX_SYSTEM_PROMPT="..."
+ZENIX_SKILLS="work,research"
+```
+
+## Workspace Prefix
+
+Derived from framework name:
+
+| Pattern | Rule | Example |
+|---------|------|---------|
+| Multi-word | Initials | `claude-code` → `cc` |
+| Single word | First + last | `codex` → `cx` |
+
+Override with `workspace_prefix:` in provider.yaml if collision.
+
+Result: `~/.workspace/<prefix>-<session_id>`
+
+## Creating a Framework Parser
+
+To add support for a new framework (e.g., `open-code`):
+
+### 1. Add to provider.yaml
+
+```yaml
+models:
+  gpt4:
+    provider: openai
+    model: gpt-4o
+    framework: open-code
+
+frameworks:
+  open-code:
+    command: opencode
+    permissions:
+      auto: --yes
+      prompt: ""
+    flags:
+      model: --model
+      system_prompt: --system
+```
+
+### 2. Create scripts/open-code.sh
+
+```bash
+#!/bin/bash
+# Translates ZENIX_* env vars to opencode flags
+
+ARGS=()
+
+# Model
+ARGS+=(--model "$ZENIX_MODEL_ID")
+
+# Permissions
+case "$ZENIX_PERMISSIONS" in
+    auto)   ARGS+=(--yes) ;;
+    prompt) ;;  # default behavior
+esac
+
+# Workspace
+if [[ "$ZENIX_WORKSPACE_ENABLED" == "true" ]]; then
+    ARGS+=(--cwd "$ZENIX_WORKSPACE_PATH")
+fi
+
+# System prompt
+if [[ -n "$ZENIX_SYSTEM_PROMPT" ]]; then
+    ARGS+=(--system "$ZENIX_SYSTEM_PROMPT")
+fi
+
+# Execute with passthrough args
+exec opencode "${ARGS[@]}" "$@"
+```
+
+### 3. Make executable
+
+```bash
+chmod +x scripts/open-code.sh
 ```
 
 ## Permissions Modes
 
-| Mode | Flag | Behavior |
-|------|------|----------|
-| `auto` | `--dangerously-skip-permissions` | No prompts |
-| `default` | `--allow-dangerously-skip-permissions` | Prompts, can bypass |
+| Mode | Meaning |
+|------|---------|
+| `auto` | No permission prompts |
+| `prompt` | Ask before risky actions |
+
+Each framework translates these to its own flags.
 
 ## Session Management
 
 ```bash
 agent -r                    # List recent sessions
 agent -r abc123             # Resume by partial ID
+agent -c                    # Continue last session
 
 # Direct script access
 scripts/session.sh find <partial>
 scripts/session.sh list [n]
 ```
 
-## System Prompts
-
-Multiple files concatenated in order. Paths relative to `config/`:
-
-```yaml
-system_prompts:
-  - prompts/base.md
-  - prompts/project.md
-```
-
-## Skills Injection
-
-Inject SKILL.md content into system prompt:
-
-```yaml
-skills:
-  - all              # All skills
-  - system           # All skills in system/
-  - work             # Specific skill by name
-```
-
 ## Passthrough
 
-Unknown flags pass directly to claude:
+Unknown flags pass directly to the framework:
 
 ```bash
-agent -p "custom prompt" "task"
 agent --verbose "debug this"
+agent -p "custom prompt" "task"
 ```
-
-## Workspace Workflow
-
-Agents have access to their workspace directory at `~/.workspace/[session-id]`.
-
-### Making Changes
-
-```bash
-cd "$(work on 'task')"          # Creates workspace, cd into it
-# All work happens here - this is a full jj working copy
-# ... make changes ...
-work done "summary"             # Merges to main
-```
-
-### Working with Submodules
-
-Community skills are git submodules with their own jj tracking.
-
-**Edit submodule directly:**
-```bash
-cd skills/community/<skill>     # Submodule has its own jj
-jj new                          # Work in submodule's jj
-# ... make changes ...
-jj commit -m "fix"
-jj git push                     # Push to skill's repo
-```
-
-**Update submodule pointer:**
-```bash
-cd "$(work on 'bump skill')"    # Workspace in parent
-cd skills/community/<skill> && git pull
-cd ../..
-work done "bump <skill>"
-```
-
-| Task | Where to work |
-|------|---------------|
-| Edit submodule code | `cd skills/community/<skill>/` (its own jj) |
-| Add/remove submodule | Parent workspace (`work on`) |
-| Update submodule pointer | Parent workspace (`work on`) |

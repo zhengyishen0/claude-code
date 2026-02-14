@@ -1,0 +1,57 @@
+# Provider Configuration
+# Models, frameworks, and defaults for the agent skill
+#
+# Resolution: model alias → provider config → framework → CLI command
+
+# ─────────────────────────────────────────────────────────────
+# Models
+# User-facing aliases → provider-specific config
+# ─────────────────────────────────────────────────────────────
+models:
+  opus:
+    provider: anthropic
+    model: claude-opus-4-5
+    framework: claude-code
+
+  sonnet:
+    provider: anthropic
+    model: claude-sonnet-4-5-20250929
+    framework: claude-code
+
+  haiku:
+    provider: anthropic
+    model: claude-haiku-4-5-20251001
+    framework: claude-code
+
+# ─────────────────────────────────────────────────────────────
+# Frameworks
+# Agentic CLI tools and their flag mappings
+#
+# Workspace: ${ZENIX_WORKSPACE}/${prefix}-${session_id}
+# Prefix derived from name:
+#   - multi-word (a-b): initials → claude-code → cc
+#   - single word: first+last → codex → cx
+#   - override: set workspace_prefix explicitly
+# ─────────────────────────────────────────────────────────────
+frameworks:
+  claude-code:
+    command: claude
+    permissions:
+      auto: --dangerously-skip-permissions
+      prompt: --allow-dangerously-skip-permissions
+    flags:
+      model: --model
+      system_prompt: --append-system-prompt
+      add_dir: --add-dir
+      resume: --resume
+      continue: --continue
+
+# ─────────────────────────────────────────────────────────────
+# Defaults
+# Inherited by all agents unless overridden
+# ─────────────────────────────────────────────────────────────
+defaults:
+  model: opus
+  permissions: auto
+  workspace: true
+  skills: [all]
