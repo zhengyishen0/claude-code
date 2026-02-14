@@ -47,7 +47,7 @@ echo "Merging ${change} from ${ws}..."
 cd "$repo_root" && \
 jj new main "${change}" -m "[merge] ${summary}" && \
 jj bookmark set main -r @ && \
-jj new && \
+jj new -m "[PROTECTED] merge only, no edit — use \`work on\`" && \
 jj workspace forget "${ws}"
 
 rm -rf "$ws_path" 2>/dev/null
