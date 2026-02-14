@@ -58,7 +58,13 @@ skills/<category>/<name>/
 └── data -> ~/.zenix/data/<name>/   # Symlink to persistent storage
 ```
 
-**Categories:** `core`, `system`, `service`, `utility`, `custom` (for user-created skills)
+**Categories:**
+
+| Category | Location | Tracking |
+|----------|----------|----------|
+| `system` | Monorepo | Core functionality, always present |
+| `core` | Monorepo | Essential skills, always present |
+| `community` | Submodules | Distributable skills, `zenix-<name>` repos |
 
 ## Layers
 
@@ -141,6 +147,38 @@ action: scripts/periodic.sh
 3. **Shared data** — skills read/write to known paths
 4. **Scripts** — one skill calls another's `scripts/`
 
+## Community Skills (Submodules)
+
+Community skills are separate repos, tracked as git submodules.
+
+**Naming:** `zenix-<skill>` (e.g., `zenix-wechat`, `zenix-feishu`)
+
+### Adding a Community Skill
+
+```bash
+git submodule add https://github.com/user/zenix-<skill>.git skills/community/<skill>
+```
+
+### Working on a Community Skill
+
+```bash
+cd skills/community/<skill>     # Submodule has its own jj
+jj new                          # Create work commit
+# ... make changes ...
+jj commit -m "description"
+jj git push                     # Push to zenix-<skill> repo
+```
+
+### Updating Submodule Pointer (in parent)
+
+```bash
+cd "$(work on 'bump skill')"    # Workspace in parent repo
+cd skills/community/<skill>
+git pull origin master
+cd ../..                        # Back to workspace root
+work done "bump <skill>"        # Commits new pointer
+```
+
 ## Skill Examples
 
 | Skill | Demonstrates |
@@ -149,3 +187,4 @@ action: scripts/periodic.sh
 | watcher | auto-discovery + central runner |
 | memory | data symlink + run.sh |
 | daily | hooks (precompact, session-end) |
+| wechat | community submodule |

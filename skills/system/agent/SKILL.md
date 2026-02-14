@@ -94,3 +94,43 @@ Unknown flags pass directly to claude:
 agent -p "custom prompt" "task"
 agent --verbose "debug this"
 ```
+
+## Workspace Workflow
+
+Agents have access to their workspace directory at `~/.workspace/[session-id]`.
+
+### Making Changes
+
+```bash
+cd "$(work on 'task')"          # Creates workspace, cd into it
+# All work happens here - this is a full jj working copy
+# ... make changes ...
+work done "summary"             # Merges to main
+```
+
+### Working with Submodules
+
+Community skills are git submodules with their own jj tracking.
+
+**Edit submodule directly:**
+```bash
+cd skills/community/<skill>     # Submodule has its own jj
+jj new                          # Work in submodule's jj
+# ... make changes ...
+jj commit -m "fix"
+jj git push                     # Push to skill's repo
+```
+
+**Update submodule pointer:**
+```bash
+cd "$(work on 'bump skill')"    # Workspace in parent
+cd skills/community/<skill> && git pull
+cd ../..
+work done "bump <skill>"
+```
+
+| Task | Where to work |
+|------|---------------|
+| Edit submodule code | `cd skills/community/<skill>/` (its own jj) |
+| Add/remove submodule | Parent workspace (`work on`) |
+| Update submodule pointer | Parent workspace (`work on`) |

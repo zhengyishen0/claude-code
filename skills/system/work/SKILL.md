@@ -89,6 +89,34 @@ jj describe -m "msg"     # Update CURRENT commit (changes stay here)
 jj new -m "msg"          # Create NEW commit (changes stay in parent)
 ```
 
+## Working with Submodules
+
+Community skills are git submodules with their own jj tracking.
+
+**Edit submodule directly (no workspace needed):**
+```bash
+cd skills/community/<skill>     # Has its own jj
+jj new                          # Work commit in submodule
+# ... make changes ...
+jj commit -m "description"
+jj git push                     # Push to skill's remote
+```
+
+**Update submodule pointer (workspace needed):**
+```bash
+cd "$(work on 'bump skill')"    # Workspace in parent
+cd skills/community/<skill>
+git pull origin master
+cd ../..                        # Back to workspace root
+work done "bump <skill>"        # Commits new pointer
+```
+
+| Task | Where to work |
+|------|---------------|
+| Edit submodule code | `cd skills/community/<skill>/` (its own jj) |
+| Add/remove submodule | Parent workspace (`work on`) |
+| Update submodule pointer | Parent workspace (`work on`) |
+
 ## Rules for AI
 
 1. **Always `work on` before editing** - creates isolated workspace
@@ -97,3 +125,4 @@ jj new -m "msg"          # Create NEW commit (changes stay in parent)
 4. **Finish before starting new work** - one task at a time
 5. **Never `jj abandon`** - escalate to user instead
 6. **`@` empty on main** - `work done` leaves a buffer; accidental edits are isolated
+7. **Submodule edits don't need workspace** - cd into submodule, use its jj
