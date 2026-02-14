@@ -299,19 +299,12 @@ WORKSPACE_PATH="$ZENIX_WORKSPACE/${WORKSPACE_NAME}"
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 
 # ─────────────────────────────────────────────────────────────
-# Create workspace (if enabled)
+# Create workspace directory (if enabled)
+# Note: jj workspace is created lazily by `work on` on first use
 # ─────────────────────────────────────────────────────────────
 
 if [[ "$WORKSPACE_ENABLED" == "true" ]]; then
-    # Create workspace directory
     mkdir -p "$WORKSPACE_PATH"
-
-    # Create jj workspace linked to repo
-    (cd "$REPO_ROOT" && jj workspace add --name "$WORKSPACE_NAME" "$WORKSPACE_PATH" 2>/dev/null) || {
-        echo "Warning: Failed to create jj workspace" >&2
-    }
-
-    # Write repo root for work skill
     echo "$REPO_ROOT" > "$WORKSPACE_PATH/.repo_root"
 fi
 
