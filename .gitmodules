@@ -19,3 +19,6 @@
 [submodule "skills/community/google"]
 	path = skills/community/google
 	url = https://github.com/zhengyishen0/zenix-google.git
+[submodule "skills/community/md2pdf"]
+	path = skills/community/md2pdf
+	url = https://github.com/zhengyishen0/zenix-md2pdf.git
