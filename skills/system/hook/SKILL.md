@@ -30,7 +30,7 @@ skills/system/hook/
 ├── scripts/
 │   ├── build.sh     # Rebuild .claude/settings.json
 │   └── list.sh      # List all hooks
-└── watch/
+└── watchers/
     └── hook.yaml    # Auto-rebuild watcher
 ```
 

@@ -49,7 +49,7 @@ skills/<category>/<name>/
 ├── SKILL.md              # Context for AI (required)
 ├── run.sh                # Main entry point
 ├── config/               # YAML configuration files
-├── watch/*.yaml          # Triggers (auto-discovered by watcher)
+├── watchers/*.yaml          # Triggers (auto-discovered by watcher)
 ├── hooks/*.sh            # Claude Code lifecycle hooks
 ├── prompts/              # AI system prompts for sub-sessions
 ├── templates/            # Document templates
@@ -72,7 +72,7 @@ skills/<category>/<name>/
 |------|---------|-----------|
 | SKILL.md | AI context when `/skill` invoked | By name |
 | run.sh | CLI entry point | Via `zenix <skill>` |
-| watch/*.yaml | Event triggers | Auto by watcher |
+| watchers/*.yaml | Event triggers | Auto by watcher |
 | hooks/*.sh | Claude Code lifecycle | Via `.claude/settings.json` |
 
 ## Data Convention
@@ -120,7 +120,7 @@ options:
 
 Scripts read config via: `yq '.options.key' "$SCRIPT_DIR/config/settings.yaml"`
 
-## Watcher (watch/*.yaml)
+## Watchers (watchers/*.yaml)
 
 ```yaml
 name: unique-watcher-name
@@ -142,7 +142,7 @@ action: scripts/periodic.sh
 
 ## Inter-Skill Communication
 
-1. **Watcher** — skill defines `watch/*.yaml`, `watcher` runs it
+1. **Watcher** — skill defines `watchers/*.yaml`, `watcher` runs it
 2. **Sub-sessions** — skill calls `claude -p` with `prompts/*.md`
 3. **Shared data** — skills read/write to known paths
 4. **Scripts** — one skill calls another's `scripts/`

@@ -27,11 +27,11 @@ skills/watcher/run.sh stop
 skills/
 ├── core/
 │   └── vault/
-│       └── watch/
+│       └── watchers/
 │           └── files.yaml      # Watcher config
 ├── apps/
 │   └── feishu/
-│       └── watch/
+│       └── watchers/
 │           └── notifications.yaml
 └── system/
     └── watcher/
@@ -39,7 +39,7 @@ skills/
         └── run.sh              # Central runner
 ```
 
-Watchers are auto-discovered from: `skills/*/*/watch/*.yaml`
+Watchers are auto-discovered from: `skills/*/*/watchers/*.yaml`
 
 State is stored in: `~/.local/state/watchers/`
 - `pids/` - PID files for running watchers
@@ -47,7 +47,7 @@ State is stored in: `~/.local/state/watchers/`
 
 ## Creating a Watcher
 
-Create a yaml file in `skills/<category>/<skill>/watch/<name>.yaml`:
+Create a yaml file in `skills/<category>/<skill>/watchers/<name>.yaml`:
 
 ### fswatch (File Watching)
 
@@ -142,7 +142,7 @@ Common fswatch events:
 ## Example: Vault File Watcher
 
 ```yaml
-# skills/agent/vault/watch/files.yaml
+# skills/agent/vault/watchers/files.yaml
 name: vault-files
 type: fswatch
 path: vault/
