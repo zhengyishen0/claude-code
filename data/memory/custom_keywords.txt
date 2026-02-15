@@ -41,6 +41,7 @@ proper
 python
 remember
 segmentation
+snippets
 specific
 still
 stopwords
