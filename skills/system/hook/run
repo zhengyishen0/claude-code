@@ -2,16 +2,16 @@
 # zenix hook - Claude Code hooks management
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+HOOK_DIR="$ZENIX_ROOT/skills/system/hook"
 
 case "${1:-}" in
     list|ls)
         shift
-        exec "$SCRIPT_DIR/scripts/list.sh" "$@"
+        exec "$HOOK_DIR/scripts/list.sh" "$@"
         ;;
     build|rebuild)
         shift
-        exec "$SCRIPT_DIR/scripts/build.sh" "$@"
+        exec "$HOOK_DIR/scripts/build.sh" "$@"
         ;;
     *)
         echo "Usage: zenix hook <command>"
