@@ -2,6 +2,8 @@
 
 - event: PreCompact
   script: precompact.sh
+  description: Remind to save context before compaction
 
 - event: SessionEnd
   script: session-end.sh
+  description: Remind to log session summary

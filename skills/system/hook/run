@@ -1,0 +1,24 @@
+#!/bin/bash
+# zenix hook - Claude Code hooks management
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+case "${1:-}" in
+    list|ls)
+        shift
+        exec "$SCRIPT_DIR/scripts/list.sh" "$@"
+        ;;
+    build|rebuild)
+        shift
+        exec "$SCRIPT_DIR/scripts/build.sh" "$@"
+        ;;
+    *)
+        echo "Usage: zenix hook <command>"
+        echo ""
+        echo "Commands:"
+        echo "  list, ls    List all registered hooks"
+        echo "  build       Rebuild .claude/settings.json from settings.yaml files"
+        exit 1
+        ;;
+esac

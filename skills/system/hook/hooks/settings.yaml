@@ -1,7 +1,9 @@
-# Non-skill hooks (general purpose)
+# Infrastructure hooks
 
 - event: SessionStart
   script: persist-env.sh
+  description: Persist session_id and cwd for bash commands
 
 - event: SubagentStart
   script: persist-env.sh
+  description: Persist environment when subagents start

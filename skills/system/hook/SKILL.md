@@ -7,6 +7,15 @@ description: Claude Code hooks management with auto-discovery
 
 Manages Claude Code hooks with YAML config and auto-discovery.
 
+## Commands
+
+```bash
+zenix hook list              # List all registered hooks
+zenix hook list --event Pre  # Filter by event name
+zenix hook list --json       # Output as JSON
+zenix hook build             # Rebuild .claude/settings.json
+```
+
 ## Structure
 
 ```
@@ -19,22 +28,10 @@ skills/system/hook/
 │   ├── settings.yaml
 │   └── persist-env.sh
 ├── scripts/
-│   └── build.sh     # Rebuild .claude/settings.json
+│   ├── build.sh     # Rebuild .claude/settings.json
+│   └── list.sh      # List all hooks
 └── watch/
     └── hook.yaml    # Auto-rebuild watcher
-```
-
-## Usage
-
-```bash
-# Manual rebuild
-skills/hook/scripts/build.sh
-
-# Start watcher (auto-rebuild on change)
-skills/watcher/run.sh start hook-builder
-
-# Check status
-skills/watcher/run.sh status
 ```
 
 ## Creating Hooks
@@ -44,15 +41,34 @@ Add `hooks/settings.yaml` to any skill:
 ```yaml
 - event: PreCompact
   script: precompact.sh
-  timeout: 60  # optional
+  timeout: 60           # optional, seconds
+  description: Brief description for zenix hook list
 
-- event: SessionEnd
-  script: session-end.sh
+- event: PostToolUse
+  matcher: Edit|Write   # optional, tool filter regex
+  script: my-hook.sh
+  description: Runs after Edit or Write tools
 ```
 
-**Events:** SessionStart, UserPromptSubmit, SubagentStart, PostToolUse, PreCompact, SessionEnd, etc.
+### Fields
 
-**Script path:** Relative to the skill's `hooks/` folder.
+| Field | Required | Description |
+|-------|----------|-------------|
+| event | yes | Hook event (SessionStart, PreToolUse, etc.) |
+| script | yes | Script path relative to hooks/ folder |
+| matcher | no | Tool name regex filter |
+| timeout | no | Max execution time in seconds |
+| description | no | Brief description for `zenix hook list` |
+
+### Events
+
+- `SessionStart` - When session begins
+- `SessionEnd` - When session ends
+- `SubagentStart` - When subagent spawns
+- `UserPromptSubmit` - When user sends a message
+- `PreToolUse` - Before a tool executes
+- `PostToolUse` - After a tool executes
+- `PreCompact` - Before context compaction
 
 ## How It Works
 
