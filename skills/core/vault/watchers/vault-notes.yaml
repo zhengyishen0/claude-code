@@ -1,4 +1,5 @@
 name: vault-notes
+description: Monitor vault notes for changes
 type: fswatch
 path: vault/
 events: [Created, Updated, AttributeModified, Renamed]

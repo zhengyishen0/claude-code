@@ -1,4 +1,5 @@
 name: heartbeat
+description: Periodic check for time-based tasks
 type: cron
 schedule: "*/30 8-22 * * *"  # Every 30 min, 8am-10pm
 action: zenix agent -A heartbeat -p "Heartbeat. Current time: $(date '+%Y-%m-%d %H:%M %Z')"

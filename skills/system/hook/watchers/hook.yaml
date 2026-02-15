@@ -1,4 +1,5 @@
 name: hook-builder
+description: Auto-rebuild settings.json on hook config changes
 type: fswatch
 path: skills/
 events: [Created, Updated, Removed, Renamed]

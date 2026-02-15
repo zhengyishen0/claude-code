@@ -34,16 +34,26 @@ find_agent() {
 }
 
 list_agents() {
-    local found=false
-    for f in "$ZENIX_ROOT/skills"/*/*/agents/*.md; do
-        [[ -f "$f" ]] || continue
-        found=true
-        local name=$(basename "$f" .md)
-        local skill=$(basename "$(dirname "$(dirname "$f")")")
-        local desc=$(grep "^description:" "$f" 2>/dev/null | sed 's/description:[[:space:]]*//' | head -1)
-        printf "%-15s [%s] %s\n" "$name" "$skill" "${desc:-(no description)}"
-    done
-    $found || echo "No agents found. Create one in skills/<category>/<skill>/agents/*.md"
+    local style="--group"
+    [[ "${1:-}" == "--inline" ]] && style="--inline"
+
+    # Check if any agents exist first
+    local agents=("$ZENIX_ROOT/skills"/*/*/agents/*.md)
+    if [[ ! -f "${agents[0]}" ]]; then
+        echo "No agents found. Create one in skills/<category>/<skill>/agents/*.md"
+        return
+    fi
+
+    {
+        for f in "${agents[@]}"; do
+            [[ -f "$f" ]] || continue
+            local name=$(basename "$f" .md)
+            local skill=$(basename "$(dirname "$(dirname "$f")")")
+            local desc=$(grep "^description:" "$f" 2>/dev/null | sed 's/description:[[:space:]]*//' | head -1)
+            # TSV: group (skill), name, tag (empty), description
+            printf '%s\t%s\t%s\t%s\n' "$skill" "$name" "" "${desc:-(no description)}"
+        done
+    } | "$ZENIX_ROOT/skills/system/zenix/lib/list-format.sh" "$style"
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -52,7 +62,7 @@ list_agents() {
 
 case "${1:-}" in
     list)
-        list_agents
+        list_agents "${2:-}"
         exit 0
         ;;
 esac

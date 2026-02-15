@@ -1,4 +1,5 @@
 name: vault-files
+description: Monitor vault for new notes and task submissions
 type: fswatch
 path: vault/
 events: [Created, Updated, AttributeModified, Renamed]

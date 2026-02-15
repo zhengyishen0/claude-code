@@ -7,3 +7,6 @@
 [submodule "skills/core/browser"]
 	path = skills/core/browser
 	url = https://github.com/zhengyishen0/zenix-browser.git
+[submodule "skills/community/proxy"]
+	path = skills/community/proxy
+	url = https://github.com/zhengyishen0/zenix-proxy.git

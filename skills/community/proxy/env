@@ -1,4 +1,0 @@
-#!/usr/bin/env bash
-# @always
-
-eval "$("$ZENIX_ROOT/skills/community/proxy/run" init 2>/dev/null)"

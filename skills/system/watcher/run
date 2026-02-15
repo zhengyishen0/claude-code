@@ -510,15 +510,22 @@ find_yaml_by_name() {
 
 # Commands
 cmd_list() {
-    log "Discovered watchers:"
-    while IFS= read -r yaml_file; do
-        local name
-        name=$(get_watcher_name "$yaml_file")
-        local type
-        type=$(yaml_get "$yaml_file" "type")
-        local rel_path="${yaml_file#$ZENIX_ROOT/}"
-        echo "  $name ($type) - $rel_path"
-    done < <(discover_watchers)
+    local style="--group"
+    [[ "${1:-}" == "--inline" ]] && style="--inline"
+
+    # Generate TSV: group, name, tag, description
+    {
+        while IFS= read -r yaml_file; do
+            local name type desc skill
+            name=$(get_watcher_name "$yaml_file")
+            type=$(yaml_get "$yaml_file" "type")
+            desc=$(yaml_get "$yaml_file" "description")
+            # Extract skill name from path: skills/<cat>/<skill>/watchers/...
+            skill=$(echo "$yaml_file" | sed -E 's|.*/skills/[^/]+/([^/]+)/watchers/.*|\1|')
+            [[ -z "$desc" ]] && desc="(no description)"
+            printf '%s\t%s\t%s\t%s\n' "$skill" "$name" "$type" "$desc"
+        done < <(discover_watchers)
+    } | "$ZENIX_ROOT/skills/system/zenix/lib/list-format.sh" "$style"
 }
 
 cmd_status() {
@@ -593,7 +600,7 @@ cmd_logs() {
 # Main
 case "${1:-}" in
     list)
-        cmd_list
+        cmd_list "${2:-}"
         ;;
     status)
         cmd_status
@@ -611,7 +618,7 @@ case "${1:-}" in
         echo "Watcher runner - auto-discovers yaml-based watchers"
         echo ""
         echo "Usage:"
-        echo "  $0 list              List discovered watchers"
+        echo "  $0 list [--inline]   List discovered watchers"
         echo "  $0 status            Show status of all watchers"
         echo "  $0 start             Start all watchers"
         echo "  $0 start <name>      Start specific watcher"
@@ -619,7 +626,7 @@ case "${1:-}" in
         echo "  $0 stop <name>       Stop specific watcher"
         echo "  $0 logs <name>       Tail logs for a watcher"
         echo ""
-        echo "Watchers are discovered from: skills/*/*/watch/*.yaml"
+        echo "Watchers are discovered from: skills/*/*/watchers/*.yaml"
         echo "State directory: $STATE_DIR"
         ;;
 esac
