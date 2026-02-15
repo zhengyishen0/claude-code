@@ -124,6 +124,7 @@ Scripts read config via: `yq '.options.key' "$SCRIPT_DIR/config/settings.yaml"`
 
 ```yaml
 name: unique-watcher-name
+description: Brief description for zenix watcher list
 type: fswatch | cron
 
 # fswatch
@@ -138,6 +139,28 @@ rules:
 # cron
 schedule: "*/30 * * * *"
 action: scripts/periodic.sh
+```
+
+## List Format (lib/list-format.sh)
+
+Unified list formatter for consistent output across skills.
+
+**Input:** TSV via stdin (group, name, tag, description)
+
+```bash
+# Usage
+source "$ZENIX_ROOT/skills/system/zenix/lib/list-format.sh"
+printf '%s\t%s\t%s\t%s\n' "skill" "name" "tag" "description" | list_format --group
+```
+
+**Styles:**
+- `--group` (default): Group by first column with `[group]` headers
+- `--inline`: Flat list with `[group]` inline after name
+
+**Output format:**
+```
+[group]
+name (tag): description
 ```
 
 ## Inter-Skill Communication

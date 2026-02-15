@@ -53,6 +53,7 @@ Create a yaml file in `skills/<category>/<skill>/watchers/<name>.yaml`:
 
 ```yaml
 name: my-watcher
+description: Brief description for watcher list
 type: fswatch
 path: some/directory/
 events: [Created, Updated, AttributeModified, Renamed]
@@ -75,6 +76,7 @@ rules:
 
 **Fields:**
 - `name`: Unique watcher identifier
+- `description`: Brief description for `zenix watcher list`
 - `type`: `fswatch`
 - `path`: Directory to watch (relative to PROJECT_ROOT or absolute)
 - `events`: fswatch events to monitor
@@ -92,6 +94,7 @@ rules:
 
 ```yaml
 name: heartbeat
+description: Periodic health check
 type: cron
 schedule: "*/30 * * * *"
 action: skills/my-skill/scripts/heartbeat.sh
@@ -99,6 +102,7 @@ action: skills/my-skill/scripts/heartbeat.sh
 
 **Fields:**
 - `name`: Unique identifier
+- `description`: Brief description for `zenix watcher list`
 - `type`: `cron`
 - `schedule`: Cron expression
 - `action`: Script to run
