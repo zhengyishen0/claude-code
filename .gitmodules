@@ -1,3 +1,9 @@
 [submodule "skills/community/wechat"]
 	path = skills/community/wechat
 	url = https://github.com/zhengyishen0/zenix-wechat.git
+[submodule "skills/core/memory"]
+	path = skills/core/memory
+	url = https://github.com/zhengyishen0/zenix-memory.git
+[submodule "skills/core/browser"]
+	path = skills/core/browser
+	url = https://github.com/zhengyishen0/zenix-browser.git
