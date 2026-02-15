@@ -13,3 +13,6 @@
 [submodule "skills/community/diagnose"]
 	path = skills/community/diagnose
 	url = https://github.com/zhengyishen0/zenix-diagnose.git
+[submodule "skills/community/feishu"]
+	path = skills/community/feishu
+	url = https://github.com/zhengyishen0/zenix-feishu.git
