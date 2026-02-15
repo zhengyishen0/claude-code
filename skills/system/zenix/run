@@ -7,6 +7,7 @@
 #   zenix list               Same as above
 #   zenix <skill> [args]     Run a skill
 #   zenix create <name>      Create new skill in custom/
+#   zenix convert <path>     Convert skill to git submodule
 #   zenix doctor [name]      Validate skill conventions
 #   zenix setup [cmd]        Install dependencies (delegates to scripts/setup.sh)
 #
@@ -106,7 +107,7 @@ cmd_create() {
 
     # Reserved names
     case "$name" in
-        list|create|doctor|help|-h|--help)
+        list|create|convert|doctor|help|-h|--help)
             err "Cannot create skill with reserved name: $name"
             exit 1
             ;;
@@ -361,6 +362,10 @@ case "${1:-}" in
     doctor)
         cmd_doctor "${2:-}"
         ;;
+    convert)
+        shift
+        exec "$ZENIX_DIR/scripts/convert.sh" "$@"
+        ;;
     setup)
         shift
         exec "$ZENIX_DIR/scripts/setup.sh" "$@"
@@ -373,13 +378,14 @@ case "${1:-}" in
         echo "  zenix list [filter...]         List skills (filter by category or name)"
         echo "  zenix <skill> [args]           Run a skill"
         echo "  zenix create <name>            Create new skill in custom/"
+        echo "  zenix convert <path>           Convert skill to git submodule"
         echo "  zenix doctor [name]            Validate skill conventions"
         echo "  zenix setup [cmd]              Install dependencies (run 'zenix setup help')"
         echo ""
         echo "Examples:"
         echo "  zenix list system              List system category"
         echo "  zenix list work browser        List specific skills"
-        echo "  zenix list system browser      Mixed: category + skill"
+        echo "  zenix convert core/memory      Convert memory skill to submodule"
         ;;
     *)
         route_skill "$@"
