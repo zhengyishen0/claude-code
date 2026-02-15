@@ -25,3 +25,6 @@
 [submodule "skills/community/screenshot"]
 	path = skills/community/screenshot
 	url = https://github.com/zhengyishen0/zenix-screenshot.git
+[submodule "skills/community/yt-transcript"]
+	path = skills/community/yt-transcript
+	url = https://github.com/zhengyishen0/zenix-yt-transcript.git
