@@ -333,6 +333,12 @@ export ZENIX_SYSTEM_PROMPT="$SYSTEM_PROMPT"
 export ZENIX_SKILLS="$SKILLS"
 
 # ─────────────────────────────────────────────────────────────
+# Rebuild Claude Code hooks from current settings.yaml files
+# ─────────────────────────────────────────────────────────────
+
+"$ZENIX_ROOT/skills/system/hook/scripts/build.sh" >/dev/null 2>&1 || true
+
+# ─────────────────────────────────────────────────────────────
 # Execute framework parser
 # ─────────────────────────────────────────────────────────────
 
