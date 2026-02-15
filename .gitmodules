@@ -22,3 +22,6 @@
 [submodule "skills/community/md2pdf"]
 	path = skills/community/md2pdf
 	url = https://github.com/zhengyishen0/zenix-md2pdf.git
+[submodule "skills/community/screenshot"]
+	path = skills/community/screenshot
+	url = https://github.com/zhengyishen0/zenix-screenshot.git
