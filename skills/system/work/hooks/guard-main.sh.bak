@@ -1,0 +1,200 @@
+#!/usr/bin/env bash
+# PreToolUse hook: Block dangerous operations
+# 1. Edit/Write outside workspace directories (with protection layers)
+# 2. Dangerous commands (jj abandon, git push --force, etc.)
+set -eo pipefail
+
+ZENIX_ROOT="${ZENIX_ROOT:-$HOME/.zenix}"
+SKILL_CONFIG="$ZENIX_ROOT/skills/system/work/config"
+BLOCKED_YAML="$SKILL_CONFIG/blocked.yaml"
+PROTECTION_YAML="$SKILL_CONFIG/protection.yaml"
+
+INPUT=$(cat)
+TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty')
+
+# === BASH COMMAND BLOCKING ===
+if [[ "$TOOL_NAME" == "Bash" ]]; then
+    COMMAND=$(echo "$INPUT" | jq -r '.tool_input.command // empty')
+
+    if [[ -f "$BLOCKED_YAML" ]] && command -v yq &>/dev/null; then
+        while IFS=$'\t' read -r pattern alias; do
+            [[ -n "$pattern" ]] || continue
+            if echo "$COMMAND" | grep -qE "$pattern"; then
+                cat >&2 << EOF
+
+BLOCKED: Dangerous command detected.
+
+Pattern matched: $pattern
+Use the uppercase alias instead: $alias
+
+Example:
+  $alias <args>
+
+EOF
+                exit 2
+            fi
+        done < <(yq -r '.[] | "\(.pattern)\t\(.alias)"' "$BLOCKED_YAML" 2>/dev/null)
+    fi
+    exit 0
+fi
+
+# === EDIT/WRITE BLOCKING (workspace enforcement) ===
+if [[ "$TOOL_NAME" != "Edit" && "$TOOL_NAME" != "Write" ]]; then
+    exit 0
+fi
+
+FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // empty')
+
+# No file path means something else is happening
+if [[ -z "$FILE_PATH" ]]; then
+    exit 0
+fi
+
+# Resolve to absolute path
+if [[ "$FILE_PATH" != /* ]]; then
+    FILE_PATH="$(pwd)/$FILE_PATH"
+fi
+FILE_PATH=$(cd "$(dirname "$FILE_PATH")" 2>/dev/null && pwd)/$(basename "$FILE_PATH") 2>/dev/null || FILE_PATH="$FILE_PATH"
+
+# === ALWAYS ALLOWED (hardcoded) ===
+
+# Allow: Files in workspace directories
+if [[ "$FILE_PATH" == "$HOME/.workspace/"* ]]; then
+    exit 0
+fi
+
+# Allow: Temporary files
+if [[ "$FILE_PATH" == /tmp/* || "$FILE_PATH" == */tmp/* || "$FILE_PATH" == */.tmp/* ]]; then
+    exit 0
+fi
+
+# Allow: Claude's own data directories
+if [[ "$FILE_PATH" == "$HOME/.claude/"* ]]; then
+    exit 0
+fi
+
+# Allow: Zenix config (needed for self-configuration)
+if [[ "$FILE_PATH" == "$HOME/.zenix/config/"* ]]; then
+    exit 0
+fi
+
+# === LAYER 1: Global Loose Paths ===
+# Check if path matches any pattern in protection.yaml loose_paths
+
+is_in_loose_path() {
+    local file="$1"
+    [[ -f "$PROTECTION_YAML" ]] || return 1
+    command -v yq &>/dev/null || return 1
+
+    while IFS= read -r pattern; do
+        [[ -n "$pattern" ]] || continue
+        # Expand ~ to $HOME
+        pattern="${pattern/#\~/$HOME}"
+        # Convert glob pattern to regex (simple version: ** = .*, * = [^/]*)
+        local regex="${pattern//\*\*/.*}"
+        regex="${regex//\*/[^/]*}"
+        regex="^${regex}$"
+        if [[ "$file" =~ $regex ]]; then
+            return 0
+        fi
+    done < <(yq -r '.loose_paths[]?' "$PROTECTION_YAML" 2>/dev/null)
+    return 1
+}
+
+if is_in_loose_path "$FILE_PATH"; then
+    exit 0
+fi
+
+# === LAYER 2: Repo-level protection.yaml ===
+# Check if repo declares protection: loose OR file matches repo's loose_paths
+
+repo_allows_loose() {
+    local file="$1"
+    local dir=$(dirname "$file")
+
+    # Find repo root (jj or git)
+    local repo_root=""
+    if cd "$dir" 2>/dev/null; then
+        repo_root=$(jj root 2>/dev/null || git rev-parse --show-toplevel 2>/dev/null || echo "")
+    fi
+
+    [[ -n "$repo_root" ]] || return 1
+
+    local protection_yaml="$repo_root/protection.yaml"
+    [[ -f "$protection_yaml" ]] || return 1
+
+    command -v yq &>/dev/null || return 1
+
+    # Check if entire repo is loose
+    local protection=$(yq -r '.protection // "strict"' "$protection_yaml" 2>/dev/null)
+    if [[ "$protection" == "loose" ]]; then
+        return 0
+    fi
+
+    # Check if file matches repo's internal loose_paths
+    local rel_path="${file#$repo_root/}"
+    while IFS= read -r pattern; do
+        [[ -n "$pattern" ]] || continue
+        # Convert glob to regex
+        local regex="${pattern//\*\*/.*}"
+        regex="${regex//\*/[^/]*}"
+        regex="^${regex}$"
+        if [[ "$rel_path" =~ $regex ]]; then
+            return 0
+        fi
+    done < <(yq -r '.loose_paths[]?' "$protection_yaml" 2>/dev/null)
+
+    return 1
+}
+
+if repo_allows_loose "$FILE_PATH"; then
+    exit 0
+fi
+
+# === Check if in jj/git repo ===
+
+FILE_DIR=$(dirname "$FILE_PATH")
+if ! cd "$FILE_DIR" 2>/dev/null; then
+    # Directory doesn't exist yet, check parent
+    FILE_DIR=$(dirname "$FILE_DIR")
+    cd "$FILE_DIR" 2>/dev/null || exit 0  # Can't determine, allow
+fi
+
+# Not a jj repo? Allow (could be any random file)
+if ! jj root &>/dev/null; then
+    # Also check git
+    if ! git rev-parse --show-toplevel &>/dev/null; then
+        exit 0
+    fi
+fi
+
+# Check if we're in a workspace (directory name starts with session prefix)
+WORKSPACE_NAME=$(basename "$(pwd)")
+if [[ "$WORKSPACE_NAME" =~ ^[a-z]+-[a-f0-9]+$ ]]; then
+    exit 0
+fi
+
+# Check jj workspace list to see if current dir is a named workspace
+if command -v jj &>/dev/null && jj root &>/dev/null; then
+    CURRENT_WORKSPACE=$(jj workspace list 2>/dev/null | grep -E '^\* ' | awk '{print $2}' || echo "default")
+    if [[ "$CURRENT_WORKSPACE" != "default" ]]; then
+        exit 0
+    fi
+fi
+
+# We're in a repo on the default workspace - BLOCK
+cat >&2 << 'EOF'
+
+BLOCKED: Cannot edit files directly in repository.
+
+Options:
+  1. Create a workspace:
+     work on "your task description"
+
+  2. Add path to loose_paths in skills/system/work/config/protection.yaml
+
+  3. Add protection.yaml with "protection: loose" to repo root
+
+EOF
+
+exit 2

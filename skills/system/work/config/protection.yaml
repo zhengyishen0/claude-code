@@ -1,0 +1,11 @@
+# Global protection settings for work skill
+# Paths listed here skip workspace enforcement (Layer 1)
+
+loose_paths:
+  - ~/dotfiles/**
+  - ~/scripts/**
+  - ~/.config/**
+  - ~/notes/**
+
+# Default protection level for repos without protection.yaml
+default: strict

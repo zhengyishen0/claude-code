@@ -172,6 +172,23 @@ EOF
     echo "data" > "$skill_dir/.gitignore"
     ok "Created .gitignore"
 
+    # Create protection.yaml
+    cat > "$skill_dir/protection.yaml" << 'EOF'
+# Protection settings for this skill/repo
+# See: skills/system/work/config/protection.yaml for global settings
+
+# Option A: Make entire repo loose (skip workspace enforcement)
+# protection: loose
+
+# Option B: Keep strict, but allow specific paths
+protection: strict
+loose_paths: []
+  # - scripts/**
+  # - docs/**
+  # - .tmp/**
+EOF
+    ok "Created protection.yaml"
+
     echo ""
     echo -e "${GREEN}Skill created:${NC} $skill_dir"
     echo ""
