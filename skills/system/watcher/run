@@ -36,7 +36,7 @@ log_err() { echo -e "${RED}[watchers]${NC} $*" >&2; }
 
 # Discover all watcher yaml files
 discover_watchers() {
-    find "$ZENIX_ROOT/skills" -path "*/watch/*.yaml" -type f 2>/dev/null | sort
+    find "$ZENIX_ROOT/skills" -path "*/watchers/*.yaml" -type f 2>/dev/null | sort
 }
 
 # Parse yaml value (simple parser for flat yaml)
