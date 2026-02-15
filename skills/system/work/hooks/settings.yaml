@@ -3,7 +3,9 @@
 - event: PreToolUse
   matcher: Edit|Write|Bash
   script: guard-main.sh
+  description: Block edits outside workspace, dangerous commands
 
 - event: PostToolUse
   matcher: Edit|Write
   script: snapshot.sh
+  description: Auto-snapshot workspace after file edits

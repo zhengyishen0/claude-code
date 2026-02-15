@@ -2,3 +2,4 @@
 
 - event: SessionStart
   script: browser-cleanup.sh
+  description: Clean stale port registry entries

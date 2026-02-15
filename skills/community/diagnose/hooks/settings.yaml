@@ -3,3 +3,4 @@
 - event: PostToolUse
   matcher: Edit|Write
   script: post-edit-diagnose.sh
+  description: Run linters on edited files (shellcheck, ruff, etc.)
