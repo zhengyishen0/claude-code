@@ -10,3 +10,6 @@
 [submodule "skills/community/proxy"]
 	path = skills/community/proxy
 	url = https://github.com/zhengyishen0/zenix-proxy.git
+[submodule "skills/community/diagnose"]
+	path = skills/community/diagnose
+	url = https://github.com/zhengyishen0/zenix-diagnose.git

@@ -27,68 +27,54 @@ source "$ZENIX_DIR/lib/output.sh"
 #   zenix list                  # all skills
 #   zenix list system           # category filter
 #   zenix list work browser     # individual skills
-#   zenix list system browser   # mixed: category + individual
+#   zenix list --inline         # flat list
 # ─────────────────────────────────────────────────────────────
 cmd_list() {
-    local filters=("$@")
-    local current_category=""
-    local has_output=false
+    local style="--group"
+    local filters=()
 
-    # Get all categories for filter matching
-    local categories=()
-    for dir in "$SKILLS_DIR"/*/; do
-        [[ -d "$dir" ]] && categories+=("$(basename "$dir")")
+    # Parse args
+    for arg in "$@"; do
+        case "$arg" in
+            --inline) style="--inline" ;;
+            --group)  style="--group" ;;
+            *)        filters+=("$arg") ;;
+        esac
     done
 
-    # Check if a filter matches category or skill name
-    matches_filter() {
-        local name="$1"
-        local category="$2"
+    # Generate TSV and pipe to formatter
+    {
+        for skill_md in "$SKILLS_DIR"/*/*/SKILL.md; do
+            [[ -f "$skill_md" ]] || continue
 
-        # No filters = match all
-        [[ ${#filters[@]} -eq 0 ]] && return 0
+            local skill_dir=$(dirname "$skill_md")
+            local name=$(basename "$skill_dir")
+            local category=$(basename "$(dirname "$skill_dir")")
 
-        for filter in "${filters[@]}"; do
-            # Match category
-            [[ "$category" == "$filter" ]] && return 0
-            # Match skill name
-            [[ "$name" == "$filter" ]] && return 0
+            # Apply filter (match category or skill name)
+            if [[ ${#filters[@]} -gt 0 ]]; then
+                local match=false
+                for f in "${filters[@]}"; do
+                    [[ "$category" == "$f" || "$name" == "$f" ]] && match=true
+                done
+                $match || continue
+            fi
+
+            # Parse description
+            local desc=$(grep "^description:" "$skill_md" 2>/dev/null | sed 's/description:[[:space:]]*//' | head -1)
+            [[ -z "$desc" ]] && desc="(no description)"
+
+            # Tag: info only if no run script
+            local tag=""
+            [[ ! -x "$skill_dir/run" ]] && tag="info only"
+
+            # TSV: category, name, tag, description
+            printf '%s\t%s\t%s\t%s\n' "$category" "$name" "$tag" "$desc"
         done
-        return 1
-    }
-
-    for skill_md in "$SKILLS_DIR"/*/*/SKILL.md; do
-        [[ -f "$skill_md" ]] || continue
-
-        local skill_dir=$(dirname "$skill_md")
-        local name=$(basename "$skill_dir")
-        local category=$(basename "$(dirname "$skill_dir")")
-
-        # Apply filter
-        matches_filter "$name" "$category" || continue
-
-        # Print category header when it changes
-        if [[ "$category" != "$current_category" ]]; then
-            [[ "$has_output" == true ]] && echo ""
-            echo -e "${BLUE}[${category}]${NC}"
-            current_category="$category"
-            has_output=true
-        fi
-
-        # Parse description from frontmatter
-        local desc=$(grep "^description:" "$skill_md" 2>/dev/null | sed 's/description:[[:space:]]*//' | head -1)
-        [[ -z "$desc" ]] && desc="(no description)"
-
-        # Check if run script exists
-        if [[ -x "$skill_dir/run" ]]; then
-            echo -e "${GREEN}${name}${NC}: $desc"
-        else
-            echo -e "${GREEN}${name}${NC} ${DIM}(info only)${NC}: $desc"
-        fi
-    done
+    } | "$ZENIX_DIR/lib/list-format.sh" "$style"
 
     # Footer only if no filters (interactive use)
-    if [[ ${#filters[@]} -eq 0 ]]; then
+    if [[ ${#filters[@]} -eq 0 && "$style" == "--group" ]]; then
         echo ""
         echo -e "${DIM}Use \`zenix <skill>\` to run a skill.${NC}"
     fi
