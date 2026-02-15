@@ -26,7 +26,8 @@ except ImportError:
     JIEBA_AVAILABLE = False
 
 SCRIPT_DIR = Path(__file__).parent
-CUSTOM_KEYWORDS_FILE = SCRIPT_DIR / 'data' / 'custom_keywords.txt'
+SKILL_DIR = SCRIPT_DIR.parent
+CUSTOM_KEYWORDS_FILE = SKILL_DIR / 'data' / 'custom_keywords.txt'
 
 # Minimum word length for English (filters out 'am', 'pc', 're', etc.)
 MIN_ENGLISH_WORD_LENGTH = 3

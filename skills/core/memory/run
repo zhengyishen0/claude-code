@@ -2,7 +2,7 @@
 # Memory tool - Cross-session knowledge sharing for Claude Code
 set -eo pipefail
 
-SCRIPT_DIR="$ZENIX_ROOT/skills/core/memory"
+SCRIPT_DIR="${0:A:h}"
 
 # Debug options (documented in code only):
 #   --sessions N     Number of sessions to show (default: 10)
@@ -42,15 +42,15 @@ EOF
 case "${1:-}" in
   search)
     shift
-    "$SCRIPT_DIR/search.sh" "$@"
+    "$SCRIPT_DIR/scripts/search.sh" "$@"
     ;;
   recall)
     shift
-    "$SCRIPT_DIR/recall.sh" "$@"
+    "$SCRIPT_DIR/scripts/recall.sh" "$@"
     ;;
   hint)
     shift
-    "$SCRIPT_DIR/hint.sh" "$@"
+    "$SCRIPT_DIR/scripts/hint.sh" "$@"
     ;;
   ""|--help|-h)
     show_help

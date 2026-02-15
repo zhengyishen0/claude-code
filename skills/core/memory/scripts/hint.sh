@@ -12,6 +12,8 @@
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SKILL_DIR="$(dirname "$SCRIPT_DIR")"
+LIB_DIR="$SKILL_DIR/lib"
 
 show_help() {
   cat << 'EOF'
@@ -46,7 +48,7 @@ fi
 TEXT="$*"
 
 # Extract keywords using hint_keywords.py
-KEYWORDS=$(python3 "$SCRIPT_DIR/hint_keywords.py" "$TEXT" 2>/dev/null)
+KEYWORDS=$(python3 "$LIB_DIR/hint_keywords.py" "$TEXT" 2>/dev/null)
 
 if [ -z "$KEYWORDS" ]; then
   # No keywords extracted, nothing to search

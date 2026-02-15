@@ -4,10 +4,12 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SKILL_DIR="$(dirname "$SCRIPT_DIR")"
+LIB_DIR="$SKILL_DIR/lib"
 
 : "${CLAUDE_DIR:=$HOME/.claude}"
 
-DATA_DIR="$SCRIPT_DIR/data"
+DATA_DIR="$SKILL_DIR/data"
 SESSION_DIR="$CLAUDE_DIR/projects"
 INDEX_FILE="$DATA_DIR/memory-index.tsv"
 NLP_INDEX_FILE="$DATA_DIR/memory-index-nlp.tsv"
@@ -109,9 +111,9 @@ build_full_index() {
 # Build NLP index with normalized text column
 build_nlp_index() {
   echo "Building NLP index..." >&2
-  python3 "$SCRIPT_DIR/build_index.py" "$INDEX_FILE" "$NLP_INDEX_FILE"
+  python3 "$LIB_DIR/build_index.py" "$INDEX_FILE" "$NLP_INDEX_FILE"
   # Auto-discover domain keywords from co-occurrence (silent)
-  python3 "$SCRIPT_DIR/build_custom_keywords.py" --write >/dev/null 2>&1 || true
+  python3 "$LIB_DIR/build_custom_keywords.py" --write >/dev/null 2>&1 || true
 }
 
 # Incremental update
@@ -157,7 +159,7 @@ update_index() {
     # Append to base index
     cat "$temp_file" >> "$INDEX_FILE"
     # Normalize and append to NLP index
-    python3 "$SCRIPT_DIR/build_index.py" "$temp_file" /dev/stdout >> "$NLP_INDEX_FILE"
+    python3 "$LIB_DIR/build_index.py" "$temp_file" /dev/stdout >> "$NLP_INDEX_FILE"
     # Mark that keywords need refresh (will run after search completes)
     touch "$DATA_DIR/.keywords_stale"
   fi
@@ -180,7 +182,7 @@ fi
 
 # Fast query normalization (no NLTK dependency)
 normalize_query() {
-  python3 "$SCRIPT_DIR/normalize_query.py" "$1"
+  python3 "$LIB_DIR/normalize_query.py" "$1"
 }
 
 # Simple search: OR all normalized keywords with word boundaries
@@ -219,7 +221,7 @@ fi
 
 # Format results and capture session IDs from stderr
 TEMP_IDS=$(mktemp)
-OUTPUT=$(echo "$RESULTS" | python3 "$SCRIPT_DIR/format-results.py" "$SESSIONS" "$MESSAGES" "$CONTEXT" "$QUERY" "simple" "$QUERY_NORMALIZED" $SHOW_TOPICS 2>"$TEMP_IDS")
+OUTPUT=$(echo "$RESULTS" | python3 "$LIB_DIR/format-results.py" "$SESSIONS" "$MESSAGES" "$CONTEXT" "$QUERY" "simple" "$QUERY_NORMALIZED" $SHOW_TOPICS 2>"$TEMP_IDS")
 SESSION_IDS=$(cat "$TEMP_IDS")
 rm -f "$TEMP_IDS"
 
@@ -245,5 +247,5 @@ fi
 # Background: refresh keywords if stale (runs after output, non-blocking)
 if [ -f "$DATA_DIR/.keywords_stale" ]; then
   rm -f "$DATA_DIR/.keywords_stale"
-  (python3 "$SCRIPT_DIR/build_custom_keywords.py" --write >/dev/null 2>&1 &)
+  (python3 "$LIB_DIR/build_custom_keywords.py" --write >/dev/null 2>&1 &)
 fi

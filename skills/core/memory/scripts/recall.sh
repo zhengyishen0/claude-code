@@ -3,7 +3,8 @@
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INDEX_FILE="$SCRIPT_DIR/data/memory-index.tsv"
+SKILL_DIR="$(dirname "$SCRIPT_DIR")"
+INDEX_FILE="$SKILL_DIR/data/memory-index.tsv"
 
 show_help() {
   cat << 'EOF'
@@ -64,7 +65,7 @@ Rules:
 
 Question: $question"
 
-  claude --model haiku --resume "$session_id" -p "$formatted_prompt" --no-session-persistence --output-format json 2>/dev/null | jq -r '.result // empty'
+  agent --model haiku -r "$session_id" -p "$formatted_prompt" --no-session-persistence --output-format json 2>/dev/null | jq -r '.result // empty'
 }
 
 # Main

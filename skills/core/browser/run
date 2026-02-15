@@ -1,2 +1,2 @@
 #!/usr/bin/env zsh
-exec node "$ZENIX_ROOT/skills/core/browser/cli.js" "$@"
+exec node "${0:A:h}/cli.js" "$@"

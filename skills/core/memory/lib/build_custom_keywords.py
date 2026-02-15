@@ -34,9 +34,10 @@ except ImportError:
     JIEBA_AVAILABLE = False
 
 SCRIPT_DIR = Path(__file__).parent
-INDEX_FILE = SCRIPT_DIR / 'data' / 'memory-index.tsv'
-OUTPUT_FILE = SCRIPT_DIR / 'data' / 'custom_keywords.txt'
-ENGLISH_FREQ_FILE = SCRIPT_DIR / 'data' / 'english_freq.txt'
+SKILL_DIR = SCRIPT_DIR.parent
+INDEX_FILE = SKILL_DIR / 'data' / 'memory-index.tsv'
+OUTPUT_FILE = SKILL_DIR / 'data' / 'custom_keywords.txt'
+ENGLISH_FREQ_FILE = SKILL_DIR / 'data' / 'english_freq.txt'
 
 # English frequency data (loaded lazily)
 _english_freq = None

@@ -100,7 +100,7 @@ function getServiceName(url) {
     const domain = new URL(url).hostname;
 
     // Check domain mappings
-    const mappingsFile = path.join(SCRIPT_DIR, 'domain-mappings.json');
+    const mappingsFile = path.join(SCRIPT_DIR, 'config', 'domain-mappings.json');
     if (fs.existsSync(mappingsFile)) {
       const mappings = JSON.parse(fs.readFileSync(mappingsFile, 'utf8'));
       if (mappings[domain]) {
@@ -606,7 +606,7 @@ function isCoordinates(args) {
 }
 
 function loadScript(name) {
-  return fs.readFileSync(path.join(SCRIPT_DIR, 'js', name), 'utf8');
+  return fs.readFileSync(path.join(SCRIPT_DIR, 'lib', name), 'utf8');
 }
 
 function formatTimeAgo(seconds) {
@@ -1453,7 +1453,7 @@ function extractChromeCookies(cookiesDb, chromeKey, service = null) {
   // Build domain filter if service specified
   let domainFilter = '';
   if (service) {
-    const mappingsFile = path.join(SCRIPT_DIR, 'domain-mappings.json');
+    const mappingsFile = path.join(SCRIPT_DIR, 'config', 'domain-mappings.json');
     if (fs.existsSync(mappingsFile)) {
       const mappings = JSON.parse(fs.readFileSync(mappingsFile, 'utf8'));
       const domains = Object.entries(mappings)
@@ -1711,7 +1711,7 @@ function discoverAllAccounts(profilePath, chromeKey, showAll = false) {
   if (!fs.existsSync(cookiesDb)) return { loggedIn: [], visited: [] };
 
   // Load domain mappings
-  const mappingsFile = path.join(SCRIPT_DIR, 'domain-mappings.json');
+  const mappingsFile = path.join(SCRIPT_DIR, 'config', 'domain-mappings.json');
   let mappings = {};
   if (fs.existsSync(mappingsFile)) {
     mappings = JSON.parse(fs.readFileSync(mappingsFile, 'utf8'));
@@ -1943,7 +1943,7 @@ function detectChromeAccountsWithDetails(profilePath, chromeKey, targetService =
   if (!fs.existsSync(cookiesDb)) return [];
 
   // Load domain mappings
-  const mappingsFile = path.join(SCRIPT_DIR, 'domain-mappings.json');
+  const mappingsFile = path.join(SCRIPT_DIR, 'config', 'domain-mappings.json');
   let mappings = {};
   if (fs.existsSync(mappingsFile)) {
     mappings = JSON.parse(fs.readFileSync(mappingsFile, 'utf8'));
@@ -2069,7 +2069,7 @@ function detectChromeAccounts(profilePath, targetService) {
   if (!fs.existsSync(cookiesDb)) return [];
 
   // Load domain mappings
-  const mappingsFile = path.join(SCRIPT_DIR, 'domain-mappings.json');
+  const mappingsFile = path.join(SCRIPT_DIR, 'config', 'domain-mappings.json');
   let mappings = {};
   if (fs.existsSync(mappingsFile)) {
     mappings = JSON.parse(fs.readFileSync(mappingsFile, 'utf8'));
